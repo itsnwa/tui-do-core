@@ -214,13 +214,18 @@ pub fn receive(
     Ok(())
 }
 
+/// The cache ref that keeps the project's committed history known to the
+/// home core between tasks, so the next handoff only sends what's new.
+pub const KNOWN_REF: &str = "refs/tui-do/known";
+
 /// Runner: commit whatever is left in the task's worktree and bundle its
-/// branch since the snapshot. `None` if nothing changed. The worktree is
-/// removed afterwards.
+/// branch since the snapshot. `None` if nothing changed. Uncommitted changes
+/// that came along and weren't touched stay out: they're still at home. The
+/// worktree, its branch and the task's refs are removed afterwards.
 pub fn collect(
     cache: &Path,
     worktree: &Path,
-    task_ref: &str,
+    task_refs: &[&str],
     branch: &str,
     snapshot: &Snapshot,
     title: &str,
@@ -229,6 +234,26 @@ pub fn collect(
         bail!("the task's working folder is gone ({})", worktree.display());
     }
     git(worktree, &["add", "-A"], &[])?;
+    if snapshot.dirty {
+        let changed = |against: &str| -> anyhow::Result<Vec<String>> {
+            let out = git(
+                worktree,
+                &["diff", "--cached", "--name-only", "--no-renames", against],
+                &[],
+            )?;
+            Ok(out.lines().map(str::to_string).collect())
+        };
+        let since_snapshot = changed(&snapshot.commit)?;
+        let untouched: Vec<String> = changed("HEAD")?
+            .into_iter()
+            .filter(|path| !since_snapshot.contains(path))
+            .collect();
+        if !untouched.is_empty() {
+            let mut args = vec!["reset", "--quiet", "--"];
+            args.extend(untouched.iter().map(String::as_str));
+            git(worktree, &args, &[])?;
+        }
+    }
     if git(worktree, &["diff", "--cached", "--quiet"], &[]).is_err() {
         let message = format!("tui-do: work in progress when \"{title}\" was completed");
         git(
@@ -245,7 +270,11 @@ pub fn collect(
     let bundle = bundle(cache, &format!("refs/heads/{branch}"), &known)?;
     let path = worktree.to_string_lossy().into_owned();
     git(cache, &["worktree", "remove", "--force", &path], &[])?;
-    let _ = git(cache, &["update-ref", "-d", task_ref], &[]);
+    git(cache, &["update-ref", KNOWN_REF, &snapshot.base], &[])?;
+    let _ = git(cache, &["branch", "--quiet", "-D", branch], &[]);
+    for task_ref in task_refs {
+        let _ = git(cache, &["update-ref", "-d", task_ref], &[]);
+    }
     Ok(bundle)
 }
 
@@ -318,10 +347,11 @@ mod tests {
         );
 
         std::fs::write(worktree.join("b.txt"), "done on the runner\n").expect("work");
+        std::fs::write(worktree.join("a.txt"), "one\nuncommitted\nmore\n").expect("more");
         let back = collect(
             &cache,
             &worktree,
-            "refs/tui-do/tasks/t",
+            &["refs/tui-do/tasks/t", "refs/tui-do/incoming/t"],
             "tui-do/26-1",
             &snap,
             "Task",
@@ -330,7 +360,17 @@ mod tests {
         .expect("something to bring back");
         let head = land(&home, "tui-do/26-1", &back).expect("land");
         let files = git(&home, &["ls-tree", "--name-only", &head], &[]).expect("ls-tree");
-        assert!(files.contains("b.txt") && files.contains("new.txt"));
+        // The runner's work comes back; what came along untouched stays at home only
+        assert!(files.contains("b.txt") && !files.contains("new.txt"));
+        assert_eq!(
+            git(&home, &["show", &format!("{head}:a.txt")], &[]).expect("show"),
+            "one\nuncommitted\nmore"
+        );
+        // The runner keeps only the committed history
+        assert_eq!(
+            git(&cache, &["for-each-ref", "--format=%(refname)"], &[]).expect("refs"),
+            KNOWN_REF
+        );
         // Still on main with the user's own uncommitted changes
         assert_eq!(
             git(&home, &["rev-parse", "--abbrev-ref", "HEAD"], &[]).expect("branch"),

@@ -172,7 +172,10 @@ impl Handoffs {
         git::collect(
             &self.cache(project),
             &self.worktree(project, task),
-            &format!("refs/tui-do/tasks/{task}"),
+            &[
+                &format!("refs/tui-do/tasks/{task}"),
+                &format!("refs/tui-do/incoming/{task}"),
+            ],
             &params.branch,
             &snapshot,
             &params.title,
