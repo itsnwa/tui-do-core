@@ -31,6 +31,9 @@ pub struct InstallRequest {
     pub identity_file: Option<String>,
     /// Release to install; defaults to this core's own version.
     pub version: Option<String>,
+    /// Workflow instructions for the coding agents there (see `agents`); when
+    /// set, the machine's Claude Code / Codex get the TUI-DO tools registered.
+    pub instructions: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

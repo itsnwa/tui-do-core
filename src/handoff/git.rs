@@ -57,6 +57,15 @@ pub struct Snapshot {
     pub dirty: bool,
 }
 
+/// Whether `dir` is in a git repo, and how many files have uncommitted changes
+/// (untracked ones included, ignored ones not).
+pub fn status(dir: &Path) -> (bool, usize) {
+    match git(dir, &["status", "--porcelain"], &[]) {
+        Ok(out) => (true, out.lines().filter(|l| !l.is_empty()).count()),
+        Err(_) => (false, 0),
+    }
+}
+
 /// The repository a project directory belongs to, or an error if it isn't one.
 pub fn repo_root(dir: &Path) -> anyhow::Result<PathBuf> {
     git(dir, &["rev-parse", "--show-toplevel"], &[])
@@ -64,10 +73,25 @@ pub fn repo_root(dir: &Path) -> anyhow::Result<PathBuf> {
         .map_err(|_| anyhow::anyhow!("{} isn't a git repository", dir.display()))
 }
 
-pub fn snapshot(dir: &Path, handoff_ref: &str) -> anyhow::Result<Snapshot> {
+/// Snapshot a project for handoff. Without `include_uncommitted` only its
+/// commits travel (HEAD).
+pub fn snapshot(
+    dir: &Path,
+    handoff_ref: &str,
+    include_uncommitted: bool,
+) -> anyhow::Result<Snapshot> {
     let repo = repo_root(dir)?;
     let base =
         git(&repo, &["rev-parse", "HEAD"], &[]).context("the repository has no commits yet")?;
+    if !include_uncommitted {
+        git(&repo, &["update-ref", handoff_ref, &base], &[])?;
+        return Ok(Snapshot {
+            repo,
+            commit: base.clone(),
+            base,
+            dirty: false,
+        });
+    }
     // A separate index, so the user's staging area is left alone
     let index = temp_path("index");
     let index_env = index.to_string_lossy().into_owned();
@@ -260,7 +284,7 @@ mod tests {
         std::fs::write(home.join("a.txt"), "one\nuncommitted\n").expect("edit");
         std::fs::write(home.join("new.txt"), "untracked\n").expect("new");
 
-        let snap = snapshot(&home, "refs/tui-do/handoff/t").expect("snapshot");
+        let snap = snapshot(&home, "refs/tui-do/handoff/t", true).expect("snapshot");
         assert!(snap.dirty);
         // Home's checkout is untouched: same HEAD, changes still uncommitted
         assert_eq!(
@@ -316,11 +340,23 @@ mod tests {
     }
 
     #[test]
+    fn committed_only_should_leave_uncommitted_work_behind() {
+        let root = temp_path("committed");
+        let home = root.join("home");
+        repo_with_commit(&home);
+        std::fs::write(home.join("draft.txt"), "mine\n").expect("draft");
+        let snap = snapshot(&home, "refs/tui-do/handoff/t", false).expect("snapshot");
+        assert!(!snap.dirty && snap.commit == snap.base);
+        assert_eq!(status(&home), (true, 1));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn second_handoff_should_send_only_new_commits() {
         let root = temp_path("delta");
         let home = root.join("home");
         repo_with_commit(&home);
-        let snap = snapshot(&home, "refs/tui-do/handoff/t").expect("snapshot");
+        let snap = snapshot(&home, "refs/tui-do/handoff/t", true).expect("snapshot");
         assert!(!snap.dirty);
         let full = bundle(&snap.repo, "refs/tui-do/handoff/t", &[]).expect("bundle");
         assert!(full.is_some());

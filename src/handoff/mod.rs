@@ -184,6 +184,7 @@ impl Handoffs {
         workspace: Arc<Workspace>,
         task_slug: &str,
         device: &Device,
+        include_uncommitted: bool,
     ) -> anyhow::Result<(String, String)> {
         let ws = Arc::clone(&workspace);
         let slug_owned = task_slug.to_string();
@@ -235,7 +236,7 @@ impl Handoffs {
         let dir = expand_home(&project.directory);
         let handoff_ref = format!("refs/tui-do/handoff/{task_slug}");
         let (snapshot, bundle) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let snapshot = git::snapshot(&dir, &handoff_ref)?;
+            let snapshot = git::snapshot(&dir, &handoff_ref, include_uncommitted)?;
             let bundle = git::bundle(&snapshot.repo, &handoff_ref, &known)?;
             Ok((snapshot, bundle))
         })

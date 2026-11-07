@@ -81,9 +81,13 @@ async fn install_device(
 ) -> Response {
     let own_id = state.config.get().device_id;
     let events = state.registry.sender();
+    let instructions = req.instructions.clone();
     match crate::install::install(req, &state.fleet, &own_id, &events).await {
         Ok(device) => {
             joined(&state, &device).await;
+            if let Some(instructions) = instructions {
+                setup_agents_on(&state, &device, &instructions).await;
+            }
             let status = state
                 .fleet
                 .statuses()
@@ -114,6 +118,28 @@ async fn joined(state: &AppState, device: &Device) {
     state.relays.start(device.clone());
     if let Err(err) = link_home(state, device).await {
         tracing::warn!(device = %device.name, error = %format!("{err:#}"), "couldn't give the device a home link");
+    }
+}
+
+/// Have the device register the TUI-DO tools with its coding agents.
+async fn setup_agents_on(state: &AppState, device: &Device, instructions: &str) {
+    let sent = state
+        .fleet
+        .client()
+        .put(format!("{}/v0/agents/setup", device.address))
+        .bearer_auth(&device.token)
+        .json(&json!({ "instructions": instructions }))
+        .send()
+        .await;
+    match sent {
+        Ok(res) if res.status().is_success() => {
+            let done = res.text().await.unwrap_or_default();
+            tracing::info!(device = %device.name, agents = %done, "agents set up");
+        }
+        Ok(res) => {
+            tracing::warn!(device = %device.name, status = %res.status(), "agent setup failed")
+        }
+        Err(err) => tracing::warn!(device = %device.name, %err, "agent setup failed"),
     }
 }
 

@@ -256,8 +256,17 @@ Starting a task on a fleet device takes the project's code along; completing the
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `POST` | `/v0/tasks/{slug}/handoff` | `{ device }` | `{ device, path, branch }`: the task's working folder on that device. The home core snapshots the project's repo (unpushed commits and uncommitted, untracked changes included; the checkout, index and branch are left alone), sends only the commits the device lacks as a `git bundle`, and the device checks it out in `~/.tui-do/work/<project>/<task>` on branch `tui-do/<task id>`, with uncommitted work still uncommitted. If the task already has a folder there, it's kept. |
+| `GET` | `/v0/projects/{slug}/git` | | `{ isRepo, uncommitted }`: whether the project folder is a git repo and how many files have uncommitted changes |
+| `POST` | `/v0/tasks/{slug}/handoff` | `{ device, includeUncommitted? }` | `{ device, path, branch }`: the task's working folder on that device. The home core snapshots the project's repo (unpushed commits always; uncommitted and untracked changes only with `includeUncommitted`; the checkout, index and branch are left alone), sends only the commits the device lacks as a `git bundle`, and the device checks it out in `~/.tui-do/work/<project>/<task>` on branch `tui-do/<task id>`, with uncommitted work still uncommitted. If the task already has a folder there, it's kept. |
 
 Completing the task (in the app, or with `complete_task`) makes the device commit what's left and send the branch back; the home core fetches it into the project as `tui-do/<task id>` (your checkout is never touched), and the device's folder is removed. Progress goes out on `/v0/events` as `{ "type": "handoff", "task", "status": "starting" | "started" | "returned" | "failed", "branch", "message" }`.
 
 Device-side routes used by the home core: `GET /v0/handoff/{project}/commits`, `POST /v0/handoff/{project}/{task}` (bundle body), `POST /v0/handoff/{project}/{task}/collect`.
+
+## Coding agents on a machine
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `PUT` | `/v0/agents/setup` | `{ instructions }` | `{ claude, codex }`: which agents were set up |
+
+Registers `tui-do-core mcp` with the coding agents installed on that machine (`claude mcp add --scope user`, `codex mcp add`), writes `instructions` (a markdown section starting with `## TUI-DO Task Workflow (MCP Server)`) into `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` (replacing an earlier version), and allows `mcp__tui-do__*` in Claude Code's settings. `POST /v0/fleet/install` does this on the new machine when its body includes `instructions`.
