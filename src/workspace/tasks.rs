@@ -15,7 +15,7 @@ use super::store::{Dir, Entry};
 use super::{Error, Result, Workspace, slug};
 use crate::format::{Document, Map, Value};
 
-const TASK_KEYS: [&str; 11] = [
+const TASK_KEYS: [&str; 12] = [
     "id",
     "title",
     "state",
@@ -27,6 +27,7 @@ const TASK_KEYS: [&str; 11] = [
     "completed",
     "created",
     "attachments",
+    "device",
 ];
 pub const STATES: [&str; 3] = ["not-started", "in-progress", "completed"];
 
@@ -47,6 +48,9 @@ pub struct Task {
     pub completed: Option<String>,
     pub created: String,
     pub attachments: Vec<String>,
+    /// The fleet device the task runs on (chosen when starting it); absent = the home machine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
 }
 
 /// A task with its description (and, from `get`, the same text as `content`).
@@ -109,6 +113,9 @@ pub struct UpdateTask {
     #[serde(deserialize_with = "double_option")]
     pub plan: Option<Option<String>>,
     pub description: Option<String>,
+    /// The device to run on; `null` = the home machine.
+    #[serde(deserialize_with = "double_option")]
+    pub device: Option<Option<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -182,6 +189,7 @@ fn summarize(slug: &str, data: &Map) -> Task {
             Some(Value::Seq(items)) => items.iter().map(Value::to_js_string).collect(),
             _ => Vec::new(),
         },
+        device: opt_text(data.get("device")).filter(|d| !d.is_empty()),
     }
 }
 
@@ -638,6 +646,15 @@ impl Workspace {
         data.insert("completed".into(), completed);
         if !matches!(data.get("attachments"), Some(Value::Seq(_))) {
             data.insert("attachments".into(), Value::Seq(Vec::new()));
+        }
+        match req.device {
+            Some(Some(device)) if !device.is_empty() => {
+                data.insert("device".into(), device.into());
+            }
+            Some(_) => {
+                data.shift_remove("device");
+            }
+            None => {}
         }
         let body = req.description.unwrap_or(doc.content);
         self.write_task(slug, &data, &body)?;

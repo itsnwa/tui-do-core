@@ -1,6 +1,8 @@
 //! Projects: `projects/<slug>.md`. A project can point at a local directory
 //! or, with `ssh`, a directory on another machine.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::store::Dir;
@@ -8,7 +10,14 @@ use super::tasks::{double_option, text_or};
 use super::{Error, Result, Workspace, dates, slug};
 use crate::format::{Map, Value};
 
-const PROJECT_KEYS: [&str; 5] = ["title", "muted", "created", "directory", "ssh"];
+const PROJECT_KEYS: [&str; 6] = [
+    "title",
+    "muted",
+    "created",
+    "directory",
+    "ssh",
+    "directories",
+];
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Project {
@@ -19,6 +28,9 @@ pub struct Project {
     pub directory: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ssh: Option<serde_json::Value>,
+    /// The project's folder on other machines, by device id (`directory` is the home machine's).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub directories: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
 }
@@ -49,6 +61,8 @@ pub struct UpdateProject {
     /// `null` removes the SSH settings.
     #[serde(deserialize_with = "double_option")]
     pub ssh: Option<Option<SshConfig>>,
+    /// Merged into the per-device folders; a `null` value removes that device's.
+    pub directories: Option<BTreeMap<String, Option<String>>>,
 }
 
 /// Keep only meaningful SSH settings: host, a non-blank user, a non-default
@@ -84,6 +98,13 @@ fn summarize(slug: &str, data: &Map, content: Option<String>) -> Project {
         created: text_or(data.get("created"), ""),
         directory: text_or(data.get("directory"), ""),
         ssh: data.get("ssh").filter(|v| !v.is_null()).map(Value::to_json),
+        directories: match data.get("directories") {
+            Some(Value::Map(map)) => map
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_js_string()))
+                .collect(),
+            _ => BTreeMap::new(),
+        },
         content,
     }
 }
@@ -168,6 +189,27 @@ impl Workspace {
                 data.shift_remove("ssh");
             }
             None => {}
+        }
+        if let Some(changes) = req.directories {
+            let mut dirs = match data.get("directories") {
+                Some(Value::Map(map)) => map.clone(),
+                _ => Map::new(),
+            };
+            for (device, dir) in changes {
+                match dir.filter(|d| !d.trim().is_empty()) {
+                    Some(dir) => {
+                        dirs.insert(device, dir.trim().into());
+                    }
+                    None => {
+                        dirs.shift_remove(&device);
+                    }
+                }
+            }
+            if dirs.is_empty() {
+                data.shift_remove("directories");
+            } else {
+                data.insert("directories".into(), Value::Map(dirs));
+            }
         }
         let data = ordered(data);
 

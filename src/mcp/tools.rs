@@ -350,6 +350,7 @@ pub fn call(
                 muted: args.0.get("muted").and_then(Json::as_bool),
                 directory: args.opt("directory"),
                 ssh: None,
+                directories: None,
             };
             ws.update_project(&args.req("slug")?, req).and_then(to_json)
         }
@@ -419,6 +420,7 @@ pub fn call(
                 recurrence: args.nullable("recurrence"),
                 plan: args.opt("plan").map(Some),
                 description: args.opt("description"),
+                device: None,
             };
             ws.update_task(&slug, req).and_then(to_json)
         }
