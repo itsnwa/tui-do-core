@@ -1,0 +1,4976 @@
+{
+ "generator": "js-yaml 5.4.3 dump/load with YAML11_SCHEMA",
+ "dumps": [
+  {
+   "name": "edge-0",
+   "data": {
+    "value": ""
+   },
+   "yaml": "value: ''\n"
+  },
+  {
+   "name": "edge-1",
+   "data": {
+    "value": " "
+   },
+   "yaml": "value: \" \"\n"
+  },
+  {
+   "name": "edge-2",
+   "data": {
+    "value": "  x"
+   },
+   "yaml": "value: '  x'\n"
+  },
+  {
+   "name": "edge-3",
+   "data": {
+    "value": "x "
+   },
+   "yaml": "value: 'x '\n"
+  },
+  {
+   "name": "edge-4",
+   "data": {
+    "value": "\t"
+   },
+   "yaml": "value: \"\\t\"\n"
+  },
+  {
+   "name": "edge-5",
+   "data": {
+    "value": "a\tb"
+   },
+   "yaml": "value: \"a\\tb\"\n"
+  },
+  {
+   "name": "edge-6",
+   "data": {
+    "value": "2026-10-19"
+   },
+   "yaml": "value: '2026-10-19'\n"
+  },
+  {
+   "name": "edge-7",
+   "data": {
+    "value": "2026-11-07T09:00:10.859Z"
+   },
+   "yaml": "value: '2026-11-07T09:00:10.859Z'\n"
+  },
+  {
+   "name": "edge-8",
+   "data": {
+    "value": "2026-W44"
+   },
+   "yaml": "value: 2026-W44\n"
+  },
+  {
+   "name": "edge-9",
+   "data": {
+    "value": "26-955"
+   },
+   "yaml": "value: 26-955\n"
+  },
+  {
+   "name": "edge-10",
+   "data": {
+    "value": "yes"
+   },
+   "yaml": "value: 'yes'\n"
+  },
+  {
+   "name": "edge-11",
+   "data": {
+    "value": "Yes"
+   },
+   "yaml": "value: 'Yes'\n"
+  },
+  {
+   "name": "edge-12",
+   "data": {
+    "value": "no"
+   },
+   "yaml": "value: 'no'\n"
+  },
+  {
+   "name": "edge-13",
+   "data": {
+    "value": "on"
+   },
+   "yaml": "value: 'on'\n"
+  },
+  {
+   "name": "edge-14",
+   "data": {
+    "value": "off"
+   },
+   "yaml": "value: 'off'\n"
+  },
+  {
+   "name": "edge-15",
+   "data": {
+    "value": "y"
+   },
+   "yaml": "value: 'y'\n"
+  },
+  {
+   "name": "edge-16",
+   "data": {
+    "value": "n"
+   },
+   "yaml": "value: 'n'\n"
+  },
+  {
+   "name": "edge-17",
+   "data": {
+    "value": "Y"
+   },
+   "yaml": "value: 'Y'\n"
+  },
+  {
+   "name": "edge-18",
+   "data": {
+    "value": "true"
+   },
+   "yaml": "value: 'true'\n"
+  },
+  {
+   "name": "edge-19",
+   "data": {
+    "value": "null"
+   },
+   "yaml": "value: 'null'\n"
+  },
+  {
+   "name": "edge-20",
+   "data": {
+    "value": "~"
+   },
+   "yaml": "value: '~'\n"
+  },
+  {
+   "name": "edge-21",
+   "data": {
+    "value": "Null"
+   },
+   "yaml": "value: 'Null'\n"
+  },
+  {
+   "name": "edge-22",
+   "data": {
+    "value": "123"
+   },
+   "yaml": "value: '123'\n"
+  },
+  {
+   "name": "edge-23",
+   "data": {
+    "value": "0123"
+   },
+   "yaml": "value: '0123'\n"
+  },
+  {
+   "name": "edge-24",
+   "data": {
+    "value": "0o17"
+   },
+   "yaml": "value: 0o17\n"
+  },
+  {
+   "name": "edge-25",
+   "data": {
+    "value": "0x1F"
+   },
+   "yaml": "value: '0x1F'\n"
+  },
+  {
+   "name": "edge-26",
+   "data": {
+    "value": "1.5"
+   },
+   "yaml": "value: '1.5'\n"
+  },
+  {
+   "name": "edge-27",
+   "data": {
+    "value": "1e3"
+   },
+   "yaml": "value: 1e3\n"
+  },
+  {
+   "name": "edge-28",
+   "data": {
+    "value": "12:30"
+   },
+   "yaml": "value: '12:30'\n"
+  },
+  {
+   "name": "edge-29",
+   "data": {
+    "value": "1:20.5"
+   },
+   "yaml": "value: '1:20.5'\n"
+  },
+  {
+   "name": "edge-30",
+   "data": {
+    "value": ".inf"
+   },
+   "yaml": "value: '.inf'\n"
+  },
+  {
+   "name": "edge-31",
+   "data": {
+    "value": ".nan"
+   },
+   "yaml": "value: '.nan'\n"
+  },
+  {
+   "name": "edge-32",
+   "data": {
+    "value": "1_000"
+   },
+   "yaml": "value: '1_000'\n"
+  },
+  {
+   "name": "edge-33",
+   "data": {
+    "value": "+12"
+   },
+   "yaml": "value: '+12'\n"
+  },
+  {
+   "name": "edge-34",
+   "data": {
+    "value": ".5"
+   },
+   "yaml": "value: '.5'\n"
+  },
+  {
+   "name": "edge-35",
+   "data": {
+    "value": "."
+   },
+   "yaml": "value: .\n"
+  },
+  {
+   "name": "edge-36",
+   "data": {
+    "value": "-"
+   },
+   "yaml": "value: '-'\n"
+  },
+  {
+   "name": "edge-37",
+   "data": {
+    "value": "--"
+   },
+   "yaml": "value: --\n"
+  },
+  {
+   "name": "edge-38",
+   "data": {
+    "value": "---"
+   },
+   "yaml": "value: ---\n"
+  },
+  {
+   "name": "edge-39",
+   "data": {
+    "value": "--- x"
+   },
+   "yaml": "value: --- x\n"
+  },
+  {
+   "name": "edge-40",
+   "data": {
+    "value": "..."
+   },
+   "yaml": "value: ...\n"
+  },
+  {
+   "name": "edge-41",
+   "data": {
+    "value": "TUI-DO Core: background"
+   },
+   "yaml": "value: 'TUI-DO Core: background'\n"
+  },
+  {
+   "name": "edge-42",
+   "data": {
+    "value": "Note:"
+   },
+   "yaml": "value: 'Note:'\n"
+  },
+  {
+   "name": "edge-43",
+   "data": {
+    "value": "a #b"
+   },
+   "yaml": "value: 'a #b'\n"
+  },
+  {
+   "name": "edge-44",
+   "data": {
+    "value": "a#b"
+   },
+   "yaml": "value: a#b\n"
+  },
+  {
+   "name": "edge-45",
+   "data": {
+    "value": "#tag"
+   },
+   "yaml": "value: '#tag'\n"
+  },
+  {
+   "name": "edge-46",
+   "data": {
+    "value": "- item"
+   },
+   "yaml": "value: '- item'\n"
+  },
+  {
+   "name": "edge-47",
+   "data": {
+    "value": "-item"
+   },
+   "yaml": "value: -item\n"
+  },
+  {
+   "name": "edge-48",
+   "data": {
+    "value": "? x"
+   },
+   "yaml": "value: '? x'\n"
+  },
+  {
+   "name": "edge-49",
+   "data": {
+    "value": "?x"
+   },
+   "yaml": "value: ?x\n"
+  },
+  {
+   "name": "edge-50",
+   "data": {
+    "value": ":x"
+   },
+   "yaml": "value: :x\n"
+  },
+  {
+   "name": "edge-51",
+   "data": {
+    "value": "*bold*"
+   },
+   "yaml": "value: '*bold*'\n"
+  },
+  {
+   "name": "edge-52",
+   "data": {
+    "value": "&anchor"
+   },
+   "yaml": "value: '&anchor'\n"
+  },
+  {
+   "name": "edge-53",
+   "data": {
+    "value": "!tag"
+   },
+   "yaml": "value: '!tag'\n"
+  },
+  {
+   "name": "edge-54",
+   "data": {
+    "value": "%x"
+   },
+   "yaml": "value: '%x'\n"
+  },
+  {
+   "name": "edge-55",
+   "data": {
+    "value": "@user"
+   },
+   "yaml": "value: '@user'\n"
+  },
+  {
+   "name": "edge-56",
+   "data": {
+    "value": "`code`"
+   },
+   "yaml": "value: '`code`'\n"
+  },
+  {
+   "name": "edge-57",
+   "data": {
+    "value": "{a}"
+   },
+   "yaml": "value: '{a}'\n"
+  },
+  {
+   "name": "edge-58",
+   "data": {
+    "value": "[a]"
+   },
+   "yaml": "value: '[a]'\n"
+  },
+  {
+   "name": "edge-59",
+   "data": {
+    "value": "a, b"
+   },
+   "yaml": "value: a, b\n"
+  },
+  {
+   "name": "edge-60",
+   "data": {
+    "value": "| x"
+   },
+   "yaml": "value: '| x'\n"
+  },
+  {
+   "name": "edge-61",
+   "data": {
+    "value": "> x"
+   },
+   "yaml": "value: '> x'\n"
+  },
+  {
+   "name": "edge-62",
+   "data": {
+    "value": "="
+   },
+   "yaml": "value: '='\n"
+  },
+  {
+   "name": "edge-63",
+   "data": {
+    "value": "<<"
+   },
+   "yaml": "value: '<<'\n"
+  },
+  {
+   "name": "edge-64",
+   "data": {
+    "value": "it's"
+   },
+   "yaml": "value: it's\n"
+  },
+  {
+   "name": "edge-65",
+   "data": {
+    "value": "say \"hi\""
+   },
+   "yaml": "value: say \"hi\"\n"
+  },
+  {
+   "name": "edge-66",
+   "data": {
+    "value": "it's \"x\""
+   },
+   "yaml": "value: it's \"x\"\n"
+  },
+  {
+   "name": "edge-67",
+   "data": {
+    "value": "a\r\nb"
+   },
+   "yaml": "value: \"a\\r\\nb\"\n"
+  },
+  {
+   "name": "edge-68",
+   "data": {
+    "value": "a b"
+   },
+   "yaml": "value: \"a\\_b\"\n"
+  },
+  {
+   "name": "edge-69",
+   "data": {
+    "value": "﻿x"
+   },
+   "yaml": "value: \"\\uFEFFx\"\n"
+  },
+  {
+   "name": "edge-70",
+   "data": {
+    "value": "a\u0007b"
+   },
+   "yaml": "value: \"a\\ab\"\n"
+  },
+  {
+   "name": "edge-71",
+   "data": {
+    "value": "ab"
+   },
+   "yaml": "value: \"a\\x7Fb\"\n"
+  },
+  {
+   "name": "edge-72",
+   "data": {
+    "value": "æøå task"
+   },
+   "yaml": "value: æøå task\n"
+  },
+  {
+   "name": "edge-73",
+   "data": {
+    "value": "emoji 🚀 launch"
+   },
+   "yaml": "value: emoji 🚀 launch\n"
+  },
+  {
+   "name": "edge-74",
+   "data": {
+    "value": "™️ mark"
+   },
+   "yaml": "value: ™️ mark\n"
+  },
+  {
+   "name": "edge-75",
+   "data": {
+    "value": "zero​width"
+   },
+   "yaml": "value: zero​width\n"
+  },
+  {
+   "name": "edge-76",
+   "data": {
+    "value": "narrow space"
+   },
+   "yaml": "value: narrow space\n"
+  },
+  {
+   "name": "edge-77",
+   "data": {
+    "value": "line1\nline2"
+   },
+   "yaml": "value: |-\n  line1\n  line2\n"
+  },
+  {
+   "name": "edge-78",
+   "data": {
+    "value": "line1\n\nline2"
+   },
+   "yaml": "value: |-\n  line1\n\n  line2\n"
+  },
+  {
+   "name": "edge-79",
+   "data": {
+    "value": "trailing\n"
+   },
+   "yaml": "value: |\n  trailing\n"
+  },
+  {
+   "name": "edge-80",
+   "data": {
+    "value": "trailing\n\n"
+   },
+   "yaml": "value: |+\n  trailing\n\n...\n"
+  },
+  {
+   "name": "edge-81",
+   "data": {
+    "value": "\n"
+   },
+   "yaml": "value: \"\\n\"\n"
+  },
+  {
+   "name": "edge-82",
+   "data": {
+    "value": "\nleading"
+   },
+   "yaml": "value: |-\n\n  leading\n"
+  },
+  {
+   "name": "edge-83",
+   "data": {
+    "value": " indented\nnext"
+   },
+   "yaml": "value: |2-\n   indented\n  next\n"
+  },
+  {
+   "name": "edge-84",
+   "data": {
+    "value": "/Users/me/Library/Mobile Documents/com~apple~CloudDocs/Planning"
+   },
+   "yaml": "value: /Users/me/Library/Mobile Documents/com~apple~CloudDocs/Planning\n"
+  },
+  {
+   "name": "edge-85",
+   "data": {
+    "value": "~/"
+   },
+   "yaml": "value: ~/\n"
+  },
+  {
+   "name": "edge-86",
+   "data": {
+    "value": "C:\\path"
+   },
+   "yaml": "value: C:\\path\n"
+  },
+  {
+   "name": "edge-87",
+   "data": {
+    "value": "https://example.com/a?b=c#d"
+   },
+   "yaml": "value: https://example.com/a?b=c#d\n"
+  },
+  {
+   "name": "edge-88",
+   "data": {
+    "value": "a: b: c"
+   },
+   "yaml": "value: 'a: b: c'\n"
+  },
+  {
+   "name": "edge-89",
+   "data": {
+    "value": "key=value"
+   },
+   "yaml": "value: key=value\n"
+  },
+  {
+   "name": "edge-90",
+   "data": {
+    "value": "50%"
+   },
+   "yaml": "value: 50%\n"
+  },
+  {
+   "name": "edge-91",
+   "data": {
+    "value": "#"
+   },
+   "yaml": "value: '#'\n"
+  },
+  {
+   "name": "edge-92",
+   "data": {
+    "value": "x #"
+   },
+   "yaml": "value: 'x #'\n"
+  },
+  {
+   "name": "edge-93",
+   "data": {
+    "value": "x:"
+   },
+   "yaml": "value: 'x:'\n"
+  },
+  {
+   "name": "edge-94",
+   "data": {
+    "value": "x: "
+   },
+   "yaml": "value: 'x: '\n"
+  },
+  {
+   "name": "edge-95",
+   "data": {
+    "value": "a b"
+   },
+   "yaml": "value: \"a\\Lb\"\n"
+  },
+  {
+   "name": "edge-key-0",
+   "data": {
+    "empty": 1
+   },
+   "yaml": "empty: 1\n"
+  },
+  {
+   "name": "edge-key-1",
+   "data": {
+    " ": 1
+   },
+   "yaml": "\" \": 1\n"
+  },
+  {
+   "name": "edge-key-2",
+   "data": {
+    "  x": 1
+   },
+   "yaml": "'  x': 1\n"
+  },
+  {
+   "name": "edge-key-3",
+   "data": {
+    "x ": 1
+   },
+   "yaml": "'x ': 1\n"
+  },
+  {
+   "name": "edge-key-4",
+   "data": {
+    "\t": 1
+   },
+   "yaml": "\"\\t\": 1\n"
+  },
+  {
+   "name": "edge-key-5",
+   "data": {
+    "a\tb": 1
+   },
+   "yaml": "\"a\\tb\": 1\n"
+  },
+  {
+   "name": "edge-key-6",
+   "data": {
+    "2026-10-19": 1
+   },
+   "yaml": "'2026-10-19': 1\n"
+  },
+  {
+   "name": "edge-key-7",
+   "data": {
+    "2026-11-07T09:00:10.859Z": 1
+   },
+   "yaml": "'2026-11-07T09:00:10.859Z': 1\n"
+  },
+  {
+   "name": "edge-key-8",
+   "data": {
+    "2026-W44": 1
+   },
+   "yaml": "2026-W44: 1\n"
+  },
+  {
+   "name": "edge-key-9",
+   "data": {
+    "26-955": 1
+   },
+   "yaml": "26-955: 1\n"
+  },
+  {
+   "name": "edge-key-10",
+   "data": {
+    "yes": 1
+   },
+   "yaml": "'yes': 1\n"
+  },
+  {
+   "name": "edge-key-11",
+   "data": {
+    "Yes": 1
+   },
+   "yaml": "'Yes': 1\n"
+  },
+  {
+   "name": "edge-key-12",
+   "data": {
+    "no": 1
+   },
+   "yaml": "'no': 1\n"
+  },
+  {
+   "name": "edge-key-13",
+   "data": {
+    "on": 1
+   },
+   "yaml": "'on': 1\n"
+  },
+  {
+   "name": "edge-key-14",
+   "data": {
+    "off": 1
+   },
+   "yaml": "'off': 1\n"
+  },
+  {
+   "name": "edge-key-15",
+   "data": {
+    "y": 1
+   },
+   "yaml": "'y': 1\n"
+  },
+  {
+   "name": "edge-key-16",
+   "data": {
+    "n": 1
+   },
+   "yaml": "'n': 1\n"
+  },
+  {
+   "name": "edge-key-17",
+   "data": {
+    "Y": 1
+   },
+   "yaml": "'Y': 1\n"
+  },
+  {
+   "name": "edge-key-18",
+   "data": {
+    "true": 1
+   },
+   "yaml": "'true': 1\n"
+  },
+  {
+   "name": "edge-key-19",
+   "data": {
+    "null": 1
+   },
+   "yaml": "'null': 1\n"
+  },
+  {
+   "name": "edge-key-20",
+   "data": {
+    "~": 1
+   },
+   "yaml": "'~': 1\n"
+  },
+  {
+   "name": "edge-key-21",
+   "data": {
+    "Null": 1
+   },
+   "yaml": "'Null': 1\n"
+  },
+  {
+   "name": "edge-key-22",
+   "data": {
+    "123": 1
+   },
+   "yaml": "'123': 1\n"
+  },
+  {
+   "name": "edge-key-23",
+   "data": {
+    "0123": 1
+   },
+   "yaml": "'0123': 1\n"
+  },
+  {
+   "name": "edge-key-24",
+   "data": {
+    "0o17": 1
+   },
+   "yaml": "0o17: 1\n"
+  },
+  {
+   "name": "edge-key-25",
+   "data": {
+    "0x1F": 1
+   },
+   "yaml": "'0x1F': 1\n"
+  },
+  {
+   "name": "edge-key-26",
+   "data": {
+    "1.5": 1
+   },
+   "yaml": "'1.5': 1\n"
+  },
+  {
+   "name": "edge-key-27",
+   "data": {
+    "1e3": 1
+   },
+   "yaml": "1e3: 1\n"
+  },
+  {
+   "name": "edge-key-28",
+   "data": {
+    "12:30": 1
+   },
+   "yaml": "'12:30': 1\n"
+  },
+  {
+   "name": "edge-key-29",
+   "data": {
+    "1:20.5": 1
+   },
+   "yaml": "'1:20.5': 1\n"
+  },
+  {
+   "name": "edge-key-30",
+   "data": {
+    ".inf": 1
+   },
+   "yaml": "'.inf': 1\n"
+  },
+  {
+   "name": "edge-key-31",
+   "data": {
+    ".nan": 1
+   },
+   "yaml": "'.nan': 1\n"
+  },
+  {
+   "name": "edge-key-32",
+   "data": {
+    "1_000": 1
+   },
+   "yaml": "'1_000': 1\n"
+  },
+  {
+   "name": "edge-key-33",
+   "data": {
+    "+12": 1
+   },
+   "yaml": "'+12': 1\n"
+  },
+  {
+   "name": "edge-key-34",
+   "data": {
+    ".5": 1
+   },
+   "yaml": "'.5': 1\n"
+  },
+  {
+   "name": "edge-key-35",
+   "data": {
+    ".": 1
+   },
+   "yaml": ".: 1\n"
+  },
+  {
+   "name": "edge-key-36",
+   "data": {
+    "-": 1
+   },
+   "yaml": "'-': 1\n"
+  },
+  {
+   "name": "edge-key-37",
+   "data": {
+    "--": 1
+   },
+   "yaml": "--: 1\n"
+  },
+  {
+   "name": "edge-key-38",
+   "data": {
+    "---": 1
+   },
+   "yaml": "---: 1\n"
+  },
+  {
+   "name": "edge-key-39",
+   "data": {
+    "--- x": 1
+   },
+   "yaml": "--- x: 1\n"
+  },
+  {
+   "name": "edge-key-40",
+   "data": {
+    "...": 1
+   },
+   "yaml": "...: 1\n"
+  },
+  {
+   "name": "edge-key-41",
+   "data": {
+    "TUI-DO Core: background": 1
+   },
+   "yaml": "'TUI-DO Core: background': 1\n"
+  },
+  {
+   "name": "edge-key-42",
+   "data": {
+    "Note:": 1
+   },
+   "yaml": "'Note:': 1\n"
+  },
+  {
+   "name": "edge-key-43",
+   "data": {
+    "a #b": 1
+   },
+   "yaml": "'a #b': 1\n"
+  },
+  {
+   "name": "edge-key-44",
+   "data": {
+    "a#b": 1
+   },
+   "yaml": "a#b: 1\n"
+  },
+  {
+   "name": "edge-key-45",
+   "data": {
+    "#tag": 1
+   },
+   "yaml": "'#tag': 1\n"
+  },
+  {
+   "name": "edge-key-46",
+   "data": {
+    "- item": 1
+   },
+   "yaml": "'- item': 1\n"
+  },
+  {
+   "name": "edge-key-47",
+   "data": {
+    "-item": 1
+   },
+   "yaml": "-item: 1\n"
+  },
+  {
+   "name": "edge-key-48",
+   "data": {
+    "? x": 1
+   },
+   "yaml": "'? x': 1\n"
+  },
+  {
+   "name": "edge-key-49",
+   "data": {
+    "?x": 1
+   },
+   "yaml": "?x: 1\n"
+  },
+  {
+   "name": "edge-key-50",
+   "data": {
+    ":x": 1
+   },
+   "yaml": ":x: 1\n"
+  },
+  {
+   "name": "edge-key-51",
+   "data": {
+    "*bold*": 1
+   },
+   "yaml": "'*bold*': 1\n"
+  },
+  {
+   "name": "edge-key-52",
+   "data": {
+    "&anchor": 1
+   },
+   "yaml": "'&anchor': 1\n"
+  },
+  {
+   "name": "edge-key-53",
+   "data": {
+    "!tag": 1
+   },
+   "yaml": "'!tag': 1\n"
+  },
+  {
+   "name": "edge-key-54",
+   "data": {
+    "%x": 1
+   },
+   "yaml": "'%x': 1\n"
+  },
+  {
+   "name": "edge-key-55",
+   "data": {
+    "@user": 1
+   },
+   "yaml": "'@user': 1\n"
+  },
+  {
+   "name": "edge-key-56",
+   "data": {
+    "`code`": 1
+   },
+   "yaml": "'`code`': 1\n"
+  },
+  {
+   "name": "edge-key-57",
+   "data": {
+    "{a}": 1
+   },
+   "yaml": "'{a}': 1\n"
+  },
+  {
+   "name": "edge-key-58",
+   "data": {
+    "[a]": 1
+   },
+   "yaml": "'[a]': 1\n"
+  },
+  {
+   "name": "edge-key-59",
+   "data": {
+    "a, b": 1
+   },
+   "yaml": "a, b: 1\n"
+  },
+  {
+   "name": "edge-key-60",
+   "data": {
+    "| x": 1
+   },
+   "yaml": "'| x': 1\n"
+  },
+  {
+   "name": "edge-key-61",
+   "data": {
+    "> x": 1
+   },
+   "yaml": "'> x': 1\n"
+  },
+  {
+   "name": "edge-key-62",
+   "data": {
+    "=": 1
+   },
+   "yaml": "'=': 1\n"
+  },
+  {
+   "name": "edge-key-63",
+   "data": {
+    "<<": 1
+   },
+   "yaml": "'<<': 1\n"
+  },
+  {
+   "name": "edge-key-64",
+   "data": {
+    "it's": 1
+   },
+   "yaml": "it's: 1\n"
+  },
+  {
+   "name": "edge-key-65",
+   "data": {
+    "say \"hi\"": 1
+   },
+   "yaml": "say \"hi\": 1\n"
+  },
+  {
+   "name": "edge-key-66",
+   "data": {
+    "it's \"x\"": 1
+   },
+   "yaml": "it's \"x\": 1\n"
+  },
+  {
+   "name": "edge-key-67",
+   "data": {
+    "a\r\nb": 1
+   },
+   "yaml": "? \"a\\r\\nb\"\n: 1\n"
+  },
+  {
+   "name": "edge-key-68",
+   "data": {
+    "a b": 1
+   },
+   "yaml": "\"a\\_b\": 1\n"
+  },
+  {
+   "name": "edge-key-69",
+   "data": {
+    "﻿x": 1
+   },
+   "yaml": "\"\\uFEFFx\": 1\n"
+  },
+  {
+   "name": "edge-key-70",
+   "data": {
+    "a\u0007b": 1
+   },
+   "yaml": "\"a\\ab\": 1\n"
+  },
+  {
+   "name": "edge-key-71",
+   "data": {
+    "ab": 1
+   },
+   "yaml": "\"a\\x7Fb\": 1\n"
+  },
+  {
+   "name": "edge-key-72",
+   "data": {
+    "æøå task": 1
+   },
+   "yaml": "æøå task: 1\n"
+  },
+  {
+   "name": "edge-key-73",
+   "data": {
+    "emoji 🚀 launch": 1
+   },
+   "yaml": "emoji 🚀 launch: 1\n"
+  },
+  {
+   "name": "edge-key-74",
+   "data": {
+    "™️ mark": 1
+   },
+   "yaml": "™️ mark: 1\n"
+  },
+  {
+   "name": "edge-key-75",
+   "data": {
+    "zero​width": 1
+   },
+   "yaml": "zero​width: 1\n"
+  },
+  {
+   "name": "edge-key-76",
+   "data": {
+    "narrow space": 1
+   },
+   "yaml": "narrow space: 1\n"
+  },
+  {
+   "name": "edge-key-77",
+   "data": {
+    "line1\nline2": 1
+   },
+   "yaml": "? \"line1\\nline2\"\n: 1\n"
+  },
+  {
+   "name": "edge-key-78",
+   "data": {
+    "line1\n\nline2": 1
+   },
+   "yaml": "? \"line1\\n\\nline2\"\n: 1\n"
+  },
+  {
+   "name": "edge-key-79",
+   "data": {
+    "trailing\n": 1
+   },
+   "yaml": "? \"trailing\\n\"\n: 1\n"
+  },
+  {
+   "name": "edge-key-80",
+   "data": {
+    "trailing\n\n": 1
+   },
+   "yaml": "? \"trailing\\n\\n\"\n: 1\n"
+  },
+  {
+   "name": "edge-key-81",
+   "data": {
+    "\n": 1
+   },
+   "yaml": "? \"\\n\"\n: 1\n"
+  },
+  {
+   "name": "edge-key-82",
+   "data": {
+    "\nleading": 1
+   },
+   "yaml": "? \"\\nleading\"\n: 1\n"
+  },
+  {
+   "name": "edge-key-83",
+   "data": {
+    " indented\nnext": 1
+   },
+   "yaml": "? \" indented\\nnext\"\n: 1\n"
+  },
+  {
+   "name": "edge-key-84",
+   "data": {
+    "/Users/me/Library/Mobile Documents/com~apple~CloudDocs/Planning": 1
+   },
+   "yaml": "/Users/me/Library/Mobile Documents/com~apple~CloudDocs/Planning: 1\n"
+  },
+  {
+   "name": "edge-key-85",
+   "data": {
+    "~/": 1
+   },
+   "yaml": "~/: 1\n"
+  },
+  {
+   "name": "edge-key-86",
+   "data": {
+    "C:\\path": 1
+   },
+   "yaml": "C:\\path: 1\n"
+  },
+  {
+   "name": "edge-key-87",
+   "data": {
+    "https://example.com/a?b=c#d": 1
+   },
+   "yaml": "https://example.com/a?b=c#d: 1\n"
+  },
+  {
+   "name": "edge-key-88",
+   "data": {
+    "a: b: c": 1
+   },
+   "yaml": "'a: b: c': 1\n"
+  },
+  {
+   "name": "edge-key-89",
+   "data": {
+    "key=value": 1
+   },
+   "yaml": "key=value: 1\n"
+  },
+  {
+   "name": "edge-key-90",
+   "data": {
+    "50%": 1
+   },
+   "yaml": "50%: 1\n"
+  },
+  {
+   "name": "edge-key-91",
+   "data": {
+    "#": 1
+   },
+   "yaml": "'#': 1\n"
+  },
+  {
+   "name": "edge-key-92",
+   "data": {
+    "x #": 1
+   },
+   "yaml": "'x #': 1\n"
+  },
+  {
+   "name": "edge-key-93",
+   "data": {
+    "x:": 1
+   },
+   "yaml": "'x:': 1\n"
+  },
+  {
+   "name": "edge-key-94",
+   "data": {
+    "x: ": 1
+   },
+   "yaml": "'x: ': 1\n"
+  },
+  {
+   "name": "edge-key-95",
+   "data": {
+    "a b": 1
+   },
+   "yaml": "\"a\\Lb\": 1\n"
+  },
+  {
+   "name": "fold-70",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwww"
+   },
+   "yaml": "title: wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwww\n"
+  },
+  {
+   "name": "fold-71",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww"
+   },
+   "yaml": "title: wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n"
+  },
+  {
+   "name": "fold-72",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww "
+   },
+   "yaml": "title: 'wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww '\n"
+  },
+  {
+   "name": "fold-73",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww w"
+   },
+   "yaml": "title: wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww w\n"
+  },
+  {
+   "name": "fold-74",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww ww"
+   },
+   "yaml": "title: wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww ww\n"
+  },
+  {
+   "name": "fold-75",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww www"
+   },
+   "yaml": "title: wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww www\n"
+  },
+  {
+   "name": "fold-76",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwww"
+   },
+   "yaml": "title: wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwww\n"
+  },
+  {
+   "name": "fold-77",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww"
+   },
+   "yaml": "title: wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n"
+  },
+  {
+   "name": "fold-78",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww "
+   },
+   "yaml": "title: 'wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww '\n"
+  },
+  {
+   "name": "fold-79",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww w"
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  w\n"
+  },
+  {
+   "name": "fold-80",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww ww"
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  ww\n"
+  },
+  {
+   "name": "fold-81",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww www"
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  www\n"
+  },
+  {
+   "name": "fold-82",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwww"
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  wwww\n"
+  },
+  {
+   "name": "fold-83",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww"
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  wwwww\n"
+  },
+  {
+   "name": "fold-84",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww "
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  wwwww \n"
+  },
+  {
+   "name": "fold-85",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww w"
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  wwwww w\n"
+  },
+  {
+   "name": "fold-86",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww ww"
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  wwwww ww\n"
+  },
+  {
+   "name": "fold-87",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww www"
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  wwwww www\n"
+  },
+  {
+   "name": "fold-88",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwww"
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  wwwww wwww\n"
+  },
+  {
+   "name": "fold-89",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww"
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  wwwww wwwww\n"
+  },
+  {
+   "name": "fold-90",
+   "data": {
+    "title": "wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww "
+   },
+   "yaml": "title: >-\n  wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww wwwww\n  wwwww wwwww \n"
+  },
+  {
+   "name": "fold-summary",
+   "data": {
+    "summary": "Short summary.\nSecond line that is quite long and goes on and on and on and on and on and on forever."
+   },
+   "yaml": "summary: >-\n  Short summary.\n\n  Second line that is quite long and goes on and on and on and on and on and on\n  forever.\n"
+  },
+  {
+   "name": "fold-long-word",
+   "data": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "yaml": "title: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+  },
+  {
+   "name": "fold-indented",
+   "data": {
+    "summary": "first line\n  indented line that is long enough to need folding if it were not more indented ok"
+   },
+   "yaml": "summary: |-\n  first line\n    indented line that is long enough to need folding if it were not more indented ok\n"
+  },
+  {
+   "name": "fuzz-0",
+   "data": {
+    "title": "1.5\nbackground: with,   :  , a x:y\n",
+    "summary": "- a `tick` #> #? #TUI-DO"
+   },
+   "yaml": "title: |\n  1.5\n  background: with,   :  , a x:y\nsummary: '- a `tick` #> #? #TUI-DO'\n"
+  },
+  {
+   "name": "fuzz-1",
+   "data": {
+    "title": "core:: with [bracket]\n1.5: very-long-hyphenated-identifier-without-spaces very-long-hyphenated-identifier-without-spaces   : \"quoted\": remote a clients: \"quoted\" add  🚀 #(paren) with \"quoted\", æøå  ?\nwith #&amp #- it's\nit's core: {brace} #@ata   add\n#tag#1: #1 (paren) #daemon\n",
+    "summary": " \n> | `tick`, it'sa, \t, "
+   },
+   "yaml": "title: >\n  core:: with [bracket]\n\n  1.5: very-long-hyphenated-identifier-without-spaces\n  very-long-hyphenated-identifier-without-spaces   : \"quoted\": remote a clients:\n  \"quoted\" add  🚀 #(paren) with \"quoted\", æøå  ?\n\n  with #&amp #- it's\n\n  it's core: {brace} #@ata   add\n\n  #tag#1: #1 (paren) #daemon\nsummary: \" \\n> | `tick`, it'sa, \\t, \"\n"
+  },
+  {
+   "name": "fuzz-2",
+   "data": {
+    "title": "æøå(paren)null #  \nit's @at\n-the ",
+    "summary": "(paren): TUI-DO with  50% background  ,"
+   },
+   "yaml": "title: |-\n  æøå(paren)null #  \n  it's @at\n  -the \nsummary: '(paren): TUI-DO with  50% background  ,'\n"
+  },
+  {
+   "name": "fuzz-3",
+   "data": {
+    "title": "x:y  TUI-DO  null, > `tick` ",
+    "summary": "background yes  &amp  x:y: {brace} #tag 1.5\n`tick` ? \"quoted\": nulldaemon: æøå \t\n{brace}{brace}  core: &amp  🚀: 1.5 &amp #\"quoted\" #core: clients key: -: it's fix: core: TUI-DO æøå clients  {brace} |  (paren) #"
+   },
+   "yaml": "title: 'x:y  TUI-DO  null, > `tick` '\nsummary: \"background yes  &amp  x:y: {brace} #tag 1.5\\n`tick` ? \\\"quoted\\\": nulldaemon: æøå \\t\\n{brace}{brace}  core: &amp  🚀: 1.5 &amp #\\\"quoted\\\" #core: clients key: -: it's fix: core: TUI-DO æøå clients  {brace} |  (paren) #\"\n"
+  },
+  {
+   "name": "fuzz-4",
+   "data": {
+    "title": "{brace}\n- it's, key:, `tick` remote, fix",
+    "summary": " 50% "
+   },
+   "yaml": "title: |-\n  {brace}\n  - it's, key:, `tick` remote, fix\nsummary: ' 50% '\n"
+  },
+  {
+   "name": "fuzz-5",
+   "data": {
+    "title": "the: #tag #tag&amp very-long-hyphenated-identifier-without-spaces&amp",
+    "summary": "core: #&amp: #tag\n&amp: {brace} !bang\n!bang &amp ##1"
+   },
+   "yaml": "title: 'the: #tag #tag&amp very-long-hyphenated-identifier-without-spaces&amp'\nsummary: |-\n  core: #&amp: #tag\n  &amp: {brace} !bang\n  !bang &amp ##1\n"
+  },
+  {
+   "name": "fuzz-6",
+   "data": {
+    "title": "[bracket]  --,",
+    "summary": "--: @at\næøå #*star  remote[bracket]\n[bracket], >  core: |, #tag\nx:y\"quoted\"\nTUI-DO  >  core:|\n`tick` @at #add  --:  , TUI-DO  background add? #fix key: #null\nremote TUI-DO\n`tick` #with\n"
+   },
+   "yaml": "title: '[bracket]  --,'\nsummary: |\n  --: @at\n  æøå #*star  remote[bracket]\n  [bracket], >  core: |, #tag\n  x:y\"quoted\"\n  TUI-DO  >  core:|\n  `tick` @at #add  --:  , TUI-DO  background add? #fix key: #null\n  remote TUI-DO\n  `tick` #with\n"
+  },
+  {
+   "name": "fuzz-7",
+   "data": {
+    "title": "  ?, \t null `tick`\n--`tick`  @at, &amp: #1 #🚀 #   core: null daemon: ",
+    "summary": "  : #1æøå, key:adaemon yes, "
+   },
+   "yaml": "title: \"  ?, \\t null `tick`\\n--`tick`  @at, &amp: #1 #🚀 #   core: null daemon: \"\nsummary: '  : #1æøå, key:adaemon yes, '\n"
+  },
+  {
+   "name": "fuzz-8",
+   "data": {
+    "title": "add: very-long-hyphenated-identifier-without-spaces",
+    "summary": "clients ? "
+   },
+   "yaml": "title: 'add: very-long-hyphenated-identifier-without-spaces'\nsummary: 'clients ? '\n"
+  },
+  {
+   "name": "fuzz-9",
+   "data": {
+    "title": "æøå   x:y: a #",
+    "summary": "it's @at #@at 🚀, &amp, [bracket] it's @at TUI-DO - |, @at  [bracket]key: #`tick`,    (paren) #- core: -- *star ?, | #-, TUI-DO -  !bang\n"
+   },
+   "yaml": "title: 'æøå   x:y: a #'\nsummary: >\n  it's @at #@at 🚀, &amp, [bracket] it's @at TUI-DO - |, @at  [bracket]key:\n  #`tick`,    (paren) #- core: -- *star ?, | #-, TUI-DO -  !bang\n"
+  },
+  {
+   "name": "fuzz-10",
+   "data": {
+    "title": "a clients core: key:: {brace} æøå  a #1 #a,",
+    "summary": ">, background a \tdaemon\nTUI-DO x:y   \n(paren) #1.5 --\n\"quoted\" "
+   },
+   "yaml": "title: 'a clients core: key:: {brace} æøå  a #1 #a,'\nsummary: \">, background a \\tdaemon\\nTUI-DO x:y   \\n(paren) #1.5 --\\n\\\"quoted\\\" \"\n"
+  },
+  {
+   "name": "fuzz-11",
+   "data": {
+    "title": "a, |daemonit's",
+    "summary": "--: a\ncore:\n  , 2026-10-19: (paren) #TUI-DO\nTUI-DO  æøå  2026-10-19:"
+   },
+   "yaml": "title: a, |daemonit's\nsummary: |-\n  --: a\n  core:\n    , 2026-10-19: (paren) #TUI-DO\n  TUI-DO  æøå  2026-10-19:\n"
+  },
+  {
+   "name": "fuzz-12",
+   "data": {
+    "title": "&amp\n",
+    "summary": "1.5 very-long-hyphenated-identifier-without-spaces"
+   },
+   "yaml": "title: |\n  &amp\nsummary: 1.5 very-long-hyphenated-identifier-without-spaces\n"
+  },
+  {
+   "name": "fuzz-13",
+   "data": {
+    "title": "background \t: > #&amp\n|with x:y 2026-10-19",
+    "summary": "TUI-DO\n[bracket] #a @at\nfix`tick`\n`tick`  "
+   },
+   "yaml": "title: \"background \\t: > #&amp\\n|with x:y 2026-10-19\"\nsummary: |-\n  TUI-DO\n  [bracket] #a @at\n  fix`tick`\n  `tick`  \n"
+  },
+  {
+   "name": "fuzz-14",
+   "data": {
+    "title": "!bang thenull",
+    "summary": "50% #(paren) it's \"quoted\" #x:y: \"quoted\": add remote !bang\nremote"
+   },
+   "yaml": "title: '!bang thenull'\nsummary: |-\n  50% #(paren) it's \"quoted\" #x:y: \"quoted\": add remote !bang\n  remote\n"
+  },
+  {
+   "name": "fuzz-15",
+   "data": {
+    "title": "2026-10-19  remote TUI-DO --the: null\n50% @at |: > æøå",
+    "summary": "50%\n*star #"
+   },
+   "yaml": "title: |-\n  2026-10-19  remote TUI-DO --the: null\n  50% @at |: > æøå\nsummary: |-\n  50%\n  *star #\n"
+  },
+  {
+   "name": "fuzz-16",
+   "data": {
+    "title": "background {brace}\n#1fix background #background 2026-10-19\t  🚀",
+    "summary": "with key:add:"
+   },
+   "yaml": "title: \"background {brace}\\n#1fix background #background 2026-10-19\\t  🚀\"\nsummary: 'with key:add:'\n"
+  },
+  {
+   "name": "fuzz-17",
+   "data": {
+    "title": "#tag|  >    1.5(paren) #æøå  1.5: core: -very-long-hyphenated-identifier-without-spaces |remote \"quoted\": 2026-10-19, !bang #*star\nit's æøå #",
+    "summary": "{brace} æøåæøå,"
+   },
+   "yaml": "title: >-\n  #tag|  >    1.5(paren) #æøå  1.5: core:\n  -very-long-hyphenated-identifier-without-spaces |remote \"quoted\": 2026-10-19,\n  !bang #*star\n\n  it's æøå #\nsummary: '{brace} æøåæøå,'\n"
+  },
+  {
+   "name": "fuzz-18",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaces add, \t (paren) x:y #\t *star fix  remote ",
+    "summary": "very-long-hyphenated-identifier-without-spaces: æøå(paren) *star *star\nkey: #tag  daemon #remote"
+   },
+   "yaml": "title: \"very-long-hyphenated-identifier-without-spaces add, \\t (paren) x:y #\\t *star fix  remote \"\nsummary: |-\n  very-long-hyphenated-identifier-without-spaces: æøå(paren) *star *star\n  key: #tag  daemon #remote\n"
+  },
+  {
+   "name": "fuzz-19",
+   "data": {
+    "title": "\"quoted\" æøå, key: `tick`\n|#tag\n- #TUI-DO`tick` #1, add ?\nfix yesTUI-DO(paren)\n@at,   \t\n \ndaemon",
+    "summary": "daemon\n- 🚀very-long-hyphenated-identifier-without-spaces  @at key:, *star it's *star: 50% key: #æøå 2026-10-19  it's, !bang add: daemon 2026-10-191.5 #remote #?, -- x:y: -  |`tick`"
+   },
+   "yaml": "title: \"\\\"quoted\\\" æøå, key: `tick`\\n|#tag\\n- #TUI-DO`tick` #1, add ?\\nfix yesTUI-DO(paren)\\n@at,   \\t\\n \\ndaemon\"\nsummary: >-\n  daemon\n\n  - 🚀very-long-hyphenated-identifier-without-spaces  @at key:, *star it's\n  *star: 50% key: #æøå 2026-10-19  it's, !bang add: daemon 2026-10-191.5 #remote\n  #?, -- x:y: -  |`tick`\n"
+  },
+  {
+   "name": "fuzz-20",
+   "data": {
+    "title": "!bang #@at the key: #?very-long-hyphenated-identifier-without-spaces: x:y\n>\n2026-10-19 with #(paren) [bracket] #1>, remote 2026-10-19 null æøå #1 |: 2026-10-19 #`tick`[bracket] ?x:y: `tick` #x:y\nyes: {brace}> clients, x:y  --: \"quoted\"",
+    "summary": "🚀: null, add: `tick`\n🚀 "
+   },
+   "yaml": "title: >-\n  !bang #@at the key: #?very-long-hyphenated-identifier-without-spaces: x:y\n\n  >\n\n  2026-10-19 with #(paren) [bracket] #1>, remote 2026-10-19 null æøå #1 |:\n  2026-10-19 #`tick`[bracket] ?x:y: `tick` #x:y\n\n  yes: {brace}> clients, x:y  --: \"quoted\"\nsummary: |-\n  🚀: null, add: `tick`\n  🚀 \n"
+  },
+  {
+   "name": "fuzz-21",
+   "data": {
+    "title": "{brace}, @at  \"quoted\"",
+    "summary": ">  it's1.5: (paren), clients yes \"quoted\" |\ncore: yes remote ##1 ?: \"quoted\": &amp\n\t\nfix: 2026-10-19\nyes  `tick`, >    #1 æøå 1.5 #🚀 1.5 !bang  (paren): TUI-DO > TUI-DO #"
+   },
+   "yaml": "title: '{brace}, @at  \"quoted\"'\nsummary: \">  it's1.5: (paren), clients yes \\\"quoted\\\" |\\ncore: yes remote ##1 ?: \\\"quoted\\\": &amp\\n\\t\\nfix: 2026-10-19\\nyes  `tick`, >    #1 æøå 1.5 #🚀 1.5 !bang  (paren): TUI-DO > TUI-DO #\"\n"
+  },
+  {
+   "name": "fuzz-22",
+   "data": {
+    "title": "--, ",
+    "summary": "add   : \"quoted\"the, yes 50%: clients:"
+   },
+   "yaml": "title: '--, '\nsummary: 'add   : \"quoted\"the, yes 50%: clients:'\n"
+  },
+  {
+   "name": "fuzz-23",
+   "data": {
+    "title": "{brace}  TUI-DO",
+    "summary": "50%    #1"
+   },
+   "yaml": "title: '{brace}  TUI-DO'\nsummary: '50%    #1'\n"
+  },
+  {
+   "name": "fuzz-24",
+   "data": {
+    "title": "[bracket]",
+    "summary": "`tick`| clients #"
+   },
+   "yaml": "title: '[bracket]'\nsummary: '`tick`| clients #'\n"
+  },
+  {
+   "name": "fuzz-25",
+   "data": {
+    "title": "!bang >\nfix #",
+    "summary": "it's #"
+   },
+   "yaml": "title: |-\n  !bang >\n  fix #\nsummary: 'it''s #'\n"
+  },
+  {
+   "name": "fuzz-26",
+   "data": {
+    "title": "key:\n> [bracket] #remote  x:y #very-long-hyphenated-identifier-without-spaces  a very-long-hyphenated-identifier-without-spaces -clients #null| x:y, background | ",
+    "summary": "|with clients "
+   },
+   "yaml": "title: >-\n  key:\n\n  > [bracket] #remote  x:y #very-long-hyphenated-identifier-without-spaces  a\n  very-long-hyphenated-identifier-without-spaces -clients #null| x:y, background\n  | \nsummary: '|with clients '\n"
+  },
+  {
+   "name": "fuzz-27",
+   "data": {
+    "title": "| #\t ax:yx:yTUI-DO\nfix > -æøå 1.5, it's *star: {brace}  a very-long-hyphenated-identifier-without-spaces: !bang  yes #null *star\n\"quoted\", #1     core: null #1\n\"quoted\" æøå, >!bang 50% #background, very-long-hyphenated-identifier-without-spaces\n",
+    "summary": "background\n🚀: daemon   core:  æøå it's >"
+   },
+   "yaml": "title: \"| #\\t ax:yx:yTUI-DO\\nfix > -æøå 1.5, it's *star: {brace}  a very-long-hyphenated-identifier-without-spaces: !bang  yes #null *star\\n\\\"quoted\\\", #1     core: null #1\\n\\\"quoted\\\" æøå, >!bang 50% #background, very-long-hyphenated-identifier-without-spaces\\n\"\nsummary: |-\n  background\n  🚀: daemon   core:  æøå it's >\n"
+  },
+  {
+   "name": "fuzz-28",
+   "data": {
+    "title": "{brace}\nTUI-DO\n",
+    "summary": "daemon   : `tick` #2026-10-19  background: -\n> > 2026-10-19: "
+   },
+   "yaml": "title: |\n  {brace}\n  TUI-DO\nsummary: |-\n  daemon   : `tick` #2026-10-19  background: -\n  > > 2026-10-19: \n"
+  },
+  {
+   "name": "fuzz-29",
+   "data": {
+    "title": "the\nkey:key:background, *star, 50%   #background`tick`\n2026-10-19\nyes very-long-hyphenated-identifier-without-spaces æøå -- #yes  add: > with  ? daemon  1.5",
+    "summary": "> # \n`tick` null a #"
+   },
+   "yaml": "title: >-\n  the\n\n  key:key:background, *star, 50%   #background`tick`\n\n  2026-10-19\n\n  yes very-long-hyphenated-identifier-without-spaces æøå -- #yes  add: > with  ?\n  daemon  1.5\nsummary: |-\n  > # \n  `tick` null a #\n"
+  },
+  {
+   "name": "fuzz-30",
+   "data": {
+    "title": "null @at, 2026-10-19🚀: > clients",
+    "summary": "1.5background  very-long-hyphenated-identifier-without-spaces"
+   },
+   "yaml": "title: 'null @at, 2026-10-19🚀: > clients'\nsummary: 1.5background  very-long-hyphenated-identifier-without-spaces\n"
+  },
+  {
+   "name": "fuzz-31",
+   "data": {
+    "title": "key:  , |, - 50%: `tick`, key: #tagdaemon daemon: x:y  , x:y #core: the, fix #1with: ",
+    "summary": "yes: &amp\nTUI-DO 1.5 ?\n#1 daemon: #1: add  very-long-hyphenated-identifier-without-spaces, TUI-DO#tag the!bang  background, 50%: remote &amp: {brace} "
+   },
+   "yaml": "title: >-\n  key:  , |, - 50%: `tick`, key: #tagdaemon daemon: x:y  , x:y #core: the, fix\n  #1with: \nsummary: >-\n  yes: &amp\n\n  TUI-DO 1.5 ?\n\n  #1 daemon: #1: add  very-long-hyphenated-identifier-without-spaces, TUI-DO#tag\n  the!bang  background, 50%: remote &amp: {brace} \n"
+  },
+  {
+   "name": "fuzz-32",
+   "data": {
+    "title": "-: #1 50% 2026-10-19",
+    "summary": "yes ? ?, >  1.5\nx:y"
+   },
+   "yaml": "title: '-: #1 50% 2026-10-19'\nsummary: |-\n  yes ? ?, >  1.5\n  x:y\n"
+  },
+  {
+   "name": "fuzz-33",
+   "data": {
+    "title": "#1: \t  \"quoted\" *star #? fix  null  1.5\nthe|: {brace} #key: 1.5, ",
+    "summary": "a, -50%, "
+   },
+   "yaml": "title: \"#1: \\t  \\\"quoted\\\" *star #? fix  null  1.5\\nthe|: {brace} #key: 1.5, \"\nsummary: 'a, -50%, '\n"
+  },
+  {
+   "name": "fuzz-34",
+   "data": {
+    "title": "`tick` #",
+    "summary": " [bracket] {brace} @at background  null  , very-long-hyphenated-identifier-without-spaces  it's #1.5 with 🚀 2026-10-19:  (paren), *star  : æøå clients\n\"quoted\", daemon, #1 it's  \"quoted\" #\"quoted\" 🚀\n#1, 50%\n!bang\nyes#tag#tag x:y #a, "
+   },
+   "yaml": "title: '`tick` #'\nsummary: |2-\n   [bracket] {brace} @at background  null  , very-long-hyphenated-identifier-without-spaces  it's #1.5 with 🚀 2026-10-19:  (paren), *star  : æøå clients\n  \"quoted\", daemon, #1 it's  \"quoted\" #\"quoted\" 🚀\n  #1, 50%\n  !bang\n  yes#tag#tag x:y #a, \n"
+  },
+  {
+   "name": "fuzz-35",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaces, ",
+    "summary": "fix ##1>, --, 1.5, fix  "
+   },
+   "yaml": "title: 'very-long-hyphenated-identifier-without-spaces, '\nsummary: 'fix ##1>, --, 1.5, fix  '\n"
+  },
+  {
+   "name": "fuzz-36",
+   "data": {
+    "title": "fix &amp #{brace}  #tag #\tremote clients",
+    "summary": "\t, background: | #daemon\nkey: -- #very-long-hyphenated-identifier-without-spaces\nkey:"
+   },
+   "yaml": "title: \"fix &amp #{brace}  #tag #\\tremote clients\"\nsummary: \"\\t, background: | #daemon\\nkey: -- #very-long-hyphenated-identifier-without-spaces\\nkey:\"\n"
+  },
+  {
+   "name": "fuzz-37",
+   "data": {
+    "title": "#tag 2026-10-19, add x:y @at\nfix: !bang #*star  #tag, it's, 1.5:",
+    "summary": "50% 50% #2026-10-19 it's{brace}: &amp !bang, æøå ##1: remote\n\t  x:y: key: with, it's very-long-hyphenated-identifier-without-spaces: ?, -? key: ##tag | [bracket] {brace}  2026-10-19\nbackgroundwith  with !bang, \"quoted\" [bracket]\n"
+   },
+   "yaml": "title: |-\n  #tag 2026-10-19, add x:y @at\n  fix: !bang #*star  #tag, it's, 1.5:\nsummary: \"50% 50% #2026-10-19 it's{brace}: &amp !bang, æøå ##1: remote\\n\\t  x:y: key: with, it's very-long-hyphenated-identifier-without-spaces: ?, -? key: ##tag | [bracket] {brace}  2026-10-19\\nbackgroundwith  with !bang, \\\"quoted\\\" [bracket]\\n\"\n"
+  },
+  {
+   "name": "fuzz-38",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaces\n`tick` @at ",
+    "summary": "null ##1\nnull (paren) #  (paren) the: æøå #tag -"
+   },
+   "yaml": "title: |-\n  very-long-hyphenated-identifier-without-spaces\n  `tick` @at \nsummary: |-\n  null ##1\n  null (paren) #  (paren) the: æøå #tag -\n"
+  },
+  {
+   "name": "fuzz-39",
+   "data": {
+    "title": "&amp very-long-hyphenated-identifier-without-spaces [bracket] add\n!bang daemon: [bracket]: æøå `tick` #TUI-DO",
+    "summary": "null add: 2026-10-19\n{brace} null # : \t @at\n?"
+   },
+   "yaml": "title: |-\n  &amp very-long-hyphenated-identifier-without-spaces [bracket] add\n  !bang daemon: [bracket]: æøå `tick` #TUI-DO\nsummary: \"null add: 2026-10-19\\n{brace} null # : \\t @at\\n?\"\n"
+  },
+  {
+   "name": "fuzz-40",
+   "data": {
+    "title": "2026-10-19  {brace} very-long-hyphenated-identifier-without-spaces!bang, \"quoted\" very-long-hyphenated-identifier-without-spaces: !bang",
+    "summary": "key:\nthe: æøå æøå, [bracket]  it's 🚀, key: #"
+   },
+   "yaml": "title: >-\n  2026-10-19  {brace} very-long-hyphenated-identifier-without-spaces!bang,\n  \"quoted\" very-long-hyphenated-identifier-without-spaces: !bang\nsummary: |-\n  key:\n  the: æøå æøå, [bracket]  it's 🚀, key: #\n"
+  },
+  {
+   "name": "fuzz-41",
+   "data": {
+    "title": "#1  1.5  with with, TUI-DO >",
+    "summary": "remote\n|x:y, a background #?"
+   },
+   "yaml": "title: '#1  1.5  with with, TUI-DO >'\nsummary: |-\n  remote\n  |x:y, a background #?\n"
+  },
+  {
+   "name": "fuzz-42",
+   "data": {
+    "title": "`tick`",
+    "summary": "-   null it's: "
+   },
+   "yaml": "title: '`tick`'\nsummary: '-   null it''s: '\n"
+  },
+  {
+   "name": "fuzz-43",
+   "data": {
+    "title": "#tag, ",
+    "summary": "yes yes ##tag remotewith #with  --"
+   },
+   "yaml": "title: '#tag, '\nsummary: 'yes yes ##tag remotewith #with  --'\n"
+  },
+  {
+   "name": "fuzz-44",
+   "data": {
+    "title": "daemon, \t\nyes   : #tag {brace}\nnull background  ",
+    "summary": "æøå  clients\n(paren)\nnull\n!bang daemon remote #-- -"
+   },
+   "yaml": "title: \"daemon, \\t\\nyes   : #tag {brace}\\nnull background  \"\nsummary: |-\n  æøå  clients\n  (paren)\n  null\n  !bang daemon remote #-- -\n"
+  },
+  {
+   "name": "fuzz-45",
+   "data": {
+    "title": "fix with ",
+    "summary": "[bracket], key: #1.5: >  the\nwith: clients  &amp it's: with background #1.550% core:\n{brace} > &amp #(paren) #(paren) remote TUI-DO: 50%, >daemon  with\n&amp \nvery-long-hyphenated-identifier-without-spaces  clients\nvery-long-hyphenated-identifier-without-spaces background,   #key:  &amp {brace}, @at\nnull #1.5  fix"
+   },
+   "yaml": "title: 'fix with '\nsummary: >-\n  [bracket], key: #1.5: >  the\n\n  with: clients  &amp it's: with background #1.550% core:\n\n  {brace} > &amp #(paren) #(paren) remote TUI-DO: 50%, >daemon  with\n\n  &amp \n\n  very-long-hyphenated-identifier-without-spaces  clients\n\n  very-long-hyphenated-identifier-without-spaces background,   #key:  &amp\n  {brace}, @at\n\n  null #1.5  fix\n"
+  },
+  {
+   "name": "fuzz-46",
+   "data": {
+    "title": "yes #add\næøåadd\nit's  !bang\nbackground #",
+    "summary": "add, æøå  TUI-DO, 2026-10-19: `tick` #very-long-hyphenated-identifier-without-spacesadd"
+   },
+   "yaml": "title: |-\n  yes #add\n  æøåadd\n  it's  !bang\n  background #\nsummary: >-\n  add, æøå  TUI-DO, 2026-10-19: `tick`\n  #very-long-hyphenated-identifier-without-spacesadd\n"
+  },
+  {
+   "name": "fuzz-47",
+   "data": {
+    "title": "null,    2026-10-19 #(paren): 🚀,",
+    "summary": "#?| x:y #1 it's  æøåæøåa: {brace} #tag #yes: (paren): |  |, 🚀the\nkey:"
+   },
+   "yaml": "title: 'null,    2026-10-19 #(paren): 🚀,'\nsummary: |-\n  #?| x:y #1 it's  æøåæøåa: {brace} #tag #yes: (paren): |  |, 🚀the\n  key:\n"
+  },
+  {
+   "name": "fuzz-48",
+   "data": {
+    "title": "#1",
+    "summary": "@at &amp: remote background @at, |  "
+   },
+   "yaml": "title: '#1'\nsummary: '@at &amp: remote background @at, |  '\n"
+  },
+  {
+   "name": "fuzz-49",
+   "data": {
+    "title": "#1 {brace}",
+    "summary": "x:y #   the daemon #it's \t\na: background, "
+   },
+   "yaml": "title: '#1 {brace}'\nsummary: \"x:y #   the daemon #it's \\t\\na: background, \"\n"
+  },
+  {
+   "name": "fuzz-50",
+   "data": {
+    "title": "50%, `tick` !bang ",
+    "summary": "(paren)\nadd  (paren) #1.5 #the\n{brace}, (paren) #{brace} very-long-hyphenated-identifier-without-spaces very-long-hyphenated-identifier-without-spaces, "
+   },
+   "yaml": "title: '50%, `tick` !bang '\nsummary: >-\n  (paren)\n\n  add  (paren) #1.5 #the\n\n  {brace}, (paren) #{brace} very-long-hyphenated-identifier-without-spaces\n  very-long-hyphenated-identifier-without-spaces, \n"
+  },
+  {
+   "name": "fuzz-51",
+   "data": {
+    "title": "--\nkey: #{brace}null, x:y, with with",
+    "summary": "*star very-long-hyphenated-identifier-without-spaces a1.5: fix {brace}null, æøå\ndaemon *star 2026-10-19"
+   },
+   "yaml": "title: |-\n  --\n  key: #{brace}null, x:y, with with\nsummary: >-\n  *star very-long-hyphenated-identifier-without-spaces a1.5: fix {brace}null,\n  æøå\n\n  daemon *star 2026-10-19\n"
+  },
+  {
+   "name": "fuzz-52",
+   "data": {
+    "title": ">\nTUI-DOclients {brace} ",
+    "summary": "{brace}daemon daemon: *star #*star @at"
+   },
+   "yaml": "title: |-\n  >\n  TUI-DOclients {brace} \nsummary: '{brace}daemon daemon: *star #*star @at'\n"
+  },
+  {
+   "name": "fuzz-53",
+   "data": {
+    "title": "#tag: core: 1.5",
+    "summary": "#tag\n2026-10-19  remotebackground- {brace} #> #(paren) `tick` \"quoted\"\næøå, [bracket]\n&amp!bang, ?: - key: core:, --\nthe aadd @at: -- --  `tick`     fix\n&amp 50%, "
+   },
+   "yaml": "title: '#tag: core: 1.5'\nsummary: |-\n  #tag\n  2026-10-19  remotebackground- {brace} #> #(paren) `tick` \"quoted\"\n  æøå, [bracket]\n  &amp!bang, ?: - key: core:, --\n  the aadd @at: -- --  `tick`     fix\n  &amp 50%, \n"
+  },
+  {
+   "name": "fuzz-54",
+   "data": {
+    "title": "`tick`  daemon\nvery-long-hyphenated-identifier-without-spaces a ##tag  yes #tag\n&amp, add core:1.5*star\n|\n-?, \t #with #the withyes  ? 1.5 #background #tag 2026-10-19 #tagwithbackground, ? ",
+    "summary": "add"
+   },
+   "yaml": "title: \"`tick`  daemon\\nvery-long-hyphenated-identifier-without-spaces a ##tag  yes #tag\\n&amp, add core:1.5*star\\n|\\n-?, \\t #with #the withyes  ? 1.5 #background #tag 2026-10-19 #tagwithbackground, ? \"\nsummary: add\n"
+  },
+  {
+   "name": "fuzz-55",
+   "data": {
+    "title": "æøå it's #\"quoted\" {brace} #the  #1,    #",
+    "summary": "2026-10-19\n#1: 🚀  #tag æøå, "
+   },
+   "yaml": "title: 'æøå it''s #\"quoted\" {brace} #the  #1,    #'\nsummary: |-\n  2026-10-19\n  #1: 🚀  #tag æøå, \n"
+  },
+  {
+   "name": "fuzz-56",
+   "data": {
+    "title": "fix #x:y add @at @at, `tick` {brace}: 2026-10-19 #a fix",
+    "summary": "? "
+   },
+   "yaml": "title: 'fix #x:y add @at @at, `tick` {brace}: 2026-10-19 #a fix'\nsummary: '? '\n"
+  },
+  {
+   "name": "fuzz-57",
+   "data": {
+    "title": "\"quoted\"null: @at\nkey:: ",
+    "summary": "yes  æøå  #tag "
+   },
+   "yaml": "title: |-\n  \"quoted\"null: @at\n  key:: \nsummary: 'yes  æøå  #tag '\n"
+  },
+  {
+   "name": "fuzz-58",
+   "data": {
+    "title": "  ",
+    "summary": "a #background TUI-DO: the  core: null the  - 1.5 &amp "
+   },
+   "yaml": "title: \"  \"\nsummary: 'a #background TUI-DO: the  core: null the  - 1.5 &amp '\n"
+  },
+  {
+   "name": "fuzz-59",
+   "data": {
+    "title": ":",
+    "summary": "background  !bang\n\"quoted\": \t: #1,    #"
+   },
+   "yaml": "title: ':'\nsummary: \"background  !bang\\n\\\"quoted\\\": \\t: #1,    #\"\n"
+  },
+  {
+   "name": "fuzz-60",
+   "data": {
+    "title": "x:y",
+    "summary": "|"
+   },
+   "yaml": "title: x:y\nsummary: '|'\n"
+  },
+  {
+   "name": "fuzz-61",
+   "data": {
+    "title": "key:   , &amp  the  clients  [bracket] #tag !bang #50% it's: @at daemon`tick`, --:",
+    "summary": "add\nclients  (paren) [bracket] #a #|"
+   },
+   "yaml": "title: >-\n  key:   , &amp  the  clients  [bracket] #tag !bang #50% it's: @at daemon`tick`,\n  --:\nsummary: |-\n  add\n  clients  (paren) [bracket] #a #|\n"
+  },
+  {
+   "name": "fuzz-62",
+   "data": {
+    "title": "nullkey: #1.5(paren)  [bracket]:",
+    "summary": "  #  : x:y add\n\"quoted\"   \nvery-long-hyphenated-identifier-without-spacesthe the #1.5: "
+   },
+   "yaml": "title: 'nullkey: #1.5(paren)  [bracket]:'\nsummary: |2-\n    #  : x:y add\n  \"quoted\"   \n  very-long-hyphenated-identifier-without-spacesthe the #1.5: \n"
+  },
+  {
+   "name": "fuzz-63",
+   "data": {
+    "title": "it's `tick` [bracket]",
+    "summary": "\tvery-long-hyphenated-identifier-without-spacesit's daemon   : ?\n`tick` #daemon ?  {brace} #the: >\n| null #"
+   },
+   "yaml": "title: it's `tick` [bracket]\nsummary: \"\\tvery-long-hyphenated-identifier-without-spacesit's daemon   : ?\\n`tick` #daemon ?  {brace} #the: >\\n| null #\"\n"
+  },
+  {
+   "name": "fuzz-64",
+   "data": {
+    "title": "[bracket] daemon#1 fix, TUI-DO with ",
+    "summary": "very-long-hyphenated-identifier-without-spaces #tag"
+   },
+   "yaml": "title: '[bracket] daemon#1 fix, TUI-DO with '\nsummary: 'very-long-hyphenated-identifier-without-spaces #tag'\n"
+  },
+  {
+   "name": "fuzz-65",
+   "data": {
+    "title": "TUI-DO  🚀, æøå fix --\n[bracket], background(paren)\n*starit's\n  {brace}, with #(paren)  : 2026-10-19 #🚀:    a background  remote*star, background, @at(paren) null yes &amp, x:y  (paren): \t #",
+    "summary": "`tick`  -:    fix add fix  : clients 2026-10-19 "
+   },
+   "yaml": "title: \"TUI-DO  🚀, æøå fix --\\n[bracket], background(paren)\\n*starit's\\n  {brace}, with #(paren)  : 2026-10-19 #🚀:    a background  remote*star, background, @at(paren) null yes &amp, x:y  (paren): \\t #\"\nsummary: '`tick`  -:    fix add fix  : clients 2026-10-19 '\n"
+  },
+  {
+   "name": "fuzz-66",
+   "data": {
+    "title": "\"quoted\" !bang:",
+    "summary": "key:  æøå 🚀  50%"
+   },
+   "yaml": "title: '\"quoted\" !bang:'\nsummary: 'key:  æøå 🚀  50%'\n"
+  },
+  {
+   "name": "fuzz-67",
+   "data": {
+    "title": "a",
+    "summary": "TUI-DO #\t 50%\n(paren)  1.5  TUI-DO !bang,   \ndaemon --  !bang remote(paren)\nfix core:: -- | - #\t ##1 the  *star:   #tag -- a  very-long-hyphenated-identifier-without-spaces ##1 #`tick`"
+   },
+   "yaml": "title: a\nsummary: \"TUI-DO #\\t 50%\\n(paren)  1.5  TUI-DO !bang,   \\ndaemon --  !bang remote(paren)\\nfix core:: -- | - #\\t ##1 the  *star:   #tag -- a  very-long-hyphenated-identifier-without-spaces ##1 #`tick`\"\n"
+  },
+  {
+   "name": "fuzz-68",
+   "data": {
+    "title": "&amp #core: !bang\nx:y  ? key: \t  a, æøå >🚀, ",
+    "summary": "backgroundwith #-- 1.5, 1.5add"
+   },
+   "yaml": "title: \"&amp #core: !bang\\nx:y  ? key: \\t  a, æøå >🚀, \"\nsummary: 'backgroundwith #-- 1.5, 1.5add'\n"
+  },
+  {
+   "name": "fuzz-69",
+   "data": {
+    "title": ": 1.5: @at #tagadd #\t*star yes: (paren) #tag #🚀 #&amp!bang   : a, very-long-hyphenated-identifier-without-spaces: \"quoted\" !bangvery-long-hyphenated-identifier-without-spaces, key:\"quoted\" #add  `tick`, {brace} fix: background #?: 🚀 yes ? clients\nclients null        -- #--, 🚀",
+    "summary": "1.5\n-\n#1 #with  \"quoted\" 2026-10-19 50% #--null -, a, -\n2026-10-19\tremote-:   *star  @at, very-long-hyphenated-identifier-without-spaces #1.5: |:   add, fix\n? &amp, clients\n(paren) |"
+   },
+   "yaml": "title: \": 1.5: @at #tagadd #\\t*star yes: (paren) #tag #🚀 #&amp!bang   : a, very-long-hyphenated-identifier-without-spaces: \\\"quoted\\\" !bangvery-long-hyphenated-identifier-without-spaces, key:\\\"quoted\\\" #add  `tick`, {brace} fix: background #?: 🚀 yes ? clients\\nclients null        -- #--, 🚀\"\nsummary: \"1.5\\n-\\n#1 #with  \\\"quoted\\\" 2026-10-19 50% #--null -, a, -\\n2026-10-19\\tremote-:   *star  @at, very-long-hyphenated-identifier-without-spaces #1.5: |:   add, fix\\n? &amp, clients\\n(paren) |\"\n"
+  },
+  {
+   "name": "fuzz-70",
+   "data": {
+    "title": "it's\nclients æøå\n1.5 \t {brace}  very-long-hyphenated-identifier-without-spaces, - ##1 ",
+    "summary": "withcore: yes `tick`: remote background very-long-hyphenated-identifier-without-spacesx:y #"
+   },
+   "yaml": "title: \"it's\\nclients æøå\\n1.5 \\t {brace}  very-long-hyphenated-identifier-without-spaces, - ##1 \"\nsummary: >-\n  withcore: yes `tick`: remote background\n  very-long-hyphenated-identifier-without-spacesx:y #\n"
+  },
+  {
+   "name": "fuzz-71",
+   "data": {
+    "title": "background *star  very-long-hyphenated-identifier-without-spaces:",
+    "summary": "--  æøå: it's  the: remote, a null\nremote\nfix\nbackground"
+   },
+   "yaml": "title: 'background *star  very-long-hyphenated-identifier-without-spaces:'\nsummary: |-\n  --  æøå: it's  the: remote, a null\n  remote\n  fix\n  background\n"
+  },
+  {
+   "name": "fuzz-72",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spacescore: \t ",
+    "summary": "[bracket]| with #--  #1"
+   },
+   "yaml": "title: \"very-long-hyphenated-identifier-without-spacescore: \\t \"\nsummary: '[bracket]| with #--  #1'\n"
+  },
+  {
+   "name": "fuzz-73",
+   "data": {
+    "title": "it's \"quoted\" #core:core::",
+    "summary": "x:y #key:  (paren) &amp {brace} !bang, \"quoted\": æøå  , 50%\n#tag 50% *star, it's [bracket] 🚀: 2026-10-19\nthe: !bang: background\nTUI-DO  | &ampbackground     null #fix #@atnull #- #daemon (paren) #1.5, "
+   },
+   "yaml": "title: 'it''s \"quoted\" #core:core::'\nsummary: |-\n  x:y #key:  (paren) &amp {brace} !bang, \"quoted\": æøå  , 50%\n  #tag 50% *star, it's [bracket] 🚀: 2026-10-19\n  the: !bang: background\n  TUI-DO  | &ampbackground     null #fix #@atnull #- #daemon (paren) #1.5, \n"
+  },
+  {
+   "name": "fuzz-74",
+   "data": {
+    "title": "`tick`, x:y: \t#1  \"quoted\",    *star the {brace}?  1.5 \t fix #&amp #!bang\nremote, {brace} #> 2026-10-19 #(paren)\n  \n!bang",
+    "summary": "remote #?     yes, -- *star core:  (paren)#1 , !bang 🚀 #-- 1.5 >  yes #key: clientsæøånull  --1.5\n[bracket]core: \t\n1.5 {brace}yes background "
+   },
+   "yaml": "title: \"`tick`, x:y: \\t#1  \\\"quoted\\\",    *star the {brace}?  1.5 \\t fix #&amp #!bang\\nremote, {brace} #> 2026-10-19 #(paren)\\n  \\n!bang\"\nsummary: \"remote #?     yes, -- *star core:  (paren)#1 , !bang 🚀 #-- 1.5 >  yes #key: clientsæøånull  --1.5\\n[bracket]core: \\t\\n1.5 {brace}yes background \"\n"
+  },
+  {
+   "name": "fuzz-75",
+   "data": {
+    "title": "null a  \tdaemon #fix #very-long-hyphenated-identifier-without-spaces #background 1.5 a  \t  with >",
+    "summary": "50% \"quoted\","
+   },
+   "yaml": "title: \"null a  \\tdaemon #fix #very-long-hyphenated-identifier-without-spaces #background 1.5 a  \\t  with >\"\nsummary: 50% \"quoted\",\n"
+  },
+  {
+   "name": "fuzz-76",
+   "data": {
+    "title": "> #x:y  key:, æøå #  2026-10-19 ",
+    "summary": "fix, -, -: | #remote\n?, > a #[bracket] {brace}: @at\n1.5, (paren): ? 🚀  1.5 @at\n`tick`\næøå very-long-hyphenated-identifier-without-spaces    core:  \nnull*star  æøå fix: 2026-10-19, yes 1.5: æøå "
+   },
+   "yaml": "title: '> #x:y  key:, æøå #  2026-10-19 '\nsummary: |-\n  fix, -, -: | #remote\n  ?, > a #[bracket] {brace}: @at\n  1.5, (paren): ? 🚀  1.5 @at\n  `tick`\n  æøå very-long-hyphenated-identifier-without-spaces    core:  \n  null*star  æøå fix: 2026-10-19, yes 1.5: æøå \n"
+  },
+  {
+   "name": "fuzz-77",
+   "data": {
+    "title": "[bracket] key:  TUI-DO 2026-10-19 fix: #tag #TUI-DO #{brace} #-- > key:\nx:y, clients x:ydaemon with æøå\n| #tag\n@at fix {brace}the the &amp  yes #",
+    "summary": "!bang  1.5remote: > >#1   : x:y #clients the x:y 🚀: 1.5 - #[bracket] æøå \"quoted\"  2026-10-19: clients*star TUI-DO\n- >  *star"
+   },
+   "yaml": "title: |-\n  [bracket] key:  TUI-DO 2026-10-19 fix: #tag #TUI-DO #{brace} #-- > key:\n  x:y, clients x:ydaemon with æøå\n  | #tag\n  @at fix {brace}the the &amp  yes #\nsummary: >-\n  !bang  1.5remote: > >#1   : x:y #clients the x:y 🚀: 1.5 - #[bracket] æøå\n  \"quoted\"  2026-10-19: clients*star TUI-DO\n\n  - >  *star\n"
+  },
+  {
+   "name": "fuzz-78",
+   "data": {
+    "title": "\t, core:, add, TUI-DO\n#1 #æøå\n",
+    "summary": "!bang !bangadd, >, TUI-DOadd\n*star   \n| \"quoted\"\n#tag, | 1.5\n(paren)\nthe: | the\n@at #--    #1\n*star!bang, fix a  50% x:y\n\t\n50% !bang  æøå: very-long-hyphenated-identifier-without-spaces "
+   },
+   "yaml": "title: \"\\t, core:, add, TUI-DO\\n#1 #æøå\\n\"\nsummary: \"!bang !bangadd, >, TUI-DOadd\\n*star   \\n| \\\"quoted\\\"\\n#tag, | 1.5\\n(paren)\\nthe: | the\\n@at #--    #1\\n*star!bang, fix a  50% x:y\\n\\t\\n50% !bang  æøå: very-long-hyphenated-identifier-without-spaces \"\n"
+  },
+  {
+   "name": "fuzz-79",
+   "data": {
+    "title": "it's x:y: *star, @at\nkey:\n-: the #> #1.5, | fix\n\t daemonfix #  : *star  @at, @at, ? x:y: !bang:   \nvery-long-hyphenated-identifier-without-spacesadd, remote #with #\"quoted\" remote #a: daemon TUI-DO: background ",
+    "summary": "core:\n🚀#1 with\nwith \"quoted\": *star\nTUI-DO, yes"
+   },
+   "yaml": "title: \"it's x:y: *star, @at\\nkey:\\n-: the #> #1.5, | fix\\n\\t daemonfix #  : *star  @at, @at, ? x:y: !bang:   \\nvery-long-hyphenated-identifier-without-spacesadd, remote #with #\\\"quoted\\\" remote #a: daemon TUI-DO: background \"\nsummary: |-\n  core:\n  🚀#1 with\n  with \"quoted\": *star\n  TUI-DO, yes\n"
+  },
+  {
+   "name": "fuzz-80",
+   "data": {
+    "title": "\"quoted\" daemon daemon #",
+    "summary": "--  {brace}"
+   },
+   "yaml": "title: '\"quoted\" daemon daemon #'\nsummary: --  {brace}\n"
+  },
+  {
+   "name": "fuzz-81",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaces very-long-hyphenated-identifier-without-spaces\n>\nnull\t, core: core:  :",
+    "summary": "very-long-hyphenated-identifier-without-spaces: 🚀-- key:    #key::"
+   },
+   "yaml": "title: \"very-long-hyphenated-identifier-without-spaces very-long-hyphenated-identifier-without-spaces\\n>\\nnull\\t, core: core:  :\"\nsummary: 'very-long-hyphenated-identifier-without-spaces: 🚀-- key:    #key::'\n"
+  },
+  {
+   "name": "fuzz-82",
+   "data": {
+    "title": "a #\"quoted\"\n   -",
+    "summary": "very-long-hyphenated-identifier-without-spaces: æøå #? #50%: background"
+   },
+   "yaml": "title: |-\n  a #\"quoted\"\n     -\nsummary: 'very-long-hyphenated-identifier-without-spaces: æøå #? #50%: background'\n"
+  },
+  {
+   "name": "fuzz-83",
+   "data": {
+    "title": " : 50%\nremote: ",
+    "summary": "x:y TUI-DO\n`tick`\n#1: [bracket]--it's #add\nTUI-DO #?"
+   },
+   "yaml": "title: |2-\n   : 50%\n  remote: \nsummary: |-\n  x:y TUI-DO\n  `tick`\n  #1: [bracket]--it's #add\n  TUI-DO #?\n"
+  },
+  {
+   "name": "fuzz-84",
+   "data": {
+    "title": "key: #(paren): `tick`, *star\n!bang > æøå: (paren) \"quoted\"  background",
+    "summary": ">, it's, null: a  yes: !bang"
+   },
+   "yaml": "title: |-\n  key: #(paren): `tick`, *star\n  !bang > æøå: (paren) \"quoted\"  background\nsummary: '>, it''s, null: a  yes: !bang'\n"
+  },
+  {
+   "name": "fuzz-85",
+   "data": {
+    "title": "*star, {brace} the\nkey:\n{brace}, the --, it's\n-",
+    "summary": "?  1.5, 🚀\n*star: yes, "
+   },
+   "yaml": "title: |-\n  *star, {brace} the\n  key:\n  {brace}, the --, it's\n  -\nsummary: |-\n  ?  1.5, 🚀\n  *star: yes, \n"
+  },
+  {
+   "name": "fuzz-86",
+   "data": {
+    "title": "background   ? >it's #",
+    "summary": "-\n   "
+   },
+   "yaml": "title: 'background   ? >it''s #'\nsummary: |-\n  -\n     \n"
+  },
+  {
+   "name": "fuzz-87",
+   "data": {
+    "title": "(paren)  it's ",
+    "summary": "#tag core: ? core:  with\nwithbackground: >!bang the @at  "
+   },
+   "yaml": "title: '(paren)  it''s '\nsummary: |-\n  #tag core: ? core:  with\n  withbackground: >!bang the @at  \n"
+  },
+  {
+   "name": "fuzz-88",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaceskey:",
+    "summary": "[bracket] ,   \nnull #>\nTUI-DOyes, &amp null\n2026-10-19"
+   },
+   "yaml": "title: 'very-long-hyphenated-identifier-without-spaceskey:'\nsummary: |-\n  [bracket] ,   \n  null #>\n  TUI-DOyes, &amp null\n  2026-10-19\n"
+  },
+  {
+   "name": "fuzz-89",
+   "data": {
+    "title": "#1 #",
+    "summary": "TUI-DO\n2026-10-19: add: *star\n(paren)  #tag\nx:y #*star, -- &amp!bang@at 🚀 #`tick`, a !bang key:, |\nTUI-DO #[bracket]\n1.5 @at key:: daemon\nkey: "
+   },
+   "yaml": "title: '#1 #'\nsummary: |-\n  TUI-DO\n  2026-10-19: add: *star\n  (paren)  #tag\n  x:y #*star, -- &amp!bang@at 🚀 #`tick`, a !bang key:, |\n  TUI-DO #[bracket]\n  1.5 @at key:: daemon\n  key: \n"
+  },
+  {
+   "name": "fuzz-90",
+   "data": {
+    "title": "-- {brace} key:\n(paren) #  *star: `tick`\nvery-long-hyphenated-identifier-without-spaces  a key:\nit's\"quoted\": &amp x:y #?  with very-long-hyphenated-identifier-without-spaces: add\n*star #very-long-hyphenated-identifier-without-spaces, background  \t, key:\ndaemon  : background\ndaemon fix: [bracket]: |, yes",
+    "summary": "æøå"
+   },
+   "yaml": "title: \"-- {brace} key:\\n(paren) #  *star: `tick`\\nvery-long-hyphenated-identifier-without-spaces  a key:\\nit's\\\"quoted\\\": &amp x:y #?  with very-long-hyphenated-identifier-without-spaces: add\\n*star #very-long-hyphenated-identifier-without-spaces, background  \\t, key:\\ndaemon  : background\\ndaemon fix: [bracket]: |, yes\"\nsummary: æøå\n"
+  },
+  {
+   "name": "fuzz-91",
+   "data": {
+    "title": "{brace}\n🚀 #1: 50%\n@at, 🚀 ",
+    "summary": "\"quoted\"TUI-DO, #1 a, 50% - remote #fix "
+   },
+   "yaml": "title: |-\n  {brace}\n  🚀 #1: 50%\n  @at, 🚀 \nsummary: '\"quoted\"TUI-DO, #1 a, 50% - remote #fix '\n"
+  },
+  {
+   "name": "fuzz-92",
+   "data": {
+    "title": "#tag \"quoted\"\nyes",
+    "summary": "!bang: \t #tag  !bangvery-long-hyphenated-identifier-without-spaces, null: a it's\n#1, @at\n-- fix: TUI-DO >: 50%, `tick` `tick` #it's: null: 1.5  a #clients\n  #@at, |@at key:: æøå #1  null  1.5 "
+   },
+   "yaml": "title: |-\n  #tag \"quoted\"\n  yes\nsummary: \"!bang: \\t #tag  !bangvery-long-hyphenated-identifier-without-spaces, null: a it's\\n#1, @at\\n-- fix: TUI-DO >: 50%, `tick` `tick` #it's: null: 1.5  a #clients\\n  #@at, |@at key:: æøå #1  null  1.5 \"\n"
+  },
+  {
+   "name": "fuzz-93",
+   "data": {
+    "title": "æøå: the",
+    "summary": "clients #1, x:y \t |, it's 1.5 #"
+   },
+   "yaml": "title: 'æøå: the'\nsummary: \"clients #1, x:y \\t |, it's 1.5 #\"\n"
+  },
+  {
+   "name": "fuzz-94",
+   "data": {
+    "title": "-- æøå  | ",
+    "summary": "background #TUI-DO #  : fix  \"quoted\", very-long-hyphenated-identifier-without-spaces, *star x:y "
+   },
+   "yaml": "title: '-- æøå  | '\nsummary: >-\n  background #TUI-DO #  : fix  \"quoted\",\n  very-long-hyphenated-identifier-without-spaces, *star x:y \n"
+  },
+  {
+   "name": "fuzz-95",
+   "data": {
+    "title": "2026-10-19\n\t: (paren): #tag\n2026-10-19 yes, #1 *star &amp æøåwith  clients null\n",
+    "summary": "  , 1.5: æøå, "
+   },
+   "yaml": "title: \"2026-10-19\\n\\t: (paren): #tag\\n2026-10-19 yes, #1 *star &amp æøåwith  clients null\\n\"\nsummary: '  , 1.5: æøå, '\n"
+  },
+  {
+   "name": "fuzz-96",
+   "data": {
+    "title": "? ? null, ? #with *star #",
+    "summary": "(paren) æøå  fix: core:,"
+   },
+   "yaml": "title: '? ? null, ? #with *star #'\nsummary: '(paren) æøå  fix: core:,'\n"
+  },
+  {
+   "name": "fuzz-97",
+   "data": {
+    "title": "  1.5 #  ",
+    "summary": "æøå #!bang `tick`: æøå #TUI-DO #\t, "
+   },
+   "yaml": "title: '  1.5 #  '\nsummary: \"æøå #!bang `tick`: æøå #TUI-DO #\\t, \"\n"
+  },
+  {
+   "name": "fuzz-98",
+   "data": {
+    "title": "#1 #æøå  `tick`, very-long-hyphenated-identifier-without-spaces, !bang background, | #1.5",
+    "summary": "key:, clients: very-long-hyphenated-identifier-without-spaces\n1.5 --, \t æøå: |, --, !bang? @at #\t #  key: x:y æøå  core: 2026-10-19 æøå, `tick` remote 50%  |   the - *star 1.5daemon\ndaemon >, --, a "
+   },
+   "yaml": "title: >-\n  #1 #æøå  `tick`, very-long-hyphenated-identifier-without-spaces, !bang\n  background, | #1.5\nsummary: \"key:, clients: very-long-hyphenated-identifier-without-spaces\\n1.5 --, \\t æøå: |, --, !bang? @at #\\t #  key: x:y æøå  core: 2026-10-19 æøå, `tick` remote 50%  |   the - *star 1.5daemon\\ndaemon >, --, a \"\n"
+  },
+  {
+   "name": "fuzz-99",
+   "data": {
+    "title": "@at\n|\nadd:    !bang: core:remote\nwith, ",
+    "summary": "#TUI-DO 1.5 #>   >  #1a !bang: null"
+   },
+   "yaml": "title: |-\n  @at\n  |\n  add:    !bang: core:remote\n  with, \nsummary: '#TUI-DO 1.5 #>   >  #1a !bang: null'\n"
+  },
+  {
+   "name": "fuzz-100",
+   "data": {
+    "title": "!bangit's #x:y background !bang #clientsclients  :",
+    "summary": "clients\n\t daemon: background 1.5 ##1,   \"quoted\" ?"
+   },
+   "yaml": "title: '!bangit''s #x:y background !bang #clientsclients  :'\nsummary: \"clients\\n\\t daemon: background 1.5 ##1,   \\\"quoted\\\" ?\"\n"
+  },
+  {
+   "name": "fuzz-101",
+   "data": {
+    "title": "1.5 #nullæøå a #core:, clients--, !bang {brace}\nclients the: fix: ?\nx:y {brace}: æøå🚀 `tick`   the &amp, it's  &amp clients 2026-10-19\nTUI-DO clients #`tick` #fix 🚀  fix clients, 🚀 #",
+    "summary": "core:, a: background\n50%, key:\n@at: [bracket] null: "
+   },
+   "yaml": "title: |-\n  1.5 #nullæøå a #core:, clients--, !bang {brace}\n  clients the: fix: ?\n  x:y {brace}: æøå🚀 `tick`   the &amp, it's  &amp clients 2026-10-19\n  TUI-DO clients #`tick` #fix 🚀  fix clients, 🚀 #\nsummary: |-\n  core:, a: background\n  50%, key:\n  @at: [bracket] null: \n"
+  },
+  {
+   "name": "fuzz-102",
+   "data": {
+    "title": "æøå |  \"quoted\" background\n2026-10-19: ",
+    "summary": "very-long-hyphenated-identifier-without-spaces #remote >:   : "
+   },
+   "yaml": "title: |-\n  æøå |  \"quoted\" background\n  2026-10-19: \nsummary: 'very-long-hyphenated-identifier-without-spaces #remote >:   : '\n"
+  },
+  {
+   "name": "fuzz-103",
+   "data": {
+    "title": "TUI-DO  clients ",
+    "summary": "very-long-hyphenated-identifier-without-spaces x:y &amp 2026-10-19 #1 #remoteit's 2026-10-19 &amp #with\n , yes\n50% it's\n#1fix, @at: -  x:y  #tag, !bang, "
+   },
+   "yaml": "title: 'TUI-DO  clients '\nsummary: >-\n  very-long-hyphenated-identifier-without-spaces x:y &amp 2026-10-19 #1\n  #remoteit's 2026-10-19 &amp #with\n   , yes\n  50% it's\n\n  #1fix, @at: -  x:y  #tag, !bang, \n"
+  },
+  {
+   "name": "fuzz-104",
+   "data": {
+    "title": "core: #æøå !bang: `tick`, fix yes\nwith 1.5#tag*star,  : key: remote [bracket] backgroundx:y",
+    "summary": "--2026-10-19 #[bracket]  æøå -- [bracket] a: \"quoted\"-, null yes!bang   \nwith*star\n50%, clients  fix x:y key: yes: \"quoted\"    #"
+   },
+   "yaml": "title: |-\n  core: #æøå !bang: `tick`, fix yes\n  with 1.5#tag*star,  : key: remote [bracket] backgroundx:y\nsummary: |-\n  --2026-10-19 #[bracket]  æøå -- [bracket] a: \"quoted\"-, null yes!bang   \n  with*star\n  50%, clients  fix x:y key: yes: \"quoted\"    #\n"
+  },
+  {
+   "name": "fuzz-105",
+   "data": {
+    "title": "null #\"quoted\" #add, key:: fix, \t, !bang #",
+    "summary": "1.5 fix core: (paren)     #the\n\t: remote, daemon  |: `tick` \t  1.5\nthe\n[bracket]"
+   },
+   "yaml": "title: \"null #\\\"quoted\\\" #add, key:: fix, \\t, !bang #\"\nsummary: \"1.5 fix core: (paren)     #the\\n\\t: remote, daemon  |: `tick` \\t  1.5\\nthe\\n[bracket]\"\n"
+  },
+  {
+   "name": "fuzz-106",
+   "data": {
+    "title": "a *star  add #the: key:: background\ndaemon\nnull  -- ",
+    "summary": "fix daemon[bracket], &amp: - |\nfix"
+   },
+   "yaml": "title: |-\n  a *star  add #the: key:: background\n  daemon\n  null  -- \nsummary: |-\n  fix daemon[bracket], &amp: - |\n  fix\n"
+  },
+  {
+   "name": "fuzz-107",
+   "data": {
+    "title": "background    | ",
+    "summary": "🚀 !bang "
+   },
+   "yaml": "title: 'background    | '\nsummary: '🚀 !bang '\n"
+  },
+  {
+   "name": "fuzz-108",
+   "data": {
+    "title": "?  1.5 {brace}   : yes 1.5  it's *star\n1.5, *starvery-long-hyphenated-identifier-without-spaces #TUI-DO yes 🚀  &amp add  !bang >, {brace}, >\n> yes  `tick` #1, [bracket]  very-long-hyphenated-identifier-without-spaces: 1.5TUI-DO ?: yes, very-long-hyphenated-identifier-without-spaces clients key: core: #*star, it's  : #tag",
+    "summary": "{brace} (paren), --: - |\ndaemon  @at "
+   },
+   "yaml": "title: >-\n  ?  1.5 {brace}   : yes 1.5  it's *star\n\n  1.5, *starvery-long-hyphenated-identifier-without-spaces #TUI-DO yes 🚀  &amp\n  add  !bang >, {brace}, >\n\n  > yes  `tick` #1, [bracket]  very-long-hyphenated-identifier-without-spaces:\n  1.5TUI-DO ?: yes, very-long-hyphenated-identifier-without-spaces clients key:\n  core: #*star, it's  : #tag\nsummary: |-\n  {brace} (paren), --: - |\n  daemon  @at \n"
+  },
+  {
+   "name": "fuzz-109",
+   "data": {
+    "title": "core: &ampx:y |",
+    "summary": "x:y, yes\n\"quoted\" it's ##tag #-- remote 🚀, null:    #1:   TUI-DO #\"quoted\" fix, "
+   },
+   "yaml": "title: 'core: &ampx:y |'\nsummary: |-\n  x:y, yes\n  \"quoted\" it's ##tag #-- remote 🚀, null:    #1:   TUI-DO #\"quoted\" fix, \n"
+  },
+  {
+   "name": "fuzz-110",
+   "data": {
+    "title": "{brace} *star\nwith",
+    "summary": "key:: "
+   },
+   "yaml": "title: |-\n  {brace} *star\n  with\nsummary: 'key:: '\n"
+  },
+  {
+   "name": "fuzz-111",
+   "data": {
+    "title": "fix",
+    "summary": "core:\n!bang #--  yes"
+   },
+   "yaml": "title: fix\nsummary: |-\n  core:\n  !bang #--  yes\n"
+  },
+  {
+   "name": "fuzz-112",
+   "data": {
+    "title": "!bang #it's: |,",
+    "summary": "#>:"
+   },
+   "yaml": "title: '!bang #it''s: |,'\nsummary: '#>:'\n"
+  },
+  {
+   "name": "fuzz-113",
+   "data": {
+    "title": "(paren)\n#tag #🚀 #",
+    "summary": "--: "
+   },
+   "yaml": "title: |-\n  (paren)\n  #tag #🚀 #\nsummary: '--: '\n"
+  },
+  {
+   "name": "fuzz-114",
+   "data": {
+    "title": "daemon: null (paren) ##1 2026-10-19  `tick`\n  | add clients, #tag 50%: key:: `tick`\ncore:, #1: `tick` ? x:y >\n*star x:y, x:y #- !bang\nadd \"quoted\" #1  #tag, null!bangTUI-DO the ",
+    "summary": "\"quoted\" very-long-hyphenated-identifier-without-spaces #tag\n-- \"quoted\""
+   },
+   "yaml": "title: |-\n  daemon: null (paren) ##1 2026-10-19  `tick`\n    | add clients, #tag 50%: key:: `tick`\n  core:, #1: `tick` ? x:y >\n  *star x:y, x:y #- !bang\n  add \"quoted\" #1  #tag, null!bangTUI-DO the \nsummary: |-\n  \"quoted\" very-long-hyphenated-identifier-without-spaces #tag\n  -- \"quoted\"\n"
+  },
+  {
+   "name": "fuzz-115",
+   "data": {
+    "title": "50% daemon, yes #!bang&amp  🚀 #add #very-long-hyphenated-identifier-without-spaces, \t: a 50% #1: 1.5, key: #  *star 🚀  x:y, core: #&amp, æøå, 🚀: core:  with &amp  {brace} clients\n  #x:y #tag clients    fixit'sdaemon #`tick`\n#tag\n(paren): ",
+    "summary": "the {brace}, core: æøå: |  background, 🚀\nit's remote \t "
+   },
+   "yaml": "title: \"50% daemon, yes #!bang&amp  🚀 #add #very-long-hyphenated-identifier-without-spaces, \\t: a 50% #1: 1.5, key: #  *star 🚀  x:y, core: #&amp, æøå, 🚀: core:  with &amp  {brace} clients\\n  #x:y #tag clients    fixit'sdaemon #`tick`\\n#tag\\n(paren): \"\nsummary: \"the {brace}, core: æøå: |  background, 🚀\\nit's remote \\t \"\n"
+  },
+  {
+   "name": "fuzz-116",
+   "data": {
+    "title": "`tick` `tick`   : null",
+    "summary": "@at #add with  clients #"
+   },
+   "yaml": "title: '`tick` `tick`   : null'\nsummary: '@at #add with  clients #'\n"
+  },
+  {
+   "name": "fuzz-117",
+   "data": {
+    "title": "*star &amp `tick`æøå",
+    "summary": "1.5\ndaemonyes: - #"
+   },
+   "yaml": "title: '*star &amp `tick`æøå'\nsummary: |-\n  1.5\n  daemonyes: - #\n"
+  },
+  {
+   "name": "fuzz-118",
+   "data": {
+    "title": "the",
+    "summary": "> @at, |"
+   },
+   "yaml": "title: the\nsummary: '> @at, |'\n"
+  },
+  {
+   "name": "fuzz-119",
+   "data": {
+    "title": "? > with",
+    "summary": "&amp background with: very-long-hyphenated-identifier-without-spaces > with  -: \t: [bracket]x:y  #1  with {brace} #remote  1.5 remote> &amp  &amp #the #[bracket]\n@at 🚀, yes "
+   },
+   "yaml": "title: '? > with'\nsummary: \"&amp background with: very-long-hyphenated-identifier-without-spaces > with  -: \\t: [bracket]x:y  #1  with {brace} #remote  1.5 remote> &amp  &amp #the #[bracket]\\n@at 🚀, yes \"\n"
+  },
+  {
+   "name": "fuzz-120",
+   "data": {
+    "title": "it's  ",
+    "summary": "#1, `tick` ?, !bang   TUI-DO it's: *star \"quoted\""
+   },
+   "yaml": "title: 'it''s  '\nsummary: '#1, `tick` ?, !bang   TUI-DO it''s: *star \"quoted\"'\n"
+  },
+  {
+   "name": "fuzz-121",
+   "data": {
+    "title": "50%  | yes daemon add: 1.5: | very-long-hyphenated-identifier-without-spaces ",
+    "summary": "[bracket] x:y #the  clients  backgroundadd, add: @at !bang"
+   },
+   "yaml": "title: '50%  | yes daemon add: 1.5: | very-long-hyphenated-identifier-without-spaces '\nsummary: '[bracket] x:y #the  clients  backgroundadd, add: @at !bang'\n"
+  },
+  {
+   "name": "fuzz-122",
+   "data": {
+    "title": "#tag  a, #tag null\n   #null  &amp  ?\n- &amp\n",
+    "summary": "*star\n50%: remote  yesfix *star core: `tick`, 50%, (paren) #the: æøå\n🚀 `tick` 2026-10-19\n-\n2026-10-19 clients a #\"quoted\" it's: 🚀 *star #yes 2026-10-19 remote it's: with null @at, nullTUI-DO, with "
+   },
+   "yaml": "title: |\n  #tag  a, #tag null\n     #null  &amp  ?\n  - &amp\nsummary: >-\n  *star\n\n  50%: remote  yesfix *star core: `tick`, 50%, (paren) #the: æøå\n\n  🚀 `tick` 2026-10-19\n\n  -\n\n  2026-10-19 clients a #\"quoted\" it's: 🚀 *star #yes 2026-10-19 remote it's:\n  with null @at, nullTUI-DO, with \n"
+  },
+  {
+   "name": "fuzz-123",
+   "data": {
+    "title": "it's:   : a *starremote key: &amp 1.5  50%key:  [bracket], ?, fix #🚀 very-long-hyphenated-identifier-without-spaces\ndaemon !bang\n",
+    "summary": "#tag fix,"
+   },
+   "yaml": "title: >\n  it's:   : a *starremote key: &amp 1.5  50%key:  [bracket], ?, fix #🚀\n  very-long-hyphenated-identifier-without-spaces\n\n  daemon !bang\nsummary: '#tag fix,'\n"
+  },
+  {
+   "name": "fuzz-124",
+   "data": {
+    "title": "core:background, 50%, #tag[bracket] \t  æøå  ",
+    "summary": "add 1.5 very-long-hyphenated-identifier-without-spaces   ,"
+   },
+   "yaml": "title: \"core:background, 50%, #tag[bracket] \\t  æøå  \"\nsummary: add 1.5 very-long-hyphenated-identifier-without-spaces   ,\n"
+  },
+  {
+   "name": "fuzz-125",
+   "data": {
+    "title": "x:y the:",
+    "summary": "#tag,   #(paren): very-long-hyphenated-identifier-without-spaces x:y 🚀{brace}the `tick` clients  "
+   },
+   "yaml": "title: 'x:y the:'\nsummary: >-\n  #tag,   #(paren): very-long-hyphenated-identifier-without-spaces x:y\n  🚀{brace}the `tick` clients  \n"
+  },
+  {
+   "name": "fuzz-126",
+   "data": {
+    "title": "🚀\n  , x:y  !bang: TUI-DO  fix #🚀, the ##tag: 50%-add\n(paren)(paren)very-long-hyphenated-identifier-without-spaces, @at yes #tag add\nclients, \"quoted\" \t\nclients a !bang &amp #x:y a, >  #1",
+    "summary": "null 1.5!bang"
+   },
+   "yaml": "title: \"🚀\\n  , x:y  !bang: TUI-DO  fix #🚀, the ##tag: 50%-add\\n(paren)(paren)very-long-hyphenated-identifier-without-spaces, @at yes #tag add\\nclients, \\\"quoted\\\" \\t\\nclients a !bang &amp #x:y a, >  #1\"\nsummary: null 1.5!bang\n"
+  },
+  {
+   "name": "fuzz-127",
+   "data": {
+    "title": "#1, 1.5: > #daemon, (paren): 🚀: @at the very-long-hyphenated-identifier-without-spaces  remote ?  !bangæøå  |, thekey:: clients\t, [bracket]: remote #",
+    "summary": "2026-10-19  #1\n  |very-long-hyphenated-identifier-without-spaces  🚀æøå - 🚀 --,"
+   },
+   "yaml": "title: \"#1, 1.5: > #daemon, (paren): 🚀: @at the very-long-hyphenated-identifier-without-spaces  remote ?  !bangæøå  |, thekey:: clients\\t, [bracket]: remote #\"\nsummary: |-\n  2026-10-19  #1\n    |very-long-hyphenated-identifier-without-spaces  🚀æøå - 🚀 --,\n"
+  },
+  {
+   "name": "fuzz-128",
+   "data": {
+    "title": "x:y a: > null: x:y #null: it's\n1.5 !bang \t:   \n[bracket]\n\"quoted\" #\t: with, addæøåit's null: clients  &amp: &amp\nit's 2026-10-19  the remote: @at\nwith #æøå #",
+    "summary": "   # \"quoted\" yes\nremote background"
+   },
+   "yaml": "title: \"x:y a: > null: x:y #null: it's\\n1.5 !bang \\t:   \\n[bracket]\\n\\\"quoted\\\" #\\t: with, addæøåit's null: clients  &amp: &amp\\nit's 2026-10-19  the remote: @at\\nwith #æøå #\"\nsummary: |2-\n     # \"quoted\" yes\n  remote background\n"
+  },
+  {
+   "name": "fuzz-129",
+   "data": {
+    "title": "a fix  | 1.5  ",
+    "summary": "🚀 add - --x:y  `tick` with &amp: daemon2026-10-19: 🚀\nyes, æøå  very-long-hyphenated-identifier-without-spaces  yes #very-long-hyphenated-identifier-without-spaces {brace}\n!bang x:y  the, @at  !bang\nyes, ?>: key: æøå, \"quoted\": #tag a, [bracket], #tag, very-long-hyphenated-identifier-without-spaces "
+   },
+   "yaml": "title: 'a fix  | 1.5  '\nsummary: >-\n  🚀 add - --x:y  `tick` with &amp: daemon2026-10-19: 🚀\n\n  yes, æøå  very-long-hyphenated-identifier-without-spaces  yes\n  #very-long-hyphenated-identifier-without-spaces {brace}\n\n  !bang x:y  the, @at  !bang\n\n  yes, ?>: key: æøå, \"quoted\": #tag a, [bracket], #tag,\n  very-long-hyphenated-identifier-without-spaces \n"
+  },
+  {
+   "name": "fuzz-130",
+   "data": {
+    "title": "!bang >null, --: ? #\"quoted\"#tag",
+    "summary": "- "
+   },
+   "yaml": "title: '!bang >null, --: ? #\"quoted\"#tag'\nsummary: '- '\n"
+  },
+  {
+   "name": "fuzz-131",
+   "data": {
+    "title": "@at\n🚀 #?: ",
+    "summary": "add #tag, clients, x:y  ?#tag #remote, aa #   [bracket]: background 1.5\n@at  yes: #1 #tag, !bang, null: #tag #x:y the\n`tick` TUI-DO"
+   },
+   "yaml": "title: |-\n  @at\n  🚀 #?: \nsummary: |-\n  add #tag, clients, x:y  ?#tag #remote, aa #   [bracket]: background 1.5\n  @at  yes: #1 #tag, !bang, null: #tag #x:y the\n  `tick` TUI-DO\n"
+  },
+  {
+   "name": "fuzz-132",
+   "data": {
+    "title": "`tick`: with, -  [bracket] 2026-10-19 > remote",
+    "summary": "🚀  background"
+   },
+   "yaml": "title: '`tick`: with, -  [bracket] 2026-10-19 > remote'\nsummary: 🚀  background\n"
+  },
+  {
+   "name": "fuzz-133",
+   "data": {
+    "title": "with #",
+    "summary": "#tag: "
+   },
+   "yaml": "title: 'with #'\nsummary: '#tag: '\n"
+  },
+  {
+   "name": "fuzz-134",
+   "data": {
+    "title": "with #&amp 50% &amp: \"quoted\" #1.5 [bracket]\n\t, yes(paren) null  50%? add core: 1.5: @at, {brace} very-long-hyphenated-identifier-without-spaces -  2026-10-19`tick` {brace} #yes | 1.5 #the æøå yes 1.5with `tick`",
+    "summary": "2026-10-19add clients\nyes    {brace},"
+   },
+   "yaml": "title: \"with #&amp 50% &amp: \\\"quoted\\\" #1.5 [bracket]\\n\\t, yes(paren) null  50%? add core: 1.5: @at, {brace} very-long-hyphenated-identifier-without-spaces -  2026-10-19`tick` {brace} #yes | 1.5 #the æøå yes 1.5with `tick`\"\nsummary: |-\n  2026-10-19add clients\n  yes    {brace},\n"
+  },
+  {
+   "name": "fuzz-135",
+   "data": {
+    "title": "remote  very-long-hyphenated-identifier-without-spaces\n\"quoted\"  -- #\t background\n\t50% @at  x:y  , (paren)\nthe 🚀#tag #   #key: ",
+    "summary": "key:: add: - background #50%: (paren), core:"
+   },
+   "yaml": "title: \"remote  very-long-hyphenated-identifier-without-spaces\\n\\\"quoted\\\"  -- #\\t background\\n\\t50% @at  x:y  , (paren)\\nthe 🚀#tag #   #key: \"\nsummary: 'key:: add: - background #50%: (paren), core:'\n"
+  },
+  {
+   "name": "fuzz-136",
+   "data": {
+    "title": "with  ",
+    "summary": "fix #-- #remote: yes #x:y:"
+   },
+   "yaml": "title: 'with  '\nsummary: 'fix #-- #remote: yes #x:y:'\n"
+  },
+  {
+   "name": "fuzz-137",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaces #tag",
+    "summary": "fix  clients #1.5: -- #TUI-DO "
+   },
+   "yaml": "title: 'very-long-hyphenated-identifier-without-spaces #tag'\nsummary: 'fix  clients #1.5: -- #TUI-DO '\n"
+  },
+  {
+   "name": "fuzz-138",
+   "data": {
+    "title": "🚀 #tag with ##1  yes ",
+    "summary": "1.550% --: TUI-DO --  remote >  : background: ?: daemon{brace}: @at very-long-hyphenated-identifier-without-spaces, clients background, key: 50% *star1.5remote |"
+   },
+   "yaml": "title: '🚀 #tag with ##1  yes '\nsummary: >-\n  1.550% --: TUI-DO --  remote >  : background: ?: daemon{brace}: @at\n  very-long-hyphenated-identifier-without-spaces, clients background, key: 50%\n  *star1.5remote |\n"
+  },
+  {
+   "name": "fuzz-139",
+   "data": {
+    "title": ">  TUI-DO\n",
+    "summary": "it's2026-10-19 #background `tick`  50%: daemon  , >1.5 &amp *star\nremote - \"quoted\"\nremote\næøå the 50%: add\n&amp: core: theæøå #x:y  background\n"
+   },
+   "yaml": "title: |\n  >  TUI-DO\nsummary: |\n  it's2026-10-19 #background `tick`  50%: daemon  , >1.5 &amp *star\n  remote - \"quoted\"\n  remote\n  æøå the 50%: add\n  &amp: core: theæøå #x:y  background\n"
+  },
+  {
+   "name": "fuzz-140",
+   "data": {
+    "title": "*star: \"quoted\" it's *star #",
+    "summary": "*star 🚀: >"
+   },
+   "yaml": "title: '*star: \"quoted\" it''s *star #'\nsummary: '*star 🚀: >'\n"
+  },
+  {
+   "name": "fuzz-141",
+   "data": {
+    "title": "50%\nadd, > |",
+    "summary": "🚀\n*star "
+   },
+   "yaml": "title: |-\n  50%\n  add, > |\nsummary: |-\n  🚀\n  *star \n"
+  },
+  {
+   "name": "fuzz-142",
+   "data": {
+    "title": "background #(paren): very-long-hyphenated-identifier-without-spaces daemondaemon: core:: background   : &amp yes\n-- #\"quoted\"\n50%\n2026-10-19 -- remote, - ? @at #the-, |\n1.5, 2026-10-19 #a #it's &amp @at key: key:, ?, -very-long-hyphenated-identifier-without-spaces,",
+    "summary": "\"quoted\"|| a yes background #1 #key:  |: 1.5#1  2026-10-19@at @at TUI-DO  \"quoted\" &amp #1.5\n1.5 @at: the>\n? `tick` {brace}key: #&amp key: >,   #yes #the *star null: background\n1.5\n?\ncore: "
+   },
+   "yaml": "title: >-\n  background #(paren): very-long-hyphenated-identifier-without-spaces\n  daemondaemon: core:: background   : &amp yes\n\n  -- #\"quoted\"\n\n  50%\n\n  2026-10-19 -- remote, - ? @at #the-, |\n\n  1.5, 2026-10-19 #a #it's &amp @at key: key:, ?,\n  -very-long-hyphenated-identifier-without-spaces,\nsummary: >-\n  \"quoted\"|| a yes background #1 #key:  |: 1.5#1  2026-10-19@at @at TUI-DO \n  \"quoted\" &amp #1.5\n\n  1.5 @at: the>\n\n  ? `tick` {brace}key: #&amp key: >,   #yes #the *star null: background\n\n  1.5\n\n  ?\n\n  core: \n"
+  },
+  {
+   "name": "fuzz-143",
+   "data": {
+    "title": ">\n1.5 [bracket]\nkey:   \n?2026-10-19 #",
+    "summary": "🚀 add  (paren): "
+   },
+   "yaml": "title: |-\n  >\n  1.5 [bracket]\n  key:   \n  ?2026-10-19 #\nsummary: '🚀 add  (paren): '\n"
+  },
+  {
+   "name": "fuzz-144",
+   "data": {
+    "title": "fix a:",
+    "summary": "remote *star daemon #fix {brace} remotecore:"
+   },
+   "yaml": "title: 'fix a:'\nsummary: 'remote *star daemon #fix {brace} remotecore:'\n"
+  },
+  {
+   "name": "fuzz-145",
+   "data": {
+    "title": "\"quoted\" fix `tick`: background: clients\n> #1 [bracket], 2026-10-19  ",
+    "summary": "`tick`     #50%,    > "
+   },
+   "yaml": "title: |-\n  \"quoted\" fix `tick`: background: clients\n  > #1 [bracket], 2026-10-19  \nsummary: '`tick`     #50%,    > '\n"
+  },
+  {
+   "name": "fuzz-146",
+   "data": {
+    "title": "(paren) [bracket], æøå  add: æøå*star  \"quoted\", &amp 1.5\nwith key::    x:y\nyes #  #tag: very-long-hyphenated-identifier-without-spaces ",
+    "summary": "yes, "
+   },
+   "yaml": "title: |-\n  (paren) [bracket], æøå  add: æøå*star  \"quoted\", &amp 1.5\n  with key::    x:y\n  yes #  #tag: very-long-hyphenated-identifier-without-spaces \nsummary: 'yes, '\n"
+  },
+  {
+   "name": "fuzz-147",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaces, fix   , TUI-DO >\nyes\na 1.5 #[bracket]: {brace} with  #tag  with, - remote {brace} | `tick`  (paren)\nit's, >",
+    "summary": "remote, {brace}  🚀 #--, key:, background  null #\t\n\t: [bracket]"
+   },
+   "yaml": "title: |-\n  very-long-hyphenated-identifier-without-spaces, fix   , TUI-DO >\n  yes\n  a 1.5 #[bracket]: {brace} with  #tag  with, - remote {brace} | `tick`  (paren)\n  it's, >\nsummary: \"remote, {brace}  🚀 #--, key:, background  null #\\t\\n\\t: [bracket]\"\n"
+  },
+  {
+   "name": "fuzz-148",
+   "data": {
+    "title": "daemon  [bracket]\na | ",
+    "summary": "🚀\n\"quoted\" #tag it's\næøå key:, background*star: daemon\n"
+   },
+   "yaml": "title: |-\n  daemon  [bracket]\n  a | \nsummary: |\n  🚀\n  \"quoted\" #tag it's\n  æøå key:, background*star: daemon\n"
+  },
+  {
+   "name": "fuzz-149",
+   "data": {
+    "title": "core: yes\t 50%, 2026-10-19 #a  🚀 |\n(paren) #it's&amp key:: \"quoted\" #?, \"quoted\"  yes`tick`, -: yes[bracket] #1 with #  : core: {brace}  æøå",
+    "summary": "!bang\"quoted\", TUI-DO #🚀\n🚀 -- > very-long-hyphenated-identifier-without-spaces null &amp "
+   },
+   "yaml": "title: \"core: yes\\t 50%, 2026-10-19 #a  🚀 |\\n(paren) #it's&amp key:: \\\"quoted\\\" #?, \\\"quoted\\\"  yes`tick`, -: yes[bracket] #1 with #  : core: {brace}  æøå\"\nsummary: |-\n  !bang\"quoted\", TUI-DO #🚀\n  🚀 -- > very-long-hyphenated-identifier-without-spaces null &amp \n"
+  },
+  {
+   "name": "fuzz-150",
+   "data": {
+    "title": "@at @at - #{brace}  very-long-hyphenated-identifier-without-spaces: 2026-10-19[bracket], remote\nnull\nclients !bang: 1.5 #the [bracket]   x:y, 2026-10-19\nwith, background\n🚀 æøå: add {brace}*star #[bracket] #it's #- | #>  background #null, daemon  ",
+    "summary": "   #background"
+   },
+   "yaml": "title: >-\n  @at @at - #{brace}  very-long-hyphenated-identifier-without-spaces:\n  2026-10-19[bracket], remote\n\n  null\n\n  clients !bang: 1.5 #the [bracket]   x:y, 2026-10-19\n\n  with, background\n\n  🚀 æøå: add {brace}*star #[bracket] #it's #- | #>  background #null, daemon  \nsummary: '   #background'\n"
+  },
+  {
+   "name": "fuzz-151",
+   "data": {
+    "title": "fix\næøå #  very-long-hyphenated-identifier-without-spaces, x:y, null it's  > !bangthe the  \nkey:: ? `tick` #tag -remote \"quoted\": | core: clients  {brace}\n--:   : add\n--: !bang #a #clientsbackground\na #",
+    "summary": "daemon   the !bang   : |: -   \nyes: "
+   },
+   "yaml": "title: >-\n  fix\n\n  æøå #  very-long-hyphenated-identifier-without-spaces, x:y, null it's  >\n  !bangthe the  \n\n  key:: ? `tick` #tag -remote \"quoted\": | core: clients  {brace}\n\n  --:   : add\n\n  --: !bang #a #clientsbackground\n\n  a #\nsummary: |-\n  daemon   the !bang   : |: -   \n  yes: \n"
+  },
+  {
+   "name": "fuzz-152",
+   "data": {
+    "title": "a, TUI-DO: (paren)-\n🚀, ",
+    "summary": "key: with  key: #a #a, \"quoted\" key:  @at:"
+   },
+   "yaml": "title: |-\n  a, TUI-DO: (paren)-\n  🚀, \nsummary: 'key: with  key: #a #a, \"quoted\" key:  @at:'\n"
+  },
+  {
+   "name": "fuzz-153",
+   "data": {
+    "title": "🚀(paren) 🚀#1{brace}",
+    "summary": "add, core: #a æøå    \n  \n"
+   },
+   "yaml": "title: 🚀(paren) 🚀#1{brace}\nsummary: |\n  add, core: #a æøå    \n    \n"
+  },
+  {
+   "name": "fuzz-154",
+   "data": {
+    "title": "--: | &amp clients\n-, ",
+    "summary": "?remote\n@at|, a, daemon |, #tagyes daemon \t very-long-hyphenated-identifier-without-spacesæøå #very-long-hyphenated-identifier-without-spaces \t\n"
+   },
+   "yaml": "title: |-\n  --: | &amp clients\n  -, \nsummary: \"?remote\\n@at|, a, daemon |, #tagyes daemon \\t very-long-hyphenated-identifier-without-spacesæøå #very-long-hyphenated-identifier-without-spaces \\t\\n\"\n"
+  },
+  {
+   "name": "fuzz-155",
+   "data": {
+    "title": "background add #>a?\n50% ",
+    "summary": "50%: "
+   },
+   "yaml": "title: |-\n  background add #>a?\n  50% \nsummary: '50%: '\n"
+  },
+  {
+   "name": "fuzz-156",
+   "data": {
+    "title": "core:  clients\nthe\nthe: \t TUI-DO #add #`tick` #@at`tick` #core: fix\n\t: #1 #",
+    "summary": "daemon *star the add: 50%  clients\n"
+   },
+   "yaml": "title: \"core:  clients\\nthe\\nthe: \\t TUI-DO #add #`tick` #@at`tick` #core: fix\\n\\t: #1 #\"\nsummary: |\n  daemon *star the add: 50%  clients\n"
+  },
+  {
+   "name": "fuzz-157",
+   "data": {
+    "title": "remote: \"quoted\"\n*star: {brace}    background æøå clients|\tremote  remote #",
+    "summary": "[bracket] \t 1.5\nremote, null\t a `tick` daemon"
+   },
+   "yaml": "title: \"remote: \\\"quoted\\\"\\n*star: {brace}    background æøå clients|\\tremote  remote #\"\nsummary: \"[bracket] \\t 1.5\\nremote, null\\t a `tick` daemon\"\n"
+  },
+  {
+   "name": "fuzz-158",
+   "data": {
+    "title": "[bracket]\nyes, with\n[bracket]\nnulla: TUI-DO  ? #50% #&amp, ",
+    "summary": "-- ##1, \t? [bracket] \t  : clients    - #"
+   },
+   "yaml": "title: |-\n  [bracket]\n  yes, with\n  [bracket]\n  nulla: TUI-DO  ? #50% #&amp, \nsummary: \"-- ##1, \\t? [bracket] \\t  : clients    - #\"\n"
+  },
+  {
+   "name": "fuzz-159",
+   "data": {
+    "title": "#tag --  ",
+    "summary": "\"quoted\""
+   },
+   "yaml": "title: '#tag --  '\nsummary: '\"quoted\"'\n"
+  },
+  {
+   "name": "fuzz-160",
+   "data": {
+    "title": "#1, the  \"quoted\" #fix yes key: daemon #`tick`fix remoteyes: core:remote clients  #tag  core:?, with: with very-long-hyphenated-identifier-without-spaces\n1.5 \"quoted\" >: *star  `tick` key: #(paren) #?  remotedaemon\n[bracket]--: 🚀-- #",
+    "summary": "æøå #🚀\nit'sTUI-DO: 50% 🚀 #- a:  , yes very-long-hyphenated-identifier-without-spaces`tick` (paren), yesit's: #1 `tick`-, !bang- add #remotebackground"
+   },
+   "yaml": "title: >-\n  #1, the  \"quoted\" #fix yes key: daemon #`tick`fix remoteyes: core:remote\n  clients  #tag  core:?, with: with\n  very-long-hyphenated-identifier-without-spaces\n\n  1.5 \"quoted\" >: *star  `tick` key: #(paren) #?  remotedaemon\n\n  [bracket]--: 🚀-- #\nsummary: >-\n  æøå #🚀\n\n  it'sTUI-DO: 50% 🚀 #- a:  , yes\n  very-long-hyphenated-identifier-without-spaces`tick` (paren), yesit's: #1\n  `tick`-, !bang- add #remotebackground\n"
+  },
+  {
+   "name": "fuzz-161",
+   "data": {
+    "title": "#1   add \tx:y",
+    "summary": "!bang\n> clients, remote  [bracket]\n\t a #"
+   },
+   "yaml": "title: \"#1   add \\tx:y\"\nsummary: \"!bang\\n> clients, remote  [bracket]\\n\\t a #\"\n"
+  },
+  {
+   "name": "fuzz-162",
+   "data": {
+    "title": "clients - ",
+    "summary": "🚀: it's,"
+   },
+   "yaml": "title: 'clients - '\nsummary: '🚀: it''s,'\n"
+  },
+  {
+   "name": "fuzz-163",
+   "data": {
+    "title": "#tag: ? #1.5*star   ,",
+    "summary": "2026-10-19 #-, core:: &ampwith:"
+   },
+   "yaml": "title: '#tag: ? #1.5*star   ,'\nsummary: '2026-10-19 #-, core:: &ampwith:'\n"
+  },
+  {
+   "name": "fuzz-164",
+   "data": {
+    "title": "it's\n!bang\n  ",
+    "summary": "1.5 nullæøå50%\nbackground>"
+   },
+   "yaml": "title: |-\n  it's\n  !bang\n    \nsummary: |-\n  1.5 nullæøå50%\n  background>\n"
+  },
+  {
+   "name": "fuzz-165",
+   "data": {
+    "title": ": 2026-10-19\t {brace}, !bang#tag  @at #clients, 2026-10-19",
+    "summary": "#1 it's #fix, clients  `tick`: daemon @at\nTUI-DO, yes 🚀*star clients @at *star it's: #tag  x:y ##1 \"quoted\" |key:  it's: TUI-DO  it's #[bracket]"
+   },
+   "yaml": "title: \": 2026-10-19\\t {brace}, !bang#tag  @at #clients, 2026-10-19\"\nsummary: >-\n  #1 it's #fix, clients  `tick`: daemon @at\n\n  TUI-DO, yes 🚀*star clients @at *star it's: #tag  x:y ##1 \"quoted\" |key: \n  it's: TUI-DO  it's #[bracket]\n"
+  },
+  {
+   "name": "fuzz-166",
+   "data": {
+    "title": "\"quoted\" #the: daemon: TUI-DO, 1.5 \t\n",
+    "summary": "*star core:, it's [bracket] #x:y > #"
+   },
+   "yaml": "title: \"\\\"quoted\\\" #the: daemon: TUI-DO, 1.5 \\t\\n\"\nsummary: '*star core:, it''s [bracket] #x:y > #'\n"
+  },
+  {
+   "name": "fuzz-167",
+   "data": {
+    "title": "{brace}\nwith: 2026-10-19 >  with",
+    "summary": "*star: the   #!bang a, clients: it's a \t #2026-10-19yes the  yes: yes- the, {brace}-  -1.5,   \n@at, @at🚀 ? &amp  {brace}\n? #tag daemon æøå, null |: - #tag 50%"
+   },
+   "yaml": "title: |-\n  {brace}\n  with: 2026-10-19 >  with\nsummary: \"*star: the   #!bang a, clients: it's a \\t #2026-10-19yes the  yes: yes- the, {brace}-  -1.5,   \\n@at, @at🚀 ? &amp  {brace}\\n? #tag daemon æøå, null |: - #tag 50%\"\n"
+  },
+  {
+   "name": "fuzz-168",
+   "data": {
+    "title": "fix #",
+    "summary": "@at #core:\n50%"
+   },
+   "yaml": "title: 'fix #'\nsummary: |-\n  @at #core:\n  50%\n"
+  },
+  {
+   "name": "fuzz-169",
+   "data": {
+    "title": "yes #null\nclients ?the: -: add: \t key:#tag",
+    "summary": "- #50%: "
+   },
+   "yaml": "title: \"yes #null\\nclients ?the: -: add: \\t key:#tag\"\nsummary: '- #50%: '\n"
+  },
+  {
+   "name": "fuzz-170",
+   "data": {
+    "title": "50% [bracket]  (paren), \t 🚀: ?core: ?: remote key:",
+    "summary": "> 🚀 yes #{brace}: remote remote"
+   },
+   "yaml": "title: \"50% [bracket]  (paren), \\t 🚀: ?core: ?: remote key:\"\nsummary: '> 🚀 yes #{brace}: remote remote'\n"
+  },
+  {
+   "name": "fuzz-171",
+   "data": {
+    "title": "background TUI-DO  [bracket]\n  , it's: #tag\t: yes, --with 50%: [bracket]2026-10-19  background, core: 50% #|",
+    "summary": "| [bracket], with: &amp very-long-hyphenated-identifier-without-spaces #key: very-long-hyphenated-identifier-without-spaces #"
+   },
+   "yaml": "title: \"background TUI-DO  [bracket]\\n  , it's: #tag\\t: yes, --with 50%: [bracket]2026-10-19  background, core: 50% #|\"\nsummary: >-\n  | [bracket], with: &amp very-long-hyphenated-identifier-without-spaces #key:\n  very-long-hyphenated-identifier-without-spaces #\n"
+  },
+  {
+   "name": "fuzz-172",
+   "data": {
+    "title": "daemon fix  , >(paren)\n| 1.5 yes, (paren) fix:",
+    "summary": "background  -\n"
+   },
+   "yaml": "title: |-\n  daemon fix  , >(paren)\n  | 1.5 yes, (paren) fix:\nsummary: |\n  background  -\n"
+  },
+  {
+   "name": "fuzz-173",
+   "data": {
+    "title": "`tick` -- key: #🚀  *star: ",
+    "summary": "|\n#11.5 2026-10-19 #2026-10-19yes "
+   },
+   "yaml": "title: '`tick` -- key: #🚀  *star: '\nsummary: |-\n  |\n  #11.5 2026-10-19 #2026-10-19yes \n"
+  },
+  {
+   "name": "fuzz-174",
+   "data": {
+    "title": "the\nyes, !bang it's\nfix 2026-10-19 #",
+    "summary": "very-long-hyphenated-identifier-without-spaces #@at\n*star: `tick` #🚀\t\nnull: core: #daemon a #remote #- daemon fix: add background, æøå &amp #`tick`, with  \"quoted\",  , (paren)  remote #\"quoted\" yes #1 ?"
+   },
+   "yaml": "title: |-\n  the\n  yes, !bang it's\n  fix 2026-10-19 #\nsummary: \"very-long-hyphenated-identifier-without-spaces #@at\\n*star: `tick` #🚀\\t\\nnull: core: #daemon a #remote #- daemon fix: add background, æøå &amp #`tick`, with  \\\"quoted\\\",  , (paren)  remote #\\\"quoted\\\" yes #1 ?\"\n"
+  },
+  {
+   "name": "fuzz-175",
+   "data": {
+    "title": "clients, \t (paren) yes x:y\n--  50% ",
+    "summary": "🚀"
+   },
+   "yaml": "title: \"clients, \\t (paren) yes x:y\\n--  50% \"\nsummary: 🚀\n"
+  },
+  {
+   "name": "fuzz-176",
+   "data": {
+    "title": "\t #",
+    "summary": "it's: #tag  TUI-DO: very-long-hyphenated-identifier-without-spaces  fix  {brace}, ?`tick`add #--  [bracket] #1.5 1.5:  : - #x:y [bracket] >  yes remote #@at #\"quoted\" #tag, -"
+   },
+   "yaml": "title: \"\\t #\"\nsummary: >-\n  it's: #tag  TUI-DO: very-long-hyphenated-identifier-without-spaces  fix \n  {brace}, ?`tick`add #--  [bracket] #1.5 1.5:  : - #x:y [bracket] >  yes remote\n  #@at #\"quoted\" #tag, -\n"
+  },
+  {
+   "name": "fuzz-177",
+   "data": {
+    "title": "\"quoted\" \t: | !bang, \t TUI-DO daemon",
+    "summary": "?æøå   , core: *star {brace} "
+   },
+   "yaml": "title: \"\\\"quoted\\\" \\t: | !bang, \\t TUI-DO daemon\"\nsummary: '?æøå   , core: *star {brace} '\n"
+  },
+  {
+   "name": "fuzz-178",
+   "data": {
+    "title": "with: 50% a  key:, >: {brace}, -[bracket] #-",
+    "summary": "clients"
+   },
+   "yaml": "title: 'with: 50% a  key:, >: {brace}, -[bracket] #-'\nsummary: clients\n"
+  },
+  {
+   "name": "fuzz-179",
+   "data": {
+    "title": "it's with&amp  ?\nkey:",
+    "summary": "#tag"
+   },
+   "yaml": "title: |-\n  it's with&amp  ?\n  key:\nsummary: '#tag'\n"
+  },
+  {
+   "name": "fuzz-180",
+   "data": {
+    "title": "50%, a, x:y\n[bracket] #x:y  1.5   a  with  `tick` #fix #{brace} daemon, > #with: 2026-10-19 [bracket]: *star#tag, daemon\n@at\nadd: key:\n{brace} background key: #1 [bracket]: &amp:   , >\n@atit's: ?yes: - ",
+    "summary": "  ?  TUI-DOdaemon 🚀&amp\n"
+   },
+   "yaml": "title: >-\n  50%, a, x:y\n\n  [bracket] #x:y  1.5   a  with  `tick` #fix #{brace} daemon, > #with:\n  2026-10-19 [bracket]: *star#tag, daemon\n\n  @at\n\n  add: key:\n\n  {brace} background key: #1 [bracket]: &amp:   , >\n\n  @atit's: ?yes: - \nsummary: |2\n    ?  TUI-DOdaemon 🚀&amp\n"
+  },
+  {
+   "name": "fuzz-181",
+   "data": {
+    "title": "> #\"quoted\"  very-long-hyphenated-identifier-without-spaces&amp  #1\nTUI-DO: #tag\"quoted\"clientsTUI-DO",
+    "summary": "\"quoted\"a, very-long-hyphenated-identifier-without-spaces, "
+   },
+   "yaml": "title: |-\n  > #\"quoted\"  very-long-hyphenated-identifier-without-spaces&amp  #1\n  TUI-DO: #tag\"quoted\"clientsTUI-DO\nsummary: '\"quoted\"a, very-long-hyphenated-identifier-without-spaces, '\n"
+  },
+  {
+   "name": "fuzz-182",
+   "data": {
+    "title": "with: > `tick`: add: #1 #core: #--, {brace}  &amp @at #remote TUI-DO it's @atdaemon, (paren):    #\"quoted\", #1 it's fix  ",
+    "summary": "`tick`: \tbackground ? daemon: &amp #TUI-DO!bang, {brace}key:  --: remote\n\"quoted\": 1.5 the  add #key: #null?, 1.5 add #null  "
+   },
+   "yaml": "title: >-\n  with: > `tick`: add: #1 #core: #--, {brace}  &amp @at #remote TUI-DO it's\n  @atdaemon, (paren):    #\"quoted\", #1 it's fix  \nsummary: \"`tick`: \\tbackground ? daemon: &amp #TUI-DO!bang, {brace}key:  --: remote\\n\\\"quoted\\\": 1.5 the  add #key: #null?, 1.5 add #null  \"\n"
+  },
+  {
+   "name": "fuzz-183",
+   "data": {
+    "title": "daemon --  1.5  #tag 2026-10-19 #add, |, `tick`: x:y null",
+    "summary": "#tag, \"quoted\" core: 1.5 #it's, add  2026-10-19 [bracket] witha"
+   },
+   "yaml": "title: 'daemon --  1.5  #tag 2026-10-19 #add, |, `tick`: x:y null'\nsummary: '#tag, \"quoted\" core: 1.5 #it''s, add  2026-10-19 [bracket] witha'\n"
+  },
+  {
+   "name": "fuzz-184",
+   "data": {
+    "title": "core:{brace}  æøåclients #remote  [bracket]\nkey: yes: *star#1: add a, x:y &amp: TUI-DOx:y  TUI-DO  {brace}, daemon>: {brace} very-long-hyphenated-identifier-without-spaces add: 2026-10-19\nwith !bang\n🚀 -- ? 50%  `tick` #remotex:y|: 2026-10-19 \t (paren) 50%\n!bang  50%",
+    "summary": "æøå | daemon"
+   },
+   "yaml": "title: \"core:{brace}  æøåclients #remote  [bracket]\\nkey: yes: *star#1: add a, x:y &amp: TUI-DOx:y  TUI-DO  {brace}, daemon>: {brace} very-long-hyphenated-identifier-without-spaces add: 2026-10-19\\nwith !bang\\n🚀 -- ? 50%  `tick` #remotex:y|: 2026-10-19 \\t (paren) 50%\\n!bang  50%\"\nsummary: æøå | daemon\n"
+  },
+  {
+   "name": "fuzz-185",
+   "data": {
+    "title": "the\nbackground🚀, yes  | | with #\"quoted\"\ndaemon \t ",
+    "summary": "*star{brace} remoteremote, key:: ?  #1.5  x:y the  --50%\n- æøå  &amp 🚀 #`tick` #*star\nit's: it's x:y  , æøå\n[bracket] add @at 2026-10-19 add it's, 50% #TUI-DO  \t | #"
+   },
+   "yaml": "title: \"the\\nbackground🚀, yes  | | with #\\\"quoted\\\"\\ndaemon \\t \"\nsummary: \"*star{brace} remoteremote, key:: ?  #1.5  x:y the  --50%\\n- æøå  &amp 🚀 #`tick` #*star\\nit's: it's x:y  , æøå\\n[bracket] add @at 2026-10-19 add it's, 50% #TUI-DO  \\t | #\"\n"
+  },
+  {
+   "name": "fuzz-186",
+   "data": {
+    "title": "!bang  🚀 a  !bang with, it's  2026-10-19\n",
+    "summary": "fix @at, it's, 50% #1[bracket]  50%\ncore: "
+   },
+   "yaml": "title: |\n  !bang  🚀 a  !bang with, it's  2026-10-19\nsummary: |-\n  fix @at, it's, 50% #1[bracket]  50%\n  core: \n"
+  },
+  {
+   "name": "fuzz-187",
+   "data": {
+    "title": "with  (paren) #",
+    "summary": "null daemon #"
+   },
+   "yaml": "title: 'with  (paren) #'\nsummary: 'null daemon #'\n"
+  },
+  {
+   "name": "fuzz-188",
+   "data": {
+    "title": "-: the #🚀",
+    "summary": "`tick` a: x:y\næøå, very-long-hyphenated-identifier-without-spaces #&amp\n!bang, 50%:   very-long-hyphenated-identifier-without-spaces #1 it'syes @at {brace}   very-long-hyphenated-identifier-without-spaces clients |  *star: yes: #1  : `tick`  yes|\nbackground [bracket]\n-- "
+   },
+   "yaml": "title: '-: the #🚀'\nsummary: >-\n  `tick` a: x:y\n\n  æøå, very-long-hyphenated-identifier-without-spaces #&amp\n\n  !bang, 50%:   very-long-hyphenated-identifier-without-spaces #1 it'syes @at\n  {brace}   very-long-hyphenated-identifier-without-spaces clients |  *star:\n  yes: #1  : `tick`  yes|\n\n  background [bracket]\n\n  -- \n"
+  },
+  {
+   "name": "fuzz-189",
+   "data": {
+    "title": "daemon ",
+    "summary": "? 50%: background [bracket] #-- 1.5: very-long-hyphenated-identifier-without-spaces\n2026-10-19\nx:y  \t-- #background  *star @at\n\"quoted\" #a>\nnull: (paren) 🚀\n , \"quoted\"\nadd yes, |\nclients\n!bang  [bracket] \"quoted\" - "
+   },
+   "yaml": "title: 'daemon '\nsummary: \"? 50%: background [bracket] #-- 1.5: very-long-hyphenated-identifier-without-spaces\\n2026-10-19\\nx:y  \\t-- #background  *star @at\\n\\\"quoted\\\" #a>\\nnull: (paren) 🚀\\n , \\\"quoted\\\"\\nadd yes, |\\nclients\\n!bang  [bracket] \\\"quoted\\\" - \"\n"
+  },
+  {
+   "name": "fuzz-190",
+   "data": {
+    "title": " : x:y  {brace} #--, ",
+    "summary": "#tag?: \"quoted\", fix: 1.5 #"
+   },
+   "yaml": "title: ' : x:y  {brace} #--, '\nsummary: '#tag?: \"quoted\", fix: 1.5 #'\n"
+  },
+  {
+   "name": "fuzz-191",
+   "data": {
+    "title": "? #remote",
+    "summary": "æøå @at"
+   },
+   "yaml": "title: '? #remote'\nsummary: æøå @at\n"
+  },
+  {
+   "name": "fuzz-192",
+   "data": {
+    "title": "[bracket]  \"quoted\"  #1 a1.5\n(paren)\n--, key:: ",
+    "summary": "&amp:"
+   },
+   "yaml": "title: |-\n  [bracket]  \"quoted\"  #1 a1.5\n  (paren)\n  --, key:: \nsummary: '&amp:'\n"
+  },
+  {
+   "name": "fuzz-193",
+   "data": {
+    "title": " \nkey: #add: *stardaemon --:    ",
+    "summary": "fix 1.5\n`tick` clients #fix> #background #(paren)\n1.5  x:y, x:y: #1a!bang: æøå the #the?"
+   },
+   "yaml": "title: |2-\n   \n  key: #add: *stardaemon --:    \nsummary: |-\n  fix 1.5\n  `tick` clients #fix> #background #(paren)\n  1.5  x:y, x:y: #1a!bang: æøå the #the?\n"
+  },
+  {
+   "name": "fuzz-194",
+   "data": {
+    "title": "`tick`: add\n-, ",
+    "summary": "!bang\navery-long-hyphenated-identifier-without-spaces !bang  (paren)"
+   },
+   "yaml": "title: |-\n  `tick`: add\n  -, \nsummary: |-\n  !bang\n  avery-long-hyphenated-identifier-without-spaces !bang  (paren)\n"
+  },
+  {
+   "name": "fuzz-195",
+   "data": {
+    "title": "{brace} >, key:\na\n#tag fix: #1 ",
+    "summary": "a"
+   },
+   "yaml": "title: |-\n  {brace} >, key:\n  a\n  #tag fix: #1 \nsummary: a\n"
+  },
+  {
+   "name": "fuzz-196",
+   "data": {
+    "title": "-\n#tag #\t  @at",
+    "summary": "2026-10-19daemon key: yes\nbackground it's \tadd"
+   },
+   "yaml": "title: \"-\\n#tag #\\t  @at\"\nsummary: \"2026-10-19daemon key: yes\\nbackground it's \\tadd\"\n"
+  },
+  {
+   "name": "fuzz-197",
+   "data": {
+    "title": "add: !bang\n#1: *star #\"quoted\" 1.5 *star  \t ",
+    "summary": "(paren): background  daemon: the null  "
+   },
+   "yaml": "title: \"add: !bang\\n#1: *star #\\\"quoted\\\" 1.5 *star  \\t \"\nsummary: '(paren): background  daemon: the null  '\n"
+  },
+  {
+   "name": "fuzz-198",
+   "data": {
+    "title": "TUI-DO   : \tfix|: @at\nkey: #-- #*star ?: #1background, - &amp | #\"quoted\",   #`tick` \t  daemon,",
+    "summary": "*star #? 50%, (paren) 50%key: very-long-hyphenated-identifier-without-spaces"
+   },
+   "yaml": "title: \"TUI-DO   : \\tfix|: @at\\nkey: #-- #*star ?: #1background, - &amp | #\\\"quoted\\\",   #`tick` \\t  daemon,\"\nsummary: '*star #? 50%, (paren) 50%key: very-long-hyphenated-identifier-without-spaces'\n"
+  },
+  {
+   "name": "fuzz-199",
+   "data": {
+    "title": "50% #it's #\t\n{brace} background \t #tag #tag #?, TUI-DO background\n&amp\n| #&amp key: ",
+    "summary": "clients:"
+   },
+   "yaml": "title: \"50% #it's #\\t\\n{brace} background \\t #tag #tag #?, TUI-DO background\\n&amp\\n| #&amp key: \"\nsummary: 'clients:'\n"
+  },
+  {
+   "name": "fuzz-200",
+   "data": {
+    "title": "null, background key:core:: 2026-10-19  `tick`, ? 🚀 #null, it's\nTUI-DO ",
+    "summary": "50%  🚀 very-long-hyphenated-identifier-without-spaces: #tagwith\n[bracket], "
+   },
+   "yaml": "title: |-\n  null, background key:core:: 2026-10-19  `tick`, ? 🚀 #null, it's\n  TUI-DO \nsummary: |-\n  50%  🚀 very-long-hyphenated-identifier-without-spaces: #tagwith\n  [bracket], \n"
+  },
+  {
+   "name": "fuzz-201",
+   "data": {
+    "title": "*star a core:  a\n?, with key:key: 1.5",
+    "summary": "TUI-DOdaemon  yes  yes: "
+   },
+   "yaml": "title: |-\n  *star a core:  a\n  ?, with key:key: 1.5\nsummary: 'TUI-DOdaemon  yes  yes: '\n"
+  },
+  {
+   "name": "fuzz-202",
+   "data": {
+    "title": "with: core:  `tick` #tag: [bracket], 2026-10-19 remote 50%clients  ",
+    "summary": "50%\n"
+   },
+   "yaml": "title: 'with: core:  `tick` #tag: [bracket], 2026-10-19 remote 50%clients  '\nsummary: |\n  50%\n"
+  },
+  {
+   "name": "fuzz-203",
+   "data": {
+    "title": "a\n{brace}2026-10-19 #50% \t: 2026-10-19 #remote, core: 2026-10-19\n&amp x:y&amp -- 🚀 #|clients?: null it's {brace} #- key:*star core:: yes #tag #1.5 [bracket]  a: core:: `tick` with\n2026-10-19 ",
+    "summary": "#tag: remote (paren), fix #\"quoted\" key:\nclients  🚀: with ?"
+   },
+   "yaml": "title: \"a\\n{brace}2026-10-19 #50% \\t: 2026-10-19 #remote, core: 2026-10-19\\n&amp x:y&amp -- 🚀 #|clients?: null it's {brace} #- key:*star core:: yes #tag #1.5 [bracket]  a: core:: `tick` with\\n2026-10-19 \"\nsummary: |-\n  #tag: remote (paren), fix #\"quoted\" key:\n  clients  🚀: with ?\n"
+  },
+  {
+   "name": "fuzz-204",
+   "data": {
+    "title": "remote  : key: @at: {brace} 1.5 the",
+    "summary": "(paren), 50%, core: `tick` @at --"
+   },
+   "yaml": "title: 'remote  : key: @at: {brace} 1.5 the'\nsummary: '(paren), 50%, core: `tick` @at --'\n"
+  },
+  {
+   "name": "fuzz-205",
+   "data": {
+    "title": "remote #1.5 the, {brace} {brace}  the 2026-10-19 with yes #",
+    "summary": "daemon, with (paren) TUI-DO 1.5 @at #1 key:  remote: !bang #[bracket], 1.5 a"
+   },
+   "yaml": "title: 'remote #1.5 the, {brace} {brace}  the 2026-10-19 with yes #'\nsummary: 'daemon, with (paren) TUI-DO 1.5 @at #1 key:  remote: !bang #[bracket], 1.5 a'\n"
+  },
+  {
+   "name": "fuzz-206",
+   "data": {
+    "title": "`tick` --: ",
+    "summary": "[bracket]: add, | daemon\nadddaemon, \t\n>"
+   },
+   "yaml": "title: '`tick` --: '\nsummary: \"[bracket]: add, | daemon\\nadddaemon, \\t\\n>\"\n"
+  },
+  {
+   "name": "fuzz-207",
+   "data": {
+    "title": "2026-10-19  &amp: ",
+    "summary": "a "
+   },
+   "yaml": "title: '2026-10-19  &amp: '\nsummary: 'a '\n"
+  },
+  {
+   "name": "fuzz-208",
+   "data": {
+    "title": "#tag: add, remote: remote",
+    "summary": "add #core: very-long-hyphenated-identifier-without-spaces (paren):   : fix\n"
+   },
+   "yaml": "title: '#tag: add, remote: remote'\nsummary: |\n  add #core: very-long-hyphenated-identifier-without-spaces (paren):   : fix\n"
+  },
+  {
+   "name": "fuzz-209",
+   "data": {
+    "title": "  , with, 2026-10-19  🚀 |\n\"quoted\"🚀 the: ",
+    "summary": "2026-10-19 @at, ? æøå: {brace}, daemon core: #1, "
+   },
+   "yaml": "title: |2-\n    , with, 2026-10-19  🚀 |\n  \"quoted\"🚀 the: \nsummary: '2026-10-19 @at, ? æøå: {brace}, daemon core: #1, '\n"
+  },
+  {
+   "name": "fuzz-210",
+   "data": {
+    "title": "|\nremote: -- 1.5@at #",
+    "summary": "2026-10-192026-10-19 > (paren): 🚀 #| &amp: {brace} \t\n  : remote  @at theclients, fix:   , æøå"
+   },
+   "yaml": "title: |-\n  |\n  remote: -- 1.5@at #\nsummary: \"2026-10-192026-10-19 > (paren): 🚀 #| &amp: {brace} \\t\\n  : remote  @at theclients, fix:   , æøå\"\n"
+  },
+  {
+   "name": "fuzz-211",
+   "data": {
+    "title": "core:: *star\n#tag 50% a, >, >,",
+    "summary": "- #@at `tick` \"quoted\", @at\n*star #1.5, TUI-DO >"
+   },
+   "yaml": "title: |-\n  core:: *star\n  #tag 50% a, >, >,\nsummary: |-\n  - #@at `tick` \"quoted\", @at\n  *star #1.5, TUI-DO >\n"
+  },
+  {
+   "name": "fuzz-212",
+   "data": {
+    "title": "|",
+    "summary": "50%  a > \t|\n\"quoted\"TUI-DO"
+   },
+   "yaml": "title: '|'\nsummary: \"50%  a > \\t|\\n\\\"quoted\\\"TUI-DO\"\n"
+  },
+  {
+   "name": "fuzz-213",
+   "data": {
+    "title": "it's, --\nyes #50%{brace} ",
+    "summary": "core: daemon it'sa: >\ndaemon, very-long-hyphenated-identifier-without-spaces2026-10-19\"quoted\":    | --: add @at: `tick`: --æøå  #1: yes\n🚀, 🚀 🚀 fix, &amp\n#1 2026-10-19[bracket] the #\"quoted\", !bang"
+   },
+   "yaml": "title: |-\n  it's, --\n  yes #50%{brace} \nsummary: >-\n  core: daemon it'sa: >\n\n  daemon, very-long-hyphenated-identifier-without-spaces2026-10-19\"quoted\":    |\n  --: add @at: `tick`: --æøå  #1: yes\n\n  🚀, 🚀 🚀 fix, &amp\n\n  #1 2026-10-19[bracket] the #\"quoted\", !bang\n"
+  },
+  {
+   "name": "fuzz-214",
+   "data": {
+    "title": "core:, |: fix | !bang,  ",
+    "summary": "x:y, background"
+   },
+   "yaml": "title: 'core:, |: fix | !bang,  '\nsummary: x:y, background\n"
+  },
+  {
+   "name": "fuzz-215",
+   "data": {
+    "title": "background2026-10-19>\t #\"quoted\"?: with #",
+    "summary": ">:"
+   },
+   "yaml": "title: \"background2026-10-19>\\t #\\\"quoted\\\"?: with #\"\nsummary: '>:'\n"
+  },
+  {
+   "name": "fuzz-216",
+   "data": {
+    "title": "🚀: TUI-DO >:",
+    "summary": "| &amp #   2026-10-19, clients: \t\t\nkey: \"quoted\"\nthe*star!bang  - remote\n\"quoted\":   \nyes |: 1.5 it's\n\t: [bracket] #null yes key: add #  , 50%"
+   },
+   "yaml": "title: '🚀: TUI-DO >:'\nsummary: \"| &amp #   2026-10-19, clients: \\t\\t\\nkey: \\\"quoted\\\"\\nthe*star!bang  - remote\\n\\\"quoted\\\":   \\nyes |: 1.5 it's\\n\\t: [bracket] #null yes key: add #  , 50%\"\n"
+  },
+  {
+   "name": "fuzz-217",
+   "data": {
+    "title": "the:",
+    "summary": "TUI-DO  key: very-long-hyphenated-identifier-without-spaces, core: #1,"
+   },
+   "yaml": "title: 'the:'\nsummary: 'TUI-DO  key: very-long-hyphenated-identifier-without-spaces, core: #1,'\n"
+  },
+  {
+   "name": "fuzz-218",
+   "data": {
+    "title": "#?1.5   \n50%, #tag\nyes:",
+    "summary": "fix\nnull\n- # \næøå add: core: \t:"
+   },
+   "yaml": "title: |-\n  #?1.5   \n  50%, #tag\n  yes:\nsummary: \"fix\\nnull\\n- # \\næøå add: core: \\t:\"\n"
+  },
+  {
+   "name": "fuzz-219",
+   "data": {
+    "title": "2026-10-19 add fix, #1 daemon the: add yes      #2026-10-19\nadd  the with key:  daemon\nkey:, the \t --*star #yes # , a, [bracket]  - #clients: \t\n| background: #tag",
+    "summary": "it's: !bang: {brace} the"
+   },
+   "yaml": "title: \"2026-10-19 add fix, #1 daemon the: add yes      #2026-10-19\\nadd  the with key:  daemon\\nkey:, the \\t --*star #yes # , a, [bracket]  - #clients: \\t\\n| background: #tag\"\nsummary: 'it''s: !bang: {brace} the'\n"
+  },
+  {
+   "name": "fuzz-220",
+   "data": {
+    "title": "!bang\n50% #1, 🚀\nnull   #tag, background  ",
+    "summary": "x:y: the? 🚀, *star: "
+   },
+   "yaml": "title: |-\n  !bang\n  50% #1, 🚀\n  null   #tag, background  \nsummary: 'x:y: the? 🚀, *star: '\n"
+  },
+  {
+   "name": "fuzz-221",
+   "data": {
+    "title": "?\n🚀!bang yes\nthe  yes  ",
+    "summary": "{brace} > remote\n50% #TUI-DO, daemon it's `tick`, x:y core: daemon x:y "
+   },
+   "yaml": "title: |-\n  ?\n  🚀!bang yes\n  the  yes  \nsummary: |-\n  {brace} > remote\n  50% #TUI-DO, daemon it's `tick`, x:y core: daemon x:y \n"
+  },
+  {
+   "name": "fuzz-222",
+   "data": {
+    "title": "*star\nvery-long-hyphenated-identifier-without-spaces `tick`, ?, yes #it's\n?: (paren)(paren)  {brace} #-  ",
+    "summary": "yes #2026-10-19\nclients1.5 #tag"
+   },
+   "yaml": "title: |-\n  *star\n  very-long-hyphenated-identifier-without-spaces `tick`, ?, yes #it's\n  ?: (paren)(paren)  {brace} #-  \nsummary: |-\n  yes #2026-10-19\n  clients1.5 #tag\n"
+  },
+  {
+   "name": "fuzz-223",
+   "data": {
+    "title": "x:y\nfix #æøå, the #   very-long-hyphenated-identifier-without-spaces",
+    "summary": "background\n? - |,"
+   },
+   "yaml": "title: |-\n  x:y\n  fix #æøå, the #   very-long-hyphenated-identifier-without-spaces\nsummary: |-\n  background\n  ? - |,\n"
+  },
+  {
+   "name": "fuzz-224",
+   "data": {
+    "title": "core: yes  --  > @at &amp it's #clients ",
+    "summary": "the: yes core:,"
+   },
+   "yaml": "title: 'core: yes  --  > @at &amp it''s #clients '\nsummary: 'the: yes core:,'\n"
+  },
+  {
+   "name": "fuzz-225",
+   "data": {
+    "title": "🚀,",
+    "summary": "-  fix "
+   },
+   "yaml": "title: 🚀,\nsummary: '-  fix '\n"
+  },
+  {
+   "name": "fuzz-226",
+   "data": {
+    "title": "!bang  --\n[bracket]\t #1: very-long-hyphenated-identifier-without-spaces\n*star\n*star > #",
+    "summary": "add\ncore:  1.5: &amp add,   >  "
+   },
+   "yaml": "title: \"!bang  --\\n[bracket]\\t #1: very-long-hyphenated-identifier-without-spaces\\n*star\\n*star > #\"\nsummary: |-\n  add\n  core:  1.5: &amp add,   >  \n"
+  },
+  {
+   "name": "fuzz-227",
+   "data": {
+    "title": "  50%, a &amp\n?daemon [bracket]  \"quoted\" 1.5: !bang🚀background @at- TUI-DO clientsvery-long-hyphenated-identifier-without-spaces, #1 remote #with #TUI-DO  *star &amp\nthe\næøå, >\nfix #the &amp #x:y  ",
+    "summary": "TUI-DO 🚀 clientsa 2026-10-19: add? `tick`  "
+   },
+   "yaml": "title: >2-\n    50%, a &amp\n  ?daemon [bracket]  \"quoted\" 1.5: !bang🚀background @at- TUI-DO\n  clientsvery-long-hyphenated-identifier-without-spaces, #1 remote #with\n  #TUI-DO  *star &amp\n\n  the\n\n  æøå, >\n\n  fix #the &amp #x:y  \nsummary: 'TUI-DO 🚀 clientsa 2026-10-19: add? `tick`  '\n"
+  },
+  {
+   "name": "fuzz-228",
+   "data": {
+    "title": "æøå, &amp add with -- add `tick` @at > background ",
+    "summary": "2026-10-19  \"quoted\" #   null\n#1\n>: key:, ? 1.5, null`tick`: null&amp  *star>: background\nwith #1.5  TUI-DO\nyes æøå  ? #| `tick`: 🚀\nwith50% \"quoted\" fix  it's\n|add #-,   #key:   {brace}   background,"
+   },
+   "yaml": "title: 'æøå, &amp add with -- add `tick` @at > background '\nsummary: |-\n  2026-10-19  \"quoted\" #   null\n  #1\n  >: key:, ? 1.5, null`tick`: null&amp  *star>: background\n  with #1.5  TUI-DO\n  yes æøå  ? #| `tick`: 🚀\n  with50% \"quoted\" fix  it's\n  |add #-,   #key:   {brace}   background,\n"
+  },
+  {
+   "name": "fuzz-229",
+   "data": {
+    "title": "!bang 🚀 #key:  50%\nthe\t | #the (paren)  ",
+    "summary": "&amp #fix\n2026-10-19 `tick`, |: -add  very-long-hyphenated-identifier-without-spaces  , `tick`\n   core:: --background    null key: #null, the\n#1, -- daemon - null  yes, | #daemon\n"
+   },
+   "yaml": "title: \"!bang 🚀 #key:  50%\\nthe\\t | #the (paren)  \"\nsummary: >\n  &amp #fix\n\n  2026-10-19 `tick`, |: -add  very-long-hyphenated-identifier-without-spaces  ,\n  `tick`\n     core:: --background    null key: #null, the\n  #1, -- daemon - null  yes, | #daemon\n"
+  },
+  {
+   "name": "fuzz-230",
+   "data": {
+    "title": "?  clients daemon  æøå, yes remote ",
+    "summary": "akey:, null yes  clients #&amp\t, background: #tag"
+   },
+   "yaml": "title: '?  clients daemon  æøå, yes remote '\nsummary: \"akey:, null yes  clients #&amp\\t, background: #tag\"\n"
+  },
+  {
+   "name": "fuzz-231",
+   "data": {
+    "title": "the\n : null50% it's, `tick`, (paren), *star yes\n🚀 !bang, !bang background clients  it's, it's \t x:y  -, 1.5  a ##1 with a: > #*star  it's, the, !bang     #æøå\"quoted\": `tick`   : TUI-DObackground\n",
+    "summary": "a\n*star\nclients 1.5\n--50% #TUI-DOæøå, [bracket]"
+   },
+   "yaml": "title: \"the\\n : null50% it's, `tick`, (paren), *star yes\\n🚀 !bang, !bang background clients  it's, it's \\t x:y  -, 1.5  a ##1 with a: > #*star  it's, the, !bang     #æøå\\\"quoted\\\": `tick`   : TUI-DObackground\\n\"\nsummary: |-\n  a\n  *star\n  clients 1.5\n  --50% #TUI-DOæøå, [bracket]\n"
+  },
+  {
+   "name": "fuzz-232",
+   "data": {
+    "title": "null|, background\nadd: @at!bang x:y -: > daemon > #*starnull | #🚀 TUI-DO: æøå #fix\nwith   daemon2026-10-19 ",
+    "summary": ">æøå  50%\nadd, {brace}, 2026-10-19\nthe, background\t #"
+   },
+   "yaml": "title: |-\n  null|, background\n  add: @at!bang x:y -: > daemon > #*starnull | #🚀 TUI-DO: æøå #fix\n  with   daemon2026-10-19 \nsummary: \">æøå  50%\\nadd, {brace}, 2026-10-19\\nthe, background\\t #\"\n"
+  },
+  {
+   "name": "fuzz-233",
+   "data": {
+    "title": "fix,",
+    "summary": "fix key:    \t #50%fix: -, add #1.5, ?, 1.5  (paren)\n&amp\n"
+   },
+   "yaml": "title: fix,\nsummary: \"fix key:    \\t #50%fix: -, add #1.5, ?, 1.5  (paren)\\n&amp\\n\"\n"
+  },
+  {
+   "name": "fuzz-234",
+   "data": {
+    "title": "key: core:  \t #50%, yes, clients: ",
+    "summary": "TUI-DO fix  ? x:y  --:"
+   },
+   "yaml": "title: \"key: core:  \\t #50%, yes, clients: \"\nsummary: 'TUI-DO fix  ? x:y  --:'\n"
+  },
+  {
+   "name": "fuzz-235",
+   "data": {
+    "title": "50% 1.5 null: |\nnull: ? #\t: 🚀(paren)\n",
+    "summary": "daemon\nwith addx:y\ndaemon !bang #1.5 #1.5  #tag"
+   },
+   "yaml": "title: \"50% 1.5 null: |\\nnull: ? #\\t: 🚀(paren)\\n\"\nsummary: |-\n  daemon\n  with addx:y\n  daemon !bang #1.5 #1.5  #tag\n"
+  },
+  {
+   "name": "fuzz-236",
+   "data": {
+    "title": "#1 #1 key:: *star    1.5  daemon x:y #x:y",
+    "summary": "#1 (paren) core:: it's: (paren)  !bang"
+   },
+   "yaml": "title: '#1 #1 key:: *star    1.5  daemon x:y #x:y'\nsummary: '#1 (paren) core:: it''s: (paren)  !bang'\n"
+  },
+  {
+   "name": "fuzz-237",
+   "data": {
+    "title": "TUI-DO, backgroundcore: ?  ?core: daemon  ",
+    "summary": "     : 50% #🚀 &amp: -1.5, 🚀: "
+   },
+   "yaml": "title: 'TUI-DO, backgroundcore: ?  ?core: daemon  '\nsummary: '     : 50% #🚀 &amp: -1.5, 🚀: '\n"
+  },
+  {
+   "name": "fuzz-238",
+   "data": {
+    "title": "50%(paren)  *star: \"quoted\"  x:y(paren), TUI-DO, ",
+    "summary": "withremote, -  æøå it's #(paren)\nfix @at yes {brace} |\n`tick` !bang50%: clients\n{brace} #tag 🚀   null #2026-10-19 key:, daemon\n2026-10-19\ndaemon 1.5, &amp clientsvery-long-hyphenated-identifier-without-spaces#1    : #tag yes #"
+   },
+   "yaml": "title: '50%(paren)  *star: \"quoted\"  x:y(paren), TUI-DO, '\nsummary: >-\n  withremote, -  æøå it's #(paren)\n\n  fix @at yes {brace} |\n\n  `tick` !bang50%: clients\n\n  {brace} #tag 🚀   null #2026-10-19 key:, daemon\n\n  2026-10-19\n\n  daemon 1.5, &amp clientsvery-long-hyphenated-identifier-without-spaces#1    :\n  #tag yes #\n"
+  },
+  {
+   "name": "fuzz-239",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaces, (paren) ? \"quoted\"  a  yes #tag:",
+    "summary": "`tick` clients #[bracket] yes #      fix [bracket]key: #key:{brace}: with --\n[bracket] very-long-hyphenated-identifier-without-spaces\nTUI-DO (paren) *star #null\ncore:, -, *star, a key: #   `tick`\nx:y, #tagfix    ,   #it's add\n  #tagbackground "
+   },
+   "yaml": "title: >-\n  very-long-hyphenated-identifier-without-spaces, (paren) ? \"quoted\"  a  yes\n  #tag:\nsummary: |-\n  `tick` clients #[bracket] yes #      fix [bracket]key: #key:{brace}: with --\n  [bracket] very-long-hyphenated-identifier-without-spaces\n  TUI-DO (paren) *star #null\n  core:, -, *star, a key: #   `tick`\n  x:y, #tagfix    ,   #it's add\n    #tagbackground \n"
+  },
+  {
+   "name": "fuzz-240",
+   "data": {
+    "title": "-- background !bang\t #the, &amp    #the #daemon daemon\n\"quoted\", add background #a: -? [bracket] #backgroundkey: æøå\n#1 yes  core:, \"quoted\"    fix: \t  *star add: #1 ",
+    "summary": "`tick`: >yes\n--\nadd\n🚀, \"quoted\"\n\t, |\nwith ? #-- #2026-10-19 ? #    #1core:, core: >: (paren) TUI-DO 2026-10-19 #[bracket]: [bracket] &amp the --  > remote: 50% &amp\nyes "
+   },
+   "yaml": "title: \"-- background !bang\\t #the, &amp    #the #daemon daemon\\n\\\"quoted\\\", add background #a: -? [bracket] #backgroundkey: æøå\\n#1 yes  core:, \\\"quoted\\\"    fix: \\t  *star add: #1 \"\nsummary: \"`tick`: >yes\\n--\\nadd\\n🚀, \\\"quoted\\\"\\n\\t, |\\nwith ? #-- #2026-10-19 ? #    #1core:, core: >: (paren) TUI-DO 2026-10-19 #[bracket]: [bracket] &amp the --  > remote: 50% &amp\\nyes \"\n"
+  },
+  {
+   "name": "fuzz-241",
+   "data": {
+    "title": "#tag #- #yes æøå, |\na  ",
+    "summary": "> #🚀   \n🚀\n   #\t  `tick`"
+   },
+   "yaml": "title: |-\n  #tag #- #yes æøå, |\n  a  \nsummary: \"> #🚀   \\n🚀\\n   #\\t  `tick`\"\n"
+  },
+  {
+   "name": "fuzz-242",
+   "data": {
+    "title": "? daemon #a #(paren) #core: `tick` #-- #1.5 fix  ",
+    "summary": "background\nthe: > a #æøå\n🚀  a, the  #1"
+   },
+   "yaml": "title: '? daemon #a #(paren) #core: `tick` #-- #1.5 fix  '\nsummary: |-\n  background\n  the: > a #æøå\n  🚀  a, the  #1\n"
+  },
+  {
+   "name": "fuzz-243",
+   "data": {
+    "title": "x:y (paren) # @at  🚀 1.5: &amp- #-- the very-long-hyphenated-identifier-without-spaces\n-- {brace}\n|\n2026-10-19 #remote #2026-10-19, x:y, null: ",
+    "summary": "it's\n🚀 add*star TUI-DO:  , a: #tag: "
+   },
+   "yaml": "title: >-\n  x:y (paren) # @at  🚀 1.5: &amp- #-- the\n  very-long-hyphenated-identifier-without-spaces\n\n  -- {brace}\n\n  |\n\n  2026-10-19 #remote #2026-10-19, x:y, null: \nsummary: |-\n  it's\n  🚀 add*star TUI-DO:  , a: #tag: \n"
+  },
+  {
+   "name": "fuzz-244",
+   "data": {
+    "title": "`tick` 1.5 #",
+    "summary": "\"quoted\": "
+   },
+   "yaml": "title: '`tick` 1.5 #'\nsummary: '\"quoted\": '\n"
+  },
+  {
+   "name": "fuzz-245",
+   "data": {
+    "title": "it's {brace} #?  {brace} #it's ",
+    "summary": "2026-10-19 #the: ?  fix\nwith,    #tag: background\n🚀, daemon"
+   },
+   "yaml": "title: 'it''s {brace} #?  {brace} #it''s '\nsummary: |-\n  2026-10-19 #the: ?  fix\n  with,    #tag: background\n  🚀, daemon\n"
+  },
+  {
+   "name": "fuzz-246",
+   "data": {
+    "title": "#1, daemon very-long-hyphenated-identifier-without-spaces",
+    "summary": ">| a -, key: &amp TUI-DO!bang: #tag, [bracket] a key: !bang fix\n>\n{brace}, @at: --\nnull: fix: TUI-DO core:, background  yes very-long-hyphenated-identifier-without-spaces, &ampwith "
+   },
+   "yaml": "title: '#1, daemon very-long-hyphenated-identifier-without-spaces'\nsummary: >-\n  >| a -, key: &amp TUI-DO!bang: #tag, [bracket] a key: !bang fix\n\n  >\n\n  {brace}, @at: --\n\n  null: fix: TUI-DO core:, background  yes\n  very-long-hyphenated-identifier-without-spaces, &ampwith \n"
+  },
+  {
+   "name": "fuzz-247",
+   "data": {
+    "title": "--, -- x:y `tick` withnull ",
+    "summary": "remote: #tag@at: {brace} #tag > *star the  >, \t  clients  it's #1 (paren)  TUI-DO remote \t, 2026-10-19 fix: ?: ?  very-long-hyphenated-identifier-without-spaces 2026-10-19, 2026-10-19  2026-10-19\n!bang\n\"quoted\" fix very-long-hyphenated-identifier-without-spaces very-long-hyphenated-identifier-without-spaces #key:x:y\nfix"
+   },
+   "yaml": "title: '--, -- x:y `tick` withnull '\nsummary: \"remote: #tag@at: {brace} #tag > *star the  >, \\t  clients  it's #1 (paren)  TUI-DO remote \\t, 2026-10-19 fix: ?: ?  very-long-hyphenated-identifier-without-spaces 2026-10-19, 2026-10-19  2026-10-19\\n!bang\\n\\\"quoted\\\" fix very-long-hyphenated-identifier-without-spaces very-long-hyphenated-identifier-without-spaces #key:x:y\\nfix\"\n"
+  },
+  {
+   "name": "fuzz-248",
+   "data": {
+    "title": "#tag   x:y the{brace} it's,   remote # 50%\n?\n(paren): |!bang\nkey: yes\n2026-10-19 \"quoted\" the null, very-long-hyphenated-identifier-without-spaces #--: !bang  fix    : -: > clientsfix, a\t @at \"quoted\" clients daemon #2026-10-19: #1 ",
+    "summary": "daemon, clients a: >  > #yes #key: #[bracket], (paren)  🚀 "
+   },
+   "yaml": "title: \"#tag   x:y the{brace} it's,   remote # 50%\\n?\\n(paren): |!bang\\nkey: yes\\n2026-10-19 \\\"quoted\\\" the null, very-long-hyphenated-identifier-without-spaces #--: !bang  fix    : -: > clientsfix, a\\t @at \\\"quoted\\\" clients daemon #2026-10-19: #1 \"\nsummary: 'daemon, clients a: >  > #yes #key: #[bracket], (paren)  🚀 '\n"
+  },
+  {
+   "name": "fuzz-249",
+   "data": {
+    "title": "[bracket], #1fix: core:  ",
+    "summary": "background core: #tagnull  (paren) @at "
+   },
+   "yaml": "title: '[bracket], #1fix: core:  '\nsummary: 'background core: #tagnull  (paren) @at '\n"
+  },
+  {
+   "name": "fuzz-250",
+   "data": {
+    "title": "🚀  yes \tTUI-DO !bang\n| !bang a #add 🚀 ? {brace} #\t > #--  null  fix  \nadd2026-10-19, \"quoted\": background\n--  x:y: ",
+    "summary": "-- yes, æøå, 50%  clientsvery-long-hyphenated-identifier-without-spaces #"
+   },
+   "yaml": "title: \"🚀  yes \\tTUI-DO !bang\\n| !bang a #add 🚀 ? {brace} #\\t > #--  null  fix  \\nadd2026-10-19, \\\"quoted\\\": background\\n--  x:y: \"\nsummary: '-- yes, æøå, 50%  clientsvery-long-hyphenated-identifier-without-spaces #'\n"
+  },
+  {
+   "name": "fuzz-251",
+   "data": {
+    "title": "nullTUI-DO: very-long-hyphenated-identifier-without-spaces @at, 50% --, TUI-DO: \"quoted\", background",
+    "summary": "null "
+   },
+   "yaml": "title: >-\n  nullTUI-DO: very-long-hyphenated-identifier-without-spaces @at, 50% --,\n  TUI-DO: \"quoted\", background\nsummary: 'null '\n"
+  },
+  {
+   "name": "fuzz-252",
+   "data": {
+    "title": "🚀 #daemon !bang\nwith",
+    "summary": "it's  &ampvery-long-hyphenated-identifier-without-spaces #it's, | æøå !bang ?: -: 2026-10-19 #\"quoted\"  remote\nvery-long-hyphenated-identifier-without-spaces\nthe  #tag\nkey: #yes fix\t? \"quoted\" #[bracket]  | @at TUI-DO: `tick`1.5 #!bang\nfix #(paren), very-long-hyphenated-identifier-without-spaces ##1  #1\nit's"
+   },
+   "yaml": "title: |-\n  🚀 #daemon !bang\n  with\nsummary: \"it's  &ampvery-long-hyphenated-identifier-without-spaces #it's, | æøå !bang ?: -: 2026-10-19 #\\\"quoted\\\"  remote\\nvery-long-hyphenated-identifier-without-spaces\\nthe  #tag\\nkey: #yes fix\\t? \\\"quoted\\\" #[bracket]  | @at TUI-DO: `tick`1.5 #!bang\\nfix #(paren), very-long-hyphenated-identifier-without-spaces ##1  #1\\nit's\"\n"
+  },
+  {
+   "name": "fuzz-253",
+   "data": {
+    "title": "@at",
+    "summary": "50%, | #*star  æøå? \"quoted\"  daemon:"
+   },
+   "yaml": "title: '@at'\nsummary: '50%, | #*star  æøå? \"quoted\"  daemon:'\n"
+  },
+  {
+   "name": "fuzz-254",
+   "data": {
+    "title": "key: #1  `tick` key: core:remote\n50%: æøå #@at    \"quoted\" yes",
+    "summary": "daemon fix(paren)  fix it's, ? "
+   },
+   "yaml": "title: |-\n  key: #1  `tick` key: core:remote\n  50%: æøå #@at    \"quoted\" yes\nsummary: 'daemon fix(paren)  fix it''s, ? '\n"
+  },
+  {
+   "name": "fuzz-255",
+   "data": {
+    "title": "æøå >, it's, ",
+    "summary": "core:{brace}  *star,"
+   },
+   "yaml": "title: 'æøå >, it''s, '\nsummary: core:{brace}  *star,\n"
+  },
+  {
+   "name": "fuzz-256",
+   "data": {
+    "title": "the a 🚀, æøå,",
+    "summary": "it's ? very-long-hyphenated-identifier-without-spaces\n\"quoted\"\n!bang\nclients clients #tag yes,  \nfix"
+   },
+   "yaml": "title: the a 🚀, æøå,\nsummary: |-\n  it's ? very-long-hyphenated-identifier-without-spaces\n  \"quoted\"\n  !bang\n  clients clients #tag yes,  \n  fix\n"
+  },
+  {
+   "name": "fuzz-257",
+   "data": {
+    "title": "\"quoted\" #tag \t, core: \t",
+    "summary": "#tag key:\n2026-10-19 #tag key: @at\"quoted\","
+   },
+   "yaml": "title: \"\\\"quoted\\\" #tag \\t, core: \\t\"\nsummary: |-\n  #tag key:\n  2026-10-19 #tag key: @at\"quoted\",\n"
+  },
+  {
+   "name": "fuzz-258",
+   "data": {
+    "title": "2026-10-19 -- ##1,",
+    "summary": "fix: !bangcore:, "
+   },
+   "yaml": "title: '2026-10-19 -- ##1,'\nsummary: 'fix: !bangcore:, '\n"
+  },
+  {
+   "name": "fuzz-259",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaces &amp 🚀\nwith:",
+    "summary": "`tick`: remote #!bang  🚀, a:"
+   },
+   "yaml": "title: |-\n  very-long-hyphenated-identifier-without-spaces &amp 🚀\n  with:\nsummary: '`tick`: remote #!bang  🚀, a:'\n"
+  },
+  {
+   "name": "fuzz-260",
+   "data": {
+    "title": "(paren), daemon (paren)  ? æøå,",
+    "summary": "clients: 1.5 daemon:   background\n"
+   },
+   "yaml": "title: (paren), daemon (paren)  ? æøå,\nsummary: |\n  clients: 1.5 daemon:   background\n"
+  },
+  {
+   "name": "fuzz-261",
+   "data": {
+    "title": "{brace} null: !bang a  {brace}\n#tag  &amp> very-long-hyphenated-identifier-without-spaces: with",
+    "summary": "clientsclients"
+   },
+   "yaml": "title: |-\n  {brace} null: !bang a  {brace}\n  #tag  &amp> very-long-hyphenated-identifier-without-spaces: with\nsummary: clientsclients\n"
+  },
+  {
+   "name": "fuzz-262",
+   "data": {
+    "title": "TUI-DO, key: ",
+    "summary": "remote #daemon #very-long-hyphenated-identifier-without-spaces 1.5 2026-10-19 #remote, add #🚀, key: 2026-10-19 background  core: (paren) \"quoted\"  core:  50% background#1, 🚀, 1.5>: it's  core: >, a [bracket]  "
+   },
+   "yaml": "title: 'TUI-DO, key: '\nsummary: >-\n  remote #daemon #very-long-hyphenated-identifier-without-spaces 1.5 2026-10-19\n  #remote, add #🚀, key: 2026-10-19 background  core: (paren) \"quoted\"  core: \n  50% background#1, 🚀, 1.5>: it's  core: >, a [bracket]  \n"
+  },
+  {
+   "name": "fuzz-263",
+   "data": {
+    "title": "add",
+    "summary": "background  🚀æøå#1 background: ?: background#1\n50%:"
+   },
+   "yaml": "title: add\nsummary: |-\n  background  🚀æøå#1 background: ?: background#1\n  50%:\n"
+  },
+  {
+   "name": "fuzz-264",
+   "data": {
+    "title": "clients  {brace} TUI-DO #",
+    "summary": "--\n&amp   (paren): [bracket] #-\n> core:, @atnull "
+   },
+   "yaml": "title: 'clients  {brace} TUI-DO #'\nsummary: |-\n  --\n  &amp   (paren): [bracket] #-\n  > core:, @atnull \n"
+  },
+  {
+   "name": "fuzz-265",
+   "data": {
+    "title": "null  1.5, -- @at\nyes\nremote!bang ",
+    "summary": "a!bang  TUI-DO"
+   },
+   "yaml": "title: |-\n  null  1.5, -- @at\n  yes\n  remote!bang \nsummary: a!bang  TUI-DO\n"
+  },
+  {
+   "name": "fuzz-266",
+   "data": {
+    "title": "#1\n#tag very-long-hyphenated-identifier-without-spaces ",
+    "summary": "!bang| 2026-10-19: #tag æøå 50%  "
+   },
+   "yaml": "title: |-\n  #1\n  #tag very-long-hyphenated-identifier-without-spaces \nsummary: '!bang| 2026-10-19: #tag æøå 50%  '\n"
+  },
+  {
+   "name": "fuzz-267",
+   "data": {
+    "title": "#tag(paren), key: add, #tag #{brace}: core:: @at (paren)",
+    "summary": "(paren) #1 #tag   , > \"quoted\"    \nnull\n"
+   },
+   "yaml": "title: '#tag(paren), key: add, #tag #{brace}: core:: @at (paren)'\nsummary: |\n  (paren) #1 #tag   , > \"quoted\"    \n  null\n"
+  },
+  {
+   "name": "fuzz-268",
+   "data": {
+    "title": "{brace} 2026-10-19, *star: the: yes, &amp: æøå ",
+    "summary": "#[bracket]\n- `tick`  null #2026-10-19, &amp @at \"quoted\""
+   },
+   "yaml": "title: '{brace} 2026-10-19, *star: the: yes, &amp: æøå '\nsummary: |-\n  #[bracket]\n  - `tick`  null #2026-10-19, &amp @at \"quoted\"\n"
+  },
+  {
+   "name": "fuzz-269",
+   "data": {
+    "title": "null --\nremote  2026-10-19 #daemon  &amp background\nit'score: #",
+    "summary": "it's clients  >🚀 ##tag |"
+   },
+   "yaml": "title: |-\n  null --\n  remote  2026-10-19 #daemon  &amp background\n  it'score: #\nsummary: 'it''s clients  >🚀 ##tag |'\n"
+  },
+  {
+   "name": "fuzz-270",
+   "data": {
+    "title": "#1 #{brace}, &amp, a a yes, very-long-hyphenated-identifier-without-spaces  *star",
+    "summary": "\"quoted\" with\n\"quoted\" yes, core:>  with"
+   },
+   "yaml": "title: >-\n  #1 #{brace}, &amp, a a yes, very-long-hyphenated-identifier-without-spaces \n  *star\nsummary: |-\n  \"quoted\" with\n  \"quoted\" yes, core:>  with\n"
+  },
+  {
+   "name": "fuzz-271",
+   "data": {
+    "title": "backgroundremote (paren)  1.5thevery-long-hyphenated-identifier-without-spaces\n",
+    "summary": ">  *star\n2026-10-19, \t #🚀 #tag\nbackground"
+   },
+   "yaml": "title: |\n  backgroundremote (paren)  1.5thevery-long-hyphenated-identifier-without-spaces\nsummary: \">  *star\\n2026-10-19, \\t #🚀 #tag\\nbackground\"\n"
+  },
+  {
+   "name": "fuzz-272",
+   "data": {
+    "title": "the: [bracket]: background #1.5 #🚀, null  > &amp",
+    "summary": "2026-10-19, {brace} #| clients #a yes\ndaemon  &amp"
+   },
+   "yaml": "title: 'the: [bracket]: background #1.5 #🚀, null  > &amp'\nsummary: |-\n  2026-10-19, {brace} #| clients #a yes\n  daemon  &amp\n"
+  },
+  {
+   "name": "fuzz-273",
+   "data": {
+    "title": "background  1.5  ",
+    "summary": "`tick` x:y with  æøå  background @at  x:y null, \"quoted\", with"
+   },
+   "yaml": "title: 'background  1.5  '\nsummary: '`tick` x:y with  æøå  background @at  x:y null, \"quoted\", with'\n"
+  },
+  {
+   "name": "fuzz-274",
+   "data": {
+    "title": "!bang\ndaemon the  #1",
+    "summary": ", (paren) @at: #tag it's   \n1.5 &amp #"
+   },
+   "yaml": "title: |-\n  !bang\n  daemon the  #1\nsummary: |-\n  , (paren) @at: #tag it's   \n  1.5 &amp #\n"
+  },
+  {
+   "name": "fuzz-275",
+   "data": {
+    "title": "x:y #core:  #1, background ",
+    "summary": "x:y with\n[bracket], \t #"
+   },
+   "yaml": "title: 'x:y #core:  #1, background '\nsummary: \"x:y with\\n[bracket], \\t #\"\n"
+  },
+  {
+   "name": "fuzz-276",
+   "data": {
+    "title": "{brace} #50% [bracket]`tick`: #tag #tag",
+    "summary": "null, background"
+   },
+   "yaml": "title: '{brace} #50% [bracket]`tick`: #tag #tag'\nsummary: null, background\n"
+  },
+  {
+   "name": "fuzz-277",
+   "data": {
+    "title": "@at   #\t, the: 🚀 x:y: #tag, |\n50% --: 50% #with #yes #key: background #!bang\n`tick`: \"quoted\": null: 50%: --, ?\n&amp  #tag #background core:: @at, #tag - > {brace}\n",
+    "summary": "🚀, --, ? #-\n{brace}   : {brace} core: -- ?  "
+   },
+   "yaml": "title: \"@at   #\\t, the: 🚀 x:y: #tag, |\\n50% --: 50% #with #yes #key: background #!bang\\n`tick`: \\\"quoted\\\": null: 50%: --, ?\\n&amp  #tag #background core:: @at, #tag - > {brace}\\n\"\nsummary: |-\n  🚀, --, ? #-\n  {brace}   : {brace} core: -- ?  \n"
+  },
+  {
+   "name": "fuzz-278",
+   "data": {
+    "title": "x:ybackground, x:y: core: #50% addTUI-DO #remote:",
+    "summary": "50% &ampit's\n?:    2026-10-19 ?"
+   },
+   "yaml": "title: 'x:ybackground, x:y: core: #50% addTUI-DO #remote:'\nsummary: |-\n  50% &ampit's\n  ?:    2026-10-19 ?\n"
+  },
+  {
+   "name": "fuzz-279",
+   "data": {
+    "title": "æøå: #tag ##tag:",
+    "summary": "remote #æøå #|, core: #2026-10-19: 1.5 #key: 🚀 TUI-DO #add {brace} remote"
+   },
+   "yaml": "title: 'æøå: #tag ##tag:'\nsummary: 'remote #æøå #|, core: #2026-10-19: 1.5 #key: 🚀 TUI-DO #add {brace} remote'\n"
+  },
+  {
+   "name": "fuzz-280",
+   "data": {
+    "title": "fix{brace} add `tick` daemon ##1, &amp, 1.5, ",
+    "summary": "#1, @at, > - æøå [bracket]  [bracket]\n&amp #with #50% a, !bang #🚀  the: x:y\nx:y remote\n> 50%: {brace}    remotevery-long-hyphenated-identifier-without-spaces clients\nclients |\n\"quoted\" \t core: ##1 "
+   },
+   "yaml": "title: 'fix{brace} add `tick` daemon ##1, &amp, 1.5, '\nsummary: \"#1, @at, > - æøå [bracket]  [bracket]\\n&amp #with #50% a, !bang #🚀  the: x:y\\nx:y remote\\n> 50%: {brace}    remotevery-long-hyphenated-identifier-without-spaces clients\\nclients |\\n\\\"quoted\\\" \\t core: ##1 \"\n"
+  },
+  {
+   "name": "fuzz-281",
+   "data": {
+    "title": "(paren) #1 !bang the add, ?, \t\nyes ",
+    "summary": "#@at #remote:"
+   },
+   "yaml": "title: \"(paren) #1 !bang the add, ?, \\t\\nyes \"\nsummary: '#@at #remote:'\n"
+  },
+  {
+   "name": "fuzz-282",
+   "data": {
+    "title": "TUI-DO #| !bang",
+    "summary": "@at #very-long-hyphenated-identifier-without-spaces  yes `tick` #?: >: TUI-DO fix,"
+   },
+   "yaml": "title: 'TUI-DO #| !bang'\nsummary: >-\n  @at #very-long-hyphenated-identifier-without-spaces  yes `tick` #?: >: TUI-DO\n  fix,\n"
+  },
+  {
+   "name": "fuzz-283",
+   "data": {
+    "title": "it's: |, 🚀\n",
+    "summary": "!bang\n> `tick`  the {brace}  ? add clients: !bang fix #"
+   },
+   "yaml": "title: |\n  it's: |, 🚀\nsummary: |-\n  !bang\n  > `tick`  the {brace}  ? add clients: !bang fix #\n"
+  },
+  {
+   "name": "fuzz-284",
+   "data": {
+    "title": "with !bang\nwith 🚀 #a  &amp background\n#tag&amp &amp  key: background   \næøå: -  \t  background  background@at, 🚀 #TUI-DO with [bracket]\nit's yes background: \"quoted\"  ",
+    "summary": "50%: null - #with - daemon\n&amp\t #| it's: !bang the #>TUI-DO ##tag, ?,   \n1.5 #add remote\n  yes #!bang, æøå fix, a  [bracket] #"
+   },
+   "yaml": "title: \"with !bang\\nwith 🚀 #a  &amp background\\n#tag&amp &amp  key: background   \\næøå: -  \\t  background  background@at, 🚀 #TUI-DO with [bracket]\\nit's yes background: \\\"quoted\\\"  \"\nsummary: \"50%: null - #with - daemon\\n&amp\\t #| it's: !bang the #>TUI-DO ##tag, ?,   \\n1.5 #add remote\\n  yes #!bang, æøå fix, a  [bracket] #\"\n"
+  },
+  {
+   "name": "fuzz-285",
+   "data": {
+    "title": "`tick` fix with {brace} 🚀\"quoted\"",
+    "summary": "add #the core:, key:x:y:      æøå >\n#tag very-long-hyphenated-identifier-without-spaces it's(paren): 🚀 #?\nvery-long-hyphenated-identifier-without-spaces @at ? |  æøå   , &amp, x:y"
+   },
+   "yaml": "title: '`tick` fix with {brace} 🚀\"quoted\"'\nsummary: |-\n  add #the core:, key:x:y:      æøå >\n  #tag very-long-hyphenated-identifier-without-spaces it's(paren): 🚀 #?\n  very-long-hyphenated-identifier-without-spaces @at ? |  æøå   , &amp, x:y\n"
+  },
+  {
+   "name": "fuzz-286",
+   "data": {
+    "title": "it's #{brace} #? -: | clientsfix\n*star\nfix a \"quoted\", (paren) #1 #background    \ncore:: very-long-hyphenated-identifier-without-spaces\n@at #tag ##1: æøå: \t  the   #yes\n*star\n\t #TUI-DOthe #",
+    "summary": "TUI-DO\nnull #core: x:y\na very-long-hyphenated-identifier-without-spaces: core: #"
+   },
+   "yaml": "title: \"it's #{brace} #? -: | clientsfix\\n*star\\nfix a \\\"quoted\\\", (paren) #1 #background    \\ncore:: very-long-hyphenated-identifier-without-spaces\\n@at #tag ##1: æøå: \\t  the   #yes\\n*star\\n\\t #TUI-DOthe #\"\nsummary: |-\n  TUI-DO\n  null #core: x:y\n  a very-long-hyphenated-identifier-without-spaces: core: #\n"
+  },
+  {
+   "name": "fuzz-287",
+   "data": {
+    "title": "æøå remote\na the\nwith core: x:y #remote  | [bracket]",
+    "summary": "| #1\n{brace}    x:y 🚀 add *star\nTUI-DO #&amp, \"quoted\": @at\n@at #very-long-hyphenated-identifier-without-spaces x:y: -\n{brace} null: with  1.5 #tag: daemon\n!bangTUI-DO 50%\nclients | #50% #&amp: *star\nremote: #1, very-long-hyphenated-identifier-without-spaces\n[bracket] "
+   },
+   "yaml": "title: |-\n  æøå remote\n  a the\n  with core: x:y #remote  | [bracket]\nsummary: |-\n  | #1\n  {brace}    x:y 🚀 add *star\n  TUI-DO #&amp, \"quoted\": @at\n  @at #very-long-hyphenated-identifier-without-spaces x:y: -\n  {brace} null: with  1.5 #tag: daemon\n  !bangTUI-DO 50%\n  clients | #50% #&amp: *star\n  remote: #1, very-long-hyphenated-identifier-without-spaces\n  [bracket] \n"
+  },
+  {
+   "name": "fuzz-288",
+   "data": {
+    "title": "🚀: (paren)\nthe add \t with🚀  *star\nx:y, 50%\n",
+    "summary": "with, --  clients1.5  background key:  {brace} --, key: with,"
+   },
+   "yaml": "title: \"🚀: (paren)\\nthe add \\t with🚀  *star\\nx:y, 50%\\n\"\nsummary: 'with, --  clients1.5  background key:  {brace} --, key: with,'\n"
+  },
+  {
+   "name": "fuzz-289",
+   "data": {
+    "title": "`tick`  ",
+    "summary": "(paren) `tick`, \"quoted\" #[bracket]the #it's #50%, "
+   },
+   "yaml": "title: '`tick`  '\nsummary: '(paren) `tick`, \"quoted\" #[bracket]the #it''s #50%, '\n"
+  },
+  {
+   "name": "fuzz-290",
+   "data": {
+    "title": "æøå\n`tick`\nvery-long-hyphenated-identifier-without-spaces, &amp #2026-10-19, > æøå core:50%  &amp: ",
+    "summary": "`tick` #with \"quoted\"🚀    æøåa#1, --"
+   },
+   "yaml": "title: >-\n  æøå\n\n  `tick`\n\n  very-long-hyphenated-identifier-without-spaces, &amp #2026-10-19, > æøå\n  core:50%  &amp: \nsummary: '`tick` #with \"quoted\"🚀    æøåa#1, --'\n"
+  },
+  {
+   "name": "fuzz-291",
+   "data": {
+    "title": "*star 1.5 1.5 #&amp: a-: it's a    #tag  with  #1 \t  `tick` 🚀, null background #>  yes\n`tick` #-- #[bracket], @at 🚀\n1.5: a clients clients 1.5--  null   >",
+    "summary": "clients background  add, it's æøå, daemonyes a \"quoted\", very-long-hyphenated-identifier-without-spaces? #`tick`\nyes, \t  with very-long-hyphenated-identifier-without-spaces, TUI-DO #the  fixnull yes  daemon !bang with\n(paren)#1{brace}"
+   },
+   "yaml": "title: \"*star 1.5 1.5 #&amp: a-: it's a    #tag  with  #1 \\t  `tick` 🚀, null background #>  yes\\n`tick` #-- #[bracket], @at 🚀\\n1.5: a clients clients 1.5--  null   >\"\nsummary: \"clients background  add, it's æøå, daemonyes a \\\"quoted\\\", very-long-hyphenated-identifier-without-spaces? #`tick`\\nyes, \\t  with very-long-hyphenated-identifier-without-spaces, TUI-DO #the  fixnull yes  daemon !bang with\\n(paren)#1{brace}\"\n"
+  },
+  {
+   "name": "fuzz-292",
+   "data": {
+    "title": "🚀 (paren): *star",
+    "summary": "--  with, &amp: remoteclients\n@at very-long-hyphenated-identifier-without-spaces: remote\ncore: !bang "
+   },
+   "yaml": "title: '🚀 (paren): *star'\nsummary: |-\n  --  with, &amp: remoteclients\n  @at very-long-hyphenated-identifier-without-spaces: remote\n  core: !bang \n"
+  },
+  {
+   "name": "fuzz-293",
+   "data": {
+    "title": "background, very-long-hyphenated-identifier-without-spaces| #æøå  1.5 remote 1.5 #50%:   core:\nclients #--",
+    "summary": "TUI-DO #key:  daemon: *star[bracket]  |\"quoted\" 50% \t"
+   },
+   "yaml": "title: >-\n  background, very-long-hyphenated-identifier-without-spaces| #æøå  1.5 remote\n  1.5 #50%:   core:\n\n  clients #--\nsummary: \"TUI-DO #key:  daemon: *star[bracket]  |\\\"quoted\\\" 50% \\t\"\n"
+  },
+  {
+   "name": "fuzz-294",
+   "data": {
+    "title": "add yes (paren), > `tick`\n2026-10-19> background: 1.5 ? ",
+    "summary": "50% @at  1.5  the: #tag\n!bang: clients"
+   },
+   "yaml": "title: |-\n  add yes (paren), > `tick`\n  2026-10-19> background: 1.5 ? \nsummary: |-\n  50% @at  1.5  the: #tag\n  !bang: clients\n"
+  },
+  {
+   "name": "fuzz-295",
+   "data": {
+    "title": "*star\n",
+    "summary": "TUI-DO, [bracket]core: `tick`, --\n"
+   },
+   "yaml": "title: |\n  *star\nsummary: |\n  TUI-DO, [bracket]core: `tick`, --\n"
+  },
+  {
+   "name": "fuzz-296",
+   "data": {
+    "title": ">",
+    "summary": ">: remote: -- background - null[bracket] #1\nadd  --"
+   },
+   "yaml": "title: '>'\nsummary: |-\n  >: remote: -- background - null[bracket] #1\n  add  --\n"
+  },
+  {
+   "name": "fuzz-297",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaces background 50% it's #--key: #> -  yeskey: 2026-10-19",
+    "summary": "TUI-DO #very-long-hyphenated-identifier-without-spaces\n  TUI-DO remote, clients #   ##tag\n#tag"
+   },
+   "yaml": "title: >-\n  very-long-hyphenated-identifier-without-spaces background 50% it's #--key: #>\n  -  yeskey: 2026-10-19\nsummary: |-\n  TUI-DO #very-long-hyphenated-identifier-without-spaces\n    TUI-DO remote, clients #   ##tag\n  #tag\n"
+  },
+  {
+   "name": "fuzz-298",
+   "data": {
+    "title": "æøå &amp",
+    "summary": ">\n| "
+   },
+   "yaml": "title: æøå &amp\nsummary: |-\n  >\n  | \n"
+  },
+  {
+   "name": "fuzz-299",
+   "data": {
+    "title": "key:  🚀key:  very-long-hyphenated-identifier-without-spaces, \"quoted\" background, @at,",
+    "summary": "fix,"
+   },
+   "yaml": "title: >-\n  key:  🚀key:  very-long-hyphenated-identifier-without-spaces, \"quoted\"\n  background, @at,\nsummary: fix,\n"
+  },
+  {
+   "name": "fuzz-300",
+   "data": {
+    "title": "remote æøå > &amp\t #",
+    "summary": "!bang  background`tick`  remote: 🚀:"
+   },
+   "yaml": "title: \"remote æøå > &amp\\t #\"\nsummary: '!bang  background`tick`  remote: 🚀:'\n"
+  },
+  {
+   "name": "fuzz-301",
+   "data": {
+    "title": "background #core:\n2026-10-19 #",
+    "summary": "@at, #tag: daemon"
+   },
+   "yaml": "title: |-\n  background #core:\n  2026-10-19 #\nsummary: '@at, #tag: daemon'\n"
+  },
+  {
+   "name": "fuzz-302",
+   "data": {
+    "title": "null\n(paren) TUI-DOadd \"quoted\" 🚀 key::",
+    "summary": "clients  [bracket] "
+   },
+   "yaml": "title: |-\n  null\n  (paren) TUI-DOadd \"quoted\" 🚀 key::\nsummary: 'clients  [bracket] '\n"
+  },
+  {
+   "name": "fuzz-303",
+   "data": {
+    "title": "50%\n[bracket]  ",
+    "summary": "yes: -- it's\n>   *star|: (paren) clients \"quoted\"  "
+   },
+   "yaml": "title: |-\n  50%\n  [bracket]  \nsummary: |-\n  yes: -- it's\n  >   *star|: (paren) clients \"quoted\"  \n"
+  },
+  {
+   "name": "fuzz-304",
+   "data": {
+    "title": "[bracket]with, \"quoted\"remote x:y  50% x:y\n",
+    "summary": "*staradd @at\n50%  with\n1.5: key:: \"quoted\" *star\n&amp\ncore:, 2026-10-19  1.5\n| \t very-long-hyphenated-identifier-without-spaces\nadd#1 key: fix: (paren), |with >\nit's add x:y remote #daemon very-long-hyphenated-identifier-without-spaces  background  TUI-DO, !bang[bracket] >, key: #1 it's: with, core:"
+   },
+   "yaml": "title: |\n  [bracket]with, \"quoted\"remote x:y  50% x:y\nsummary: \"*staradd @at\\n50%  with\\n1.5: key:: \\\"quoted\\\" *star\\n&amp\\ncore:, 2026-10-19  1.5\\n| \\t very-long-hyphenated-identifier-without-spaces\\nadd#1 key: fix: (paren), |with >\\nit's add x:y remote #daemon very-long-hyphenated-identifier-without-spaces  background  TUI-DO, !bang[bracket] >, key: #1 it's: with, core:\"\n"
+  },
+  {
+   "name": "fuzz-305",
+   "data": {
+    "title": "background\n&amp remote\n*star  ?\na daemon\nyes it's TUI-DO  core: 50%: the, | #remote @at a\n@at",
+    "summary": "yes\nTUI-DO🚀 withnull #"
+   },
+   "yaml": "title: |-\n  background\n  &amp remote\n  *star  ?\n  a daemon\n  yes it's TUI-DO  core: 50%: the, | #remote @at a\n  @at\nsummary: |-\n  yes\n  TUI-DO🚀 withnull #\n"
+  },
+  {
+   "name": "fuzz-306",
+   "data": {
+    "title": "50% \t #(paren) the #fix  -- #null 2026-10-19 #",
+    "summary": "#1   50%  TUI-DO *star #a, "
+   },
+   "yaml": "title: \"50% \\t #(paren) the #fix  -- #null 2026-10-19 #\"\nsummary: '#1   50%  TUI-DO *star #a, '\n"
+  },
+  {
+   "name": "fuzz-307",
+   "data": {
+    "title": "remote  1.5\n",
+    "summary": "key:\nwith #1æøå &amp  , TUI-DO x:y @at  daemon"
+   },
+   "yaml": "title: |\n  remote  1.5\nsummary: |-\n  key:\n  with #1æøå &amp  , TUI-DO x:y @at  daemon\n"
+  },
+  {
+   "name": "fuzz-308",
+   "data": {
+    "title": "fix, the 1.5\n\"quoted\" #it's #x:y 🚀 {brace} ##1",
+    "summary": "{brace} ?, with, "
+   },
+   "yaml": "title: |-\n  fix, the 1.5\n  \"quoted\" #it's #x:y 🚀 {brace} ##1\nsummary: '{brace} ?, with, '\n"
+  },
+  {
+   "name": "fuzz-309",
+   "data": {
+    "title": " : !bang  null: |\n#1, TUI-DO: fix, ",
+    "summary": "{brace}, >  🚀 1.5, \"quoted\" #core:: clients, core:, ?, (paren): !bang: 2026-10-19 background, it's: - !bang a: `tick`    : a remote x:y `tick`#tag    background key: @at, --: TUI-DO, background {brace} clients #-- fix &amp #clients: 🚀"
+   },
+   "yaml": "title: |2-\n   : !bang  null: |\n  #1, TUI-DO: fix, \nsummary: >-\n  {brace}, >  🚀 1.5, \"quoted\" #core:: clients, core:, ?, (paren): !bang:\n  2026-10-19 background, it's: - !bang a: `tick`    : a remote x:y `tick`#tag   \n  background key: @at, --: TUI-DO, background {brace} clients #-- fix &amp\n  #clients: 🚀\n"
+  },
+  {
+   "name": "fuzz-310",
+   "data": {
+    "title": "@at\n🚀*star\n&amp *star  fix |",
+    "summary": "background x:y #core: #"
+   },
+   "yaml": "title: |-\n  @at\n  🚀*star\n  &amp *star  fix |\nsummary: 'background x:y #core: #'\n"
+  },
+  {
+   "name": "fuzz-311",
+   "data": {
+    "title": ">, ",
+    "summary": "&amp\nx:y: !bang\n`tick`"
+   },
+   "yaml": "title: '>, '\nsummary: |-\n  &amp\n  x:y: !bang\n  `tick`\n"
+  },
+  {
+   "name": "fuzz-312",
+   "data": {
+    "title": "|: ",
+    "summary": "!bang-- it's #æøå #1.5x:y\n@at "
+   },
+   "yaml": "title: '|: '\nsummary: |-\n  !bang-- it's #æøå #1.5x:y\n  @at \n"
+  },
+  {
+   "name": "fuzz-313",
+   "data": {
+    "title": "anull (paren): TUI-DO add: 2026-10-19 TUI-DO {brace}  the",
+    "summary": "- `tick` ? #with, æøå,     🚀 #"
+   },
+   "yaml": "title: 'anull (paren): TUI-DO add: 2026-10-19 TUI-DO {brace}  the'\nsummary: '- `tick` ? #with, æøå,     🚀 #'\n"
+  },
+  {
+   "name": "fuzz-314",
+   "data": {
+    "title": "add x:y \t  [bracket] key:,",
+    "summary": "@at\nx:y #1  |: fix: 🚀   #tagcore:  x:y "
+   },
+   "yaml": "title: \"add x:y \\t  [bracket] key:,\"\nsummary: |-\n  @at\n  x:y #1  |: fix: 🚀   #tagcore:  x:y \n"
+  },
+  {
+   "name": "fuzz-315",
+   "data": {
+    "title": " , very-long-hyphenated-identifier-without-spaces\n| #- #add fix: key:\n",
+    "summary": "[bracket] #yes\nit's, @at\nit's add\nkey: #2026-10-19  : it's"
+   },
+   "yaml": "title: |2\n   , very-long-hyphenated-identifier-without-spaces\n  | #- #add fix: key:\nsummary: |-\n  [bracket] #yes\n  it's, @at\n  it's add\n  key: #2026-10-19  : it's\n"
+  },
+  {
+   "name": "fuzz-316",
+   "data": {
+    "title": "null ? remote",
+    "summary": "key: yes add yes core: #background, ?#1 -- "
+   },
+   "yaml": "title: null ? remote\nsummary: 'key: yes add yes core: #background, ?#1 -- '\n"
+  },
+  {
+   "name": "fuzz-317",
+   "data": {
+    "title": "?  @at #very-long-hyphenated-identifier-without-spaces #fix>: null daemon #(paren) a",
+    "summary": "x:yæøå null yes(paren) #add  it's\"quoted\" the"
+   },
+   "yaml": "title: >-\n  ?  @at #very-long-hyphenated-identifier-without-spaces #fix>: null daemon\n  #(paren) a\nsummary: 'x:yæøå null yes(paren) #add  it''s\"quoted\" the'\n"
+  },
+  {
+   "name": "fuzz-318",
+   "data": {
+    "title": "clients #",
+    "summary": "TUI-DOadd #"
+   },
+   "yaml": "title: 'clients #'\nsummary: 'TUI-DOadd #'\n"
+  },
+  {
+   "name": "fuzz-319",
+   "data": {
+    "title": "&amp: ",
+    "summary": "background null fix `tick`,    the x:y,"
+   },
+   "yaml": "title: '&amp: '\nsummary: background null fix `tick`,    the x:y,\n"
+  },
+  {
+   "name": "fuzz-320",
+   "data": {
+    "title": "[bracket]",
+    "summary": "æøå it's fix"
+   },
+   "yaml": "title: '[bracket]'\nsummary: æøå it's fix\n"
+  },
+  {
+   "name": "fuzz-321",
+   "data": {
+    "title": "a  the\nthe  🚀 the clients - , \t: fix\n> remote TUI-DO",
+    "summary": "🚀  core: TUI-DO: fix: background #x:y  x:y #\"quoted\" with #tag a, clients *star  >\n?  \t &amp #&amp 🚀: &amp: \"quoted\"it's: &amp: ?,    clients x:y core: (paren)  *star  (paren) core: -: æøå\n[bracket]"
+   },
+   "yaml": "title: \"a  the\\nthe  🚀 the clients - , \\t: fix\\n> remote TUI-DO\"\nsummary: \"🚀  core: TUI-DO: fix: background #x:y  x:y #\\\"quoted\\\" with #tag a, clients *star  >\\n?  \\t &amp #&amp 🚀: &amp: \\\"quoted\\\"it's: &amp: ?,    clients x:y core: (paren)  *star  (paren) core: -: æøå\\n[bracket]\"\n"
+  },
+  {
+   "name": "fuzz-322",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spacesyes clients fix, 2026-10-19\n-- with #daemon,",
+    "summary": "@at  null:    1.5 > #background: \t daemon,"
+   },
+   "yaml": "title: |-\n  very-long-hyphenated-identifier-without-spacesyes clients fix, 2026-10-19\n  -- with #daemon,\nsummary: \"@at  null:    1.5 > #background: \\t daemon,\"\n"
+  },
+  {
+   "name": "fuzz-323",
+   "data": {
+    "title": "remote  yes yes a !bang  clients  , with\n>very-long-hyphenated-identifier-without-spaces yes > | #-: daemon |\n",
+    "summary": "TUI-DO &amp -- #tag  background#1\nbackground  core:"
+   },
+   "yaml": "title: |\n  remote  yes yes a !bang  clients  , with\n  >very-long-hyphenated-identifier-without-spaces yes > | #-: daemon |\nsummary: |-\n  TUI-DO &amp -- #tag  background#1\n  background  core:\n"
+  },
+  {
+   "name": "fuzz-324",
+   "data": {
+    "title": "#1 -  remote  [bracket]  a  very-long-hyphenated-identifier-without-spaces, @at the `tick` 2026-10-19,",
+    "summary": "daemon, add --    : core:  "
+   },
+   "yaml": "title: >-\n  #1 -  remote  [bracket]  a  very-long-hyphenated-identifier-without-spaces,\n  @at the `tick` 2026-10-19,\nsummary: 'daemon, add --    : core:  '\n"
+  },
+  {
+   "name": "fuzz-325",
+   "data": {
+    "title": "key:\n|  [bracket] remote key:\n50%, #tag, clients #",
+    "summary": "2026-10-19it's  : æøå  !bang a clients: "
+   },
+   "yaml": "title: |-\n  key:\n  |  [bracket] remote key:\n  50%, #tag, clients #\nsummary: '2026-10-19it''s  : æøå  !bang a clients: '\n"
+  },
+  {
+   "name": "fuzz-326",
+   "data": {
+    "title": " clients, 🚀 yesvery-long-hyphenated-identifier-without-spaces #--   \n50%, @at --\nadd\n{brace}, ? @at\nTUI-DO #the  fix: \"quoted\"background  50%",
+    "summary": "it's: æøå"
+   },
+   "yaml": "title: |2-\n   clients, 🚀 yesvery-long-hyphenated-identifier-without-spaces #--   \n  50%, @at --\n  add\n  {brace}, ? @at\n  TUI-DO #the  fix: \"quoted\"background  50%\nsummary: 'it''s: æøå'\n"
+  },
+  {
+   "name": "fuzz-327",
+   "data": {
+    "title": "æøå x:ybackground remote, æøå `tick` daemon TUI-DO, &amp #a  !bang  2026-10-19 #>\n  #  #add #\"quoted\"-- [bracket]  🚀\n-: 1.5 null #a- clients add #!bang ?, background remote\n&amp\nkey:: &amp\n&amp",
+    "summary": "🚀, null2026-10-19core: >  daemon[bracket]  \"quoted\"\"quoted\""
+   },
+   "yaml": "title: >-\n  æøå x:ybackground remote, æøå `tick` daemon TUI-DO, &amp #a  !bang  2026-10-19\n  #>\n    #  #add #\"quoted\"-- [bracket]  🚀\n  -: 1.5 null #a- clients add #!bang ?, background remote\n\n  &amp\n\n  key:: &amp\n\n  &amp\nsummary: '🚀, null2026-10-19core: >  daemon[bracket]  \"quoted\"\"quoted\"'\n"
+  },
+  {
+   "name": "fuzz-328",
+   "data": {
+    "title": "50%     \"quoted\"",
+    "summary": "a  &ampremote\na"
+   },
+   "yaml": "title: 50%     \"quoted\"\nsummary: |-\n  a  &ampremote\n  a\n"
+  },
+  {
+   "name": "fuzz-329",
+   "data": {
+    "title": "TUI-DO-",
+    "summary": "add #yes"
+   },
+   "yaml": "title: TUI-DO-\nsummary: 'add #yes'\n"
+  },
+  {
+   "name": "fuzz-330",
+   "data": {
+    "title": "it'sclients, 50%remote #",
+    "summary": "| --\n#1  ?    #TUI-DO #clients  "
+   },
+   "yaml": "title: 'it''sclients, 50%remote #'\nsummary: |-\n  | --\n  #1  ?    #TUI-DO #clients  \n"
+  },
+  {
+   "name": "fuzz-331",
+   "data": {
+    "title": "{brace} #\t remote  æøå  *star,",
+    "summary": "very-long-hyphenated-identifier-without-spaces null ##1 ? background (paren), it's !bang æøå -"
+   },
+   "yaml": "title: \"{brace} #\\t remote  æøå  *star,\"\nsummary: >-\n  very-long-hyphenated-identifier-without-spaces null ##1 ? background (paren),\n  it's !bang æøå -\n"
+  },
+  {
+   "name": "fuzz-332",
+   "data": {
+    "title": "background  \"quoted\"  --clients #\t [bracket]\næøå\nit's fix core: fix  ",
+    "summary": "fix\na --: with  "
+   },
+   "yaml": "title: \"background  \\\"quoted\\\"  --clients #\\t [bracket]\\næøå\\nit's fix core: fix  \"\nsummary: |-\n  fix\n  a --: with  \n"
+  },
+  {
+   "name": "fuzz-333",
+   "data": {
+    "title": "| the #\"quoted\" #1 #--\n-- !bang \"quoted\" >  {brace}  ? #2026-10-19 {brace}  >  (paren) @at `tick`\nremote  yes\nadd #remoteremote: - #1.5 æøå #yes !bang\n? !bang #TUI-DO ",
+    "summary": "x:y: 🚀 #key: #theadd: clients  fix\nTUI-DO🚀 key:"
+   },
+   "yaml": "title: |-\n  | the #\"quoted\" #1 #--\n  -- !bang \"quoted\" >  {brace}  ? #2026-10-19 {brace}  >  (paren) @at `tick`\n  remote  yes\n  add #remoteremote: - #1.5 æøå #yes !bang\n  ? !bang #TUI-DO \nsummary: |-\n  x:y: 🚀 #key: #theadd: clients  fix\n  TUI-DO🚀 key:\n"
+  },
+  {
+   "name": "fuzz-334",
+   "data": {
+    "title": "remote !bang\nkey:x:y\næøå, 2026-10-19: &amp: > #2026-10-19, ?: core: &amp: \t-- very-long-hyphenated-identifier-without-spaces 1.5>",
+    "summary": "fix: yes #@at\n*star, daemon: 2026-10-19 null:  \nTUI-DO, add "
+   },
+   "yaml": "title: \"remote !bang\\nkey:x:y\\næøå, 2026-10-19: &amp: > #2026-10-19, ?: core: &amp: \\t-- very-long-hyphenated-identifier-without-spaces 1.5>\"\nsummary: |-\n  fix: yes #@at\n  *star, daemon: 2026-10-19 null:  \n  TUI-DO, add \n"
+  },
+  {
+   "name": "fuzz-335",
+   "data": {
+    "title": "key: [bracket]\nbackground key: 🚀 a\n(paren) remote   *star--: {brace}\n#tag #🚀: key: #key:, TUI-DO  clients [bracket]  x:y  daemon, add",
+    "summary": "with  &amp a, æøå\"quoted\", a {brace}"
+   },
+   "yaml": "title: |-\n  key: [bracket]\n  background key: 🚀 a\n  (paren) remote   *star--: {brace}\n  #tag #🚀: key: #key:, TUI-DO  clients [bracket]  x:y  daemon, add\nsummary: with  &amp a, æøå\"quoted\", a {brace}\n"
+  },
+  {
+   "name": "fuzz-336",
+   "data": {
+    "title": "--: @at, (paren)",
+    "summary": "1.5  --: daemon #with !bang  fix  null\n\t\n&amp: remote  [bracket]it's 1.5, the"
+   },
+   "yaml": "title: '--: @at, (paren)'\nsummary: \"1.5  --: daemon #with !bang  fix  null\\n\\t\\n&amp: remote  [bracket]it's 1.5, the\"\n"
+  },
+  {
+   "name": "fuzz-337",
+   "data": {
+    "title": "--: x:y, !bang #?, !bang\n50%: > a\n!bang: (paren)add: -  (paren) #*star[bracket]  key: #12026-10-19 #fix #2026-10-19: it's #the, {brace}\nwith: \"quoted\"  æøå\nthe -, 1.5 it's TUI-DO #TUI-DO | \t 🚀 daemon x:y\nwith",
+    "summary": "clients\nyes  ?background> "
+   },
+   "yaml": "title: \"--: x:y, !bang #?, !bang\\n50%: > a\\n!bang: (paren)add: -  (paren) #*star[bracket]  key: #12026-10-19 #fix #2026-10-19: it's #the, {brace}\\nwith: \\\"quoted\\\"  æøå\\nthe -, 1.5 it's TUI-DO #TUI-DO | \\t 🚀 daemon x:y\\nwith\"\nsummary: |-\n  clients\n  yes  ?background> \n"
+  },
+  {
+   "name": "fuzz-338",
+   "data": {
+    "title": "core: 1.5 it's  \t ?very-long-hyphenated-identifier-without-spaces\n#1 yes",
+    "summary": "with, {brace}"
+   },
+   "yaml": "title: \"core: 1.5 it's  \\t ?very-long-hyphenated-identifier-without-spaces\\n#1 yes\"\nsummary: with, {brace}\n"
+  },
+  {
+   "name": "fuzz-339",
+   "data": {
+    "title": "1.5, 2026-10-19daemon fix #*star @at  > #{brace}  it's: [bracket] #",
+    "summary": "#key: !bang with: `tick` null*star remote add `tick` it's: key: 2026-10-19 with yes, daemon- #it's\n@at #[bracket]\nx:y: daemon, remote | it's{brace} key:, !bang ?, the ? #the  &amp1.5 (paren)  > #daemon, -- #"
+   },
+   "yaml": "title: '1.5, 2026-10-19daemon fix #*star @at  > #{brace}  it''s: [bracket] #'\nsummary: >-\n  #key: !bang with: `tick` null*star remote add `tick` it's: key: 2026-10-19\n  with yes, daemon- #it's\n\n  @at #[bracket]\n\n  x:y: daemon, remote | it's{brace} key:, !bang ?, the ? #the  &amp1.5 (paren) \n  > #daemon, -- #\n"
+  },
+  {
+   "name": "fuzz-340",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spacesTUI-DO, (paren) TUI-DO\n  , *star\nclients, @at\n1.5, a\n\t: #tagdaemon  fix, 50% 2026-10-19 clients remote\n{brace}2026-10-19  yes\nclients: `tick`, #1\n2026-10-19  add, add 50% #",
+    "summary": "background, with -: 🚀 #clients  ?: \t #\"quoted\": the\nyes"
+   },
+   "yaml": "title: \"very-long-hyphenated-identifier-without-spacesTUI-DO, (paren) TUI-DO\\n  , *star\\nclients, @at\\n1.5, a\\n\\t: #tagdaemon  fix, 50% 2026-10-19 clients remote\\n{brace}2026-10-19  yes\\nclients: `tick`, #1\\n2026-10-19  add, add 50% #\"\nsummary: \"background, with -: 🚀 #clients  ?: \\t #\\\"quoted\\\": the\\nyes\"\n"
+  },
+  {
+   "name": "fuzz-341",
+   "data": {
+    "title": "> #1.5: core: yes #50% `tick`",
+    "summary": "TUI-DO  !bang 🚀 > @at  "
+   },
+   "yaml": "title: '> #1.5: core: yes #50% `tick`'\nsummary: 'TUI-DO  !bang 🚀 > @at  '\n"
+  },
+  {
+   "name": "fuzz-342",
+   "data": {
+    "title": "*star #*star,",
+    "summary": "background , "
+   },
+   "yaml": "title: '*star #*star,'\nsummary: 'background , '\n"
+  },
+  {
+   "name": "fuzz-343",
+   "data": {
+    "title": "fix\nnull  a, remote\"quoted\" key:, 2026-10-19ait's 50%, add {brace}\ncore: #1.5 2026-10-19: (paren)\n|: yes  🚀\n#1 -, background:   \t  \"quoted\" #æøå æøå, ",
+    "summary": "(paren)"
+   },
+   "yaml": "title: \"fix\\nnull  a, remote\\\"quoted\\\" key:, 2026-10-19ait's 50%, add {brace}\\ncore: #1.5 2026-10-19: (paren)\\n|: yes  🚀\\n#1 -, background:   \\t  \\\"quoted\\\" #æøå æøå, \"\nsummary: (paren)\n"
+  },
+  {
+   "name": "fuzz-344",
+   "data": {
+    "title": "1.5 🚀 core: daemon, \t a yes\n?",
+    "summary": "remote #|, with: |: daemon  1.5  1.5 [bracket] key: "
+   },
+   "yaml": "title: \"1.5 🚀 core: daemon, \\t a yes\\n?\"\nsummary: 'remote #|, with: |: daemon  1.5  1.5 [bracket] key: '\n"
+  },
+  {
+   "name": "fuzz-345",
+   "data": {
+    "title": "#1  50%\ncore:- #1.5 #!bang, (paren) #",
+    "summary": "@at clients"
+   },
+   "yaml": "title: |-\n  #1  50%\n  core:- #1.5 #!bang, (paren) #\nsummary: '@at clients'\n"
+  },
+  {
+   "name": "fuzz-346",
+   "data": {
+    "title": "&amp: 🚀, \"quoted\"",
+    "summary": "add add \"quoted\"  [bracket] æøå #!bang \t  addvery-long-hyphenated-identifier-without-spaces, "
+   },
+   "yaml": "title: '&amp: 🚀, \"quoted\"'\nsummary: \"add add \\\"quoted\\\"  [bracket] æøå #!bang \\t  addvery-long-hyphenated-identifier-without-spaces, \"\n"
+  },
+  {
+   "name": "fuzz-347",
+   "data": {
+    "title": "!bang:   x:y  the: core:: with #2026-10-19 2026-10-19, with: yes: a with",
+    "summary": "@at  add: \t\n  : background   \n2026-10-19  🚀  1.5(paren) #2026-10-19 #fixfix æøå, {brace} the: > the core: with: with core: #"
+   },
+   "yaml": "title: '!bang:   x:y  the: core:: with #2026-10-19 2026-10-19, with: yes: a with'\nsummary: \"@at  add: \\t\\n  : background   \\n2026-10-19  🚀  1.5(paren) #2026-10-19 #fixfix æøå, {brace} the: > the core: with: with core: #\"\n"
+  },
+  {
+   "name": "fuzz-348",
+   "data": {
+    "title": "&amp #TUI-DO: ",
+    "summary": "-"
+   },
+   "yaml": "title: '&amp #TUI-DO: '\nsummary: '-'\n"
+  },
+  {
+   "name": "fuzz-349",
+   "data": {
+    "title": "core: #\"quoted\"very-long-hyphenated-identifier-without-spaces #\t #1.5 #tag ##1 clients🚀, {brace}  ",
+    "summary": "yes #50% #`tick` "
+   },
+   "yaml": "title: \"core: #\\\"quoted\\\"very-long-hyphenated-identifier-without-spaces #\\t #1.5 #tag ##1 clients🚀, {brace}  \"\nsummary: 'yes #50% #`tick` '\n"
+  },
+  {
+   "name": "fuzz-350",
+   "data": {
+    "title": "🚀  -- it'snull ",
+    "summary": "!bang\nkey:,"
+   },
+   "yaml": "title: '🚀  -- it''snull '\nsummary: |-\n  !bang\n  key:,\n"
+  },
+  {
+   "name": "fuzz-351",
+   "data": {
+    "title": "-- \"quoted\"-:",
+    "summary": "2026-10-19 @at"
+   },
+   "yaml": "title: '-- \"quoted\"-:'\nsummary: 2026-10-19 @at\n"
+  },
+  {
+   "name": "fuzz-352",
+   "data": {
+    "title": "|  daemon #add ",
+    "summary": "remote: remote &amp  - TUI-DO #2026-10-19:   |\n"
+   },
+   "yaml": "title: '|  daemon #add '\nsummary: |\n  remote: remote &amp  - TUI-DO #2026-10-19:   |\n"
+  },
+  {
+   "name": "fuzz-353",
+   "data": {
+    "title": "*star # , {brace}TUI-DO #?@at, &amp: \"quoted\" ",
+    "summary": "(paren) 🚀, #tag !bang\nthe remoteit's: æøå "
+   },
+   "yaml": "title: '*star # , {brace}TUI-DO #?@at, &amp: \"quoted\" '\nsummary: |-\n  (paren) 🚀, #tag !bang\n  the remoteit's: æøå \n"
+  },
+  {
+   "name": "fuzz-354",
+   "data": {
+    "title": "!bang, *star: a a daemon",
+    "summary": "#the #   --"
+   },
+   "yaml": "title: '!bang, *star: a a daemon'\nsummary: '#the #   --'\n"
+  },
+  {
+   "name": "fuzz-355",
+   "data": {
+    "title": "æøå !bang  x:y, \t  (paren), daemon #--",
+    "summary": "-- #-- with: !bang, #tag #yes #very-long-hyphenated-identifier-without-spacesx:y >  null  very-long-hyphenated-identifier-without-spaces key: TUI-DO: x:y #background: very-long-hyphenated-identifier-without-spaces: \t\n|\n#tag, "
+   },
+   "yaml": "title: \"æøå !bang  x:y, \\t  (paren), daemon #--\"\nsummary: \"-- #-- with: !bang, #tag #yes #very-long-hyphenated-identifier-without-spacesx:y >  null  very-long-hyphenated-identifier-without-spaces key: TUI-DO: x:y #background: very-long-hyphenated-identifier-without-spaces: \\t\\n|\\n#tag, \"\n"
+  },
+  {
+   "name": "fuzz-356",
+   "data": {
+    "title": "TUI-DO \"quoted\" #remote\nkey:, #tag #*star background🚀  1.5TUI-DO: (paren)  yes  {brace}!bang |\n🚀\nvery-long-hyphenated-identifier-without-spaces `tick` 1.5 \t > æøå [bracket] with, ? `tick` &amp  *star ",
+    "summary": "&amp #tag #  #> "
+   },
+   "yaml": "title: \"TUI-DO \\\"quoted\\\" #remote\\nkey:, #tag #*star background🚀  1.5TUI-DO: (paren)  yes  {brace}!bang |\\n🚀\\nvery-long-hyphenated-identifier-without-spaces `tick` 1.5 \\t > æøå [bracket] with, ? `tick` &amp  *star \"\nsummary: '&amp #tag #  #> '\n"
+  },
+  {
+   "name": "fuzz-357",
+   "data": {
+    "title": "background TUI-DO ?, (paren)\nbackground  1.5 æøå #?\n\t fix #nullwith  yes \t   fix #1:  \n2026-10-19 #with> #  clients yes #key:\nthe #very-long-hyphenated-identifier-without-spaces  remote remote\nkey: &ampremote\nfix: @atTUI-DO: [bracket], x:y #it's x:y  ",
+    "summary": "|a clients, 1.5  1.5  50% #"
+   },
+   "yaml": "title: \"background TUI-DO ?, (paren)\\nbackground  1.5 æøå #?\\n\\t fix #nullwith  yes \\t   fix #1:  \\n2026-10-19 #with> #  clients yes #key:\\nthe #very-long-hyphenated-identifier-without-spaces  remote remote\\nkey: &ampremote\\nfix: @atTUI-DO: [bracket], x:y #it's x:y  \"\nsummary: '|a clients, 1.5  1.5  50% #'\n"
+  },
+  {
+   "name": "fuzz-358",
+   "data": {
+    "title": "@at: \"quoted\": 50%the50%, thekey: 🚀with\n| #fix\nclients   \nclients: #tag, `tick`: x:y  add  🚀 æøå: with #@at {brace}  --: 50% add, #1 \t    clients  > ?, 🚀: 50%: 2026-10-19: ",
+    "summary": "remote -  very-long-hyphenated-identifier-without-spaces"
+   },
+   "yaml": "title: \"@at: \\\"quoted\\\": 50%the50%, thekey: 🚀with\\n| #fix\\nclients   \\nclients: #tag, `tick`: x:y  add  🚀 æøå: with #@at {brace}  --: 50% add, #1 \\t    clients  > ?, 🚀: 50%: 2026-10-19: \"\nsummary: remote -  very-long-hyphenated-identifier-without-spaces\n"
+  },
+  {
+   "name": "fuzz-359",
+   "data": {
+    "title": "{brace}: clients",
+    "summary": "2026-10-19 the\n@at"
+   },
+   "yaml": "title: '{brace}: clients'\nsummary: |-\n  2026-10-19 the\n  @at\n"
+  },
+  {
+   "name": "fuzz-360",
+   "data": {
+    "title": "remote\n(paren) #tag ",
+    "summary": "core:  *star, #1"
+   },
+   "yaml": "title: |-\n  remote\n  (paren) #tag \nsummary: 'core:  *star, #1'\n"
+  },
+  {
+   "name": "fuzz-361",
+   "data": {
+    "title": "#tag yes  daemon:",
+    "summary": "fix"
+   },
+   "yaml": "title: '#tag yes  daemon:'\nsummary: fix\n"
+  },
+  {
+   "name": "fuzz-362",
+   "data": {
+    "title": "-",
+    "summary": "remote key: [bracket] "
+   },
+   "yaml": "title: '-'\nsummary: 'remote key: [bracket] '\n"
+  },
+  {
+   "name": "fuzz-363",
+   "data": {
+    "title": "2026-10-19\n(paren) #daemon, æøå, æøå daemon\ncore: - #",
+    "summary": "@at x:y\n!bang, (paren)  \n   x:y key: #tag x:y  "
+   },
+   "yaml": "title: |-\n  2026-10-19\n  (paren) #daemon, æøå, æøå daemon\n  core: - #\nsummary: |-\n  @at x:y\n  !bang, (paren)  \n     x:y key: #tag x:y  \n"
+  },
+  {
+   "name": "fuzz-364",
+   "data": {
+    "title": "x:y @at {brace} #{brace}2026-10-19\nwith  1.5, @at it's -- daemon 🚀 >",
+    "summary": "yes, very-long-hyphenated-identifier-without-spaces\nnull (paren) remote: fix  æøå  yes `tick` #core:: #tag  #1: a [bracket] #--  "
+   },
+   "yaml": "title: |-\n  x:y @at {brace} #{brace}2026-10-19\n  with  1.5, @at it's -- daemon 🚀 >\nsummary: |-\n  yes, very-long-hyphenated-identifier-without-spaces\n  null (paren) remote: fix  æøå  yes `tick` #core:: #tag  #1: a [bracket] #--  \n"
+  },
+  {
+   "name": "fuzz-365",
+   "data": {
+    "title": "1.5 #*star    \"quoted\", {brace}  --  it's  background 1.5 50%:  : `tick` #  @at`tick` #tag: {brace}--, x:y  🚀 #2026-10-19  {brace} null #add background: *star #very-long-hyphenated-identifier-without-spaces (paren): \"quoted\"\n\"quoted\"\n#tag ##1 add #background ",
+    "summary": "yes  core:|key:very-long-hyphenated-identifier-without-spaces  *star🚀 #| add: {brace}, \"quoted\""
+   },
+   "yaml": "title: >-\n  1.5 #*star    \"quoted\", {brace}  --  it's  background 1.5 50%:  : `tick` # \n  @at`tick` #tag: {brace}--, x:y  🚀 #2026-10-19  {brace} null #add background:\n  *star #very-long-hyphenated-identifier-without-spaces (paren): \"quoted\"\n\n  \"quoted\"\n\n  #tag ##1 add #background \nsummary: >-\n  yes  core:|key:very-long-hyphenated-identifier-without-spaces  *star🚀 #| add:\n  {brace}, \"quoted\"\n"
+  },
+  {
+   "name": "fuzz-366",
+   "data": {
+    "title": "2026-10-19\n",
+    "summary": "🚀 #2026-10-19, key:: TUI-DO: very-long-hyphenated-identifier-without-spaces yes: add"
+   },
+   "yaml": "title: |\n  2026-10-19\nsummary: >-\n  🚀 #2026-10-19, key:: TUI-DO: very-long-hyphenated-identifier-without-spaces\n  yes: add\n"
+  },
+  {
+   "name": "fuzz-367",
+   "data": {
+    "title": "daemon: core:: background - ",
+    "summary": "a #it's: [bracket]\na, æøå\nyes > #remote #a #| it's it's: 2026-10-19  null #it's #   #\"quoted\"x:y    #--  with1.5\t:"
+   },
+   "yaml": "title: 'daemon: core:: background - '\nsummary: \"a #it's: [bracket]\\na, æøå\\nyes > #remote #a #| it's it's: 2026-10-19  null #it's #   #\\\"quoted\\\"x:y    #--  with1.5\\t:\"\n"
+  },
+  {
+   "name": "fuzz-368",
+   "data": {
+    "title": "#1,    !bang",
+    "summary": "add\n🚀: [bracket]:     core:"
+   },
+   "yaml": "title: '#1,    !bang'\nsummary: |-\n  add\n  🚀: [bracket]:     core:\n"
+  },
+  {
+   "name": "fuzz-369",
+   "data": {
+    "title": "TUI-DO remote",
+    "summary": "1.5\nremote: daemon \t #"
+   },
+   "yaml": "title: TUI-DO remote\nsummary: \"1.5\\nremote: daemon \\t #\"\n"
+  },
+  {
+   "name": "fuzz-370",
+   "data": {
+    "title": "?, x:y\n-- &amp\nnull: æøå50%, a   : with: fix @at daemon #a\nit'sclients#tag (paren) - #\"quoted\" a, #tag core:x:y ? ",
+    "summary": "background {brace}\nfix #yes\nadd-- #x:y  `tick` #1, #tag,  \n>  key:, >\nclients\n&amp #🚀"
+   },
+   "yaml": "title: |-\n  ?, x:y\n  -- &amp\n  null: æøå50%, a   : with: fix @at daemon #a\n  it'sclients#tag (paren) - #\"quoted\" a, #tag core:x:y ? \nsummary: |-\n  background {brace}\n  fix #yes\n  add-- #x:y  `tick` #1, #tag,  \n  >  key:, >\n  clients\n  &amp #🚀\n"
+  },
+  {
+   "name": "fuzz-371",
+   "data": {
+    "title": "   #yes ",
+    "summary": "{brace} 2026-10-19, \"quoted\": "
+   },
+   "yaml": "title: '   #yes '\nsummary: '{brace} 2026-10-19, \"quoted\": '\n"
+  },
+  {
+   "name": "fuzz-372",
+   "data": {
+    "title": "#1 -  🚀  `tick`: *star a #1.5 ?, null key: {brace} #1 &amp #\"quoted\" 🚀: remote, remote   \nx:ythe 🚀 | #core:afix\n#tag remote, with,",
+    "summary": "*starvery-long-hyphenated-identifier-without-spaces, !bang\n|  clients ?, |,     | \t #"
+   },
+   "yaml": "title: >-\n  #1 -  🚀  `tick`: *star a #1.5 ?, null key: {brace} #1 &amp #\"quoted\" 🚀:\n  remote, remote   \n\n  x:ythe 🚀 | #core:afix\n\n  #tag remote, with,\nsummary: \"*starvery-long-hyphenated-identifier-without-spaces, !bang\\n|  clients ?, |,     | \\t #\"\n"
+  },
+  {
+   "name": "fuzz-373",
+   "data": {
+    "title": ">key:: >\n!bang #(paren)\n1.5",
+    "summary": "TUI-DO  x:y1.5: `tick` æøå#1\n? #@at: "
+   },
+   "yaml": "title: |-\n  >key:: >\n  !bang #(paren)\n  1.5\nsummary: |-\n  TUI-DO  x:y1.5: `tick` æøå#1\n  ? #@at: \n"
+  },
+  {
+   "name": "fuzz-374",
+   "data": {
+    "title": "key:: \"quoted\", yes: ",
+    "summary": "*star    \"quoted\"\n`tick`  `tick`  TUI-DO, athe, "
+   },
+   "yaml": "title: 'key:: \"quoted\", yes: '\nsummary: |-\n  *star    \"quoted\"\n  `tick`  `tick`  TUI-DO, athe, \n"
+  },
+  {
+   "name": "fuzz-375",
+   "data": {
+    "title": "core: `tick`\ndaemon - #?🚀 yesæøå  daemon 1.5 key:  `tick`the key: >  {brace}, TUI-DO remote\nyes, \"quoted\", &amp,",
+    "summary": "the   clients TUI-DO a -, with |: TUI-DO\nx:y #clients\n-: \"quoted\" fix 1.5 &amp {brace} -- #\"quoted\" #> #a -, yes: &amp a\n--\n|daemon"
+   },
+   "yaml": "title: >-\n  core: `tick`\n\n  daemon - #?🚀 yesæøå  daemon 1.5 key:  `tick`the key: >  {brace}, TUI-DO\n  remote\n\n  yes, \"quoted\", &amp,\nsummary: |-\n  the   clients TUI-DO a -, with |: TUI-DO\n  x:y #clients\n  -: \"quoted\" fix 1.5 &amp {brace} -- #\"quoted\" #> #a -, yes: &amp a\n  --\n  |daemon\n"
+  },
+  {
+   "name": "fuzz-376",
+   "data": {
+    "title": "x:y: &amp\n- clients  ,    #\t fix it's  [bracket] remote | #æøå #very-long-hyphenated-identifier-without-spaces the   -  #tag 50% [bracket] daemon | *star æøå: `tick`  x:y background: @at #1    æøå: fix   : `tick`: daemon  &amp   : remote remote,",
+    "summary": "thecore: #`tick` the, \twith, ? with #1, clients, #tag\n#1 key:, \"quoted\"add>, key:\n!bang it's [bracket] #very-long-hyphenated-identifier-without-spaces 50% x:ybackground  remote"
+   },
+   "yaml": "title: \"x:y: &amp\\n- clients  ,    #\\t fix it's  [bracket] remote | #æøå #very-long-hyphenated-identifier-without-spaces the   -  #tag 50% [bracket] daemon | *star æøå: `tick`  x:y background: @at #1    æøå: fix   : `tick`: daemon  &amp   : remote remote,\"\nsummary: \"thecore: #`tick` the, \\twith, ? with #1, clients, #tag\\n#1 key:, \\\"quoted\\\"add>, key:\\n!bang it's [bracket] #very-long-hyphenated-identifier-without-spaces 50% x:ybackground  remote\"\n"
+  },
+  {
+   "name": "fuzz-377",
+   "data": {
+    "title": "> > \t null: [bracket] a #core::",
+    "summary": ":"
+   },
+   "yaml": "title: \"> > \\t null: [bracket] a #core::\"\nsummary: ':'\n"
+  },
+  {
+   "name": "fuzz-378",
+   "data": {
+    "title": "2026-10-19 &amp 1.5 x:y: null: 🚀\næøåclients clients  \"quoted\"a !bang #core:the\nthe #   \"quoted\"  : clients |, x:y core:, background it's key:: {brace} (paren) clients very-long-hyphenated-identifier-without-spaces -- `tick`, [bracket]  key: &amp:",
+    "summary": "(paren)  !bang #fix: remote, (paren) with: yes  TUI-DO: "
+   },
+   "yaml": "title: >-\n  2026-10-19 &amp 1.5 x:y: null: 🚀\n\n  æøåclients clients  \"quoted\"a !bang #core:the\n\n  the #   \"quoted\"  : clients |, x:y core:, background it's key:: {brace}\n  (paren) clients very-long-hyphenated-identifier-without-spaces -- `tick`,\n  [bracket]  key: &amp:\nsummary: '(paren)  !bang #fix: remote, (paren) with: yes  TUI-DO: '\n"
+  },
+  {
+   "name": "fuzz-379",
+   "data": {
+    "title": "core:\nwith   core:{brace}, 🚀: ",
+    "summary": "?"
+   },
+   "yaml": "title: |-\n  core:\n  with   core:{brace}, 🚀: \nsummary: '?'\n"
+  },
+  {
+   "name": "fuzz-380",
+   "data": {
+    "title": "x:y\nit's #-\n!bang #background>",
+    "summary": ">\n🚀\n1.5     yes: #tag #key: (paren) null, [bracket]50%, - #key:  -:  TUI-DO  TUI-DO x:y|: yes TUI-DO, |  the\n50%\nbackground 2026-10-19 #"
+   },
+   "yaml": "title: |-\n  x:y\n  it's #-\n  !bang #background>\nsummary: >-\n  >\n\n  🚀\n\n  1.5     yes: #tag #key: (paren) null, [bracket]50%, - #key:  -:  TUI-DO \n  TUI-DO x:y|: yes TUI-DO, |  the\n\n  50%\n\n  background 2026-10-19 #\n"
+  },
+  {
+   "name": "fuzz-381",
+   "data": {
+    "title": "very-long-hyphenated-identifier-without-spaces: æøå very-long-hyphenated-identifier-without-spaces #it'sæøå: 50% [bracket]",
+    "summary": "fix  #tag #add #!bang\n\"quoted\" | #"
+   },
+   "yaml": "title: >-\n  very-long-hyphenated-identifier-without-spaces: æøå\n  very-long-hyphenated-identifier-without-spaces #it'sæøå: 50% [bracket]\nsummary: |-\n  fix  #tag #add #!bang\n  \"quoted\" | #\n"
+  },
+  {
+   "name": "fuzz-382",
+   "data": {
+    "title": "2026-10-19",
+    "summary": "*starclients TUI-DO  core:: key:\n@at @at: fix   fix very-long-hyphenated-identifier-without-spaces[bracket]#tag #`tick`  background "
+   },
+   "yaml": "title: '2026-10-19'\nsummary: >-\n  *starclients TUI-DO  core:: key:\n\n  @at @at: fix   fix very-long-hyphenated-identifier-without-spaces[bracket]#tag\n  #`tick`  background \n"
+  },
+  {
+   "name": "fuzz-383",
+   "data": {
+    "title": "*star with",
+    "summary": "? #clients #?  ? \"quoted\" \"quoted\" æøå "
+   },
+   "yaml": "title: '*star with'\nsummary: '? #clients #?  ? \"quoted\" \"quoted\" æøå '\n"
+  },
+  {
+   "name": "fuzz-384",
+   "data": {
+    "title": "a\nTUI-DO`tick`1.5 clients  background \t, |",
+    "summary": "> yes #æøå: \t #clients key: clients "
+   },
+   "yaml": "title: \"a\\nTUI-DO`tick`1.5 clients  background \\t, |\"\nsummary: \"> yes #æøå: \\t #clients key: clients \"\n"
+  },
+  {
+   "name": "fuzz-385",
+   "data": {
+    "title": "2026-10-19(paren),",
+    "summary": "remote #x:y-\nyes yes, `tick` æøå #"
+   },
+   "yaml": "title: 2026-10-19(paren),\nsummary: |-\n  remote #x:y-\n  yes yes, `tick` æøå #\n"
+  },
+  {
+   "name": "fuzz-386",
+   "data": {
+    "title": "(paren) with: ",
+    "summary": "#tag\næøå: ? `tick` @at very-long-hyphenated-identifier-without-spaces, 2026-10-19"
+   },
+   "yaml": "title: '(paren) with: '\nsummary: |-\n  #tag\n  æøå: ? `tick` @at very-long-hyphenated-identifier-without-spaces, 2026-10-19\n"
+  },
+  {
+   "name": "fuzz-387",
+   "data": {
+    "title": "&amp\n&amp |, 50% null,",
+    "summary": "the #\"quoted\": 2026-10-19, x:y 1.5: "
+   },
+   "yaml": "title: |-\n  &amp\n  &amp |, 50% null,\nsummary: 'the #\"quoted\": 2026-10-19, x:y 1.5: '\n"
+  },
+  {
+   "name": "fuzz-388",
+   "data": {
+    "title": "null (paren)\n2026-10-19  | @at ",
+    "summary": " : fix  with add core: *star, æøå #add: \t very-long-hyphenated-identifier-without-spaces\n"
+   },
+   "yaml": "title: |-\n  null (paren)\n  2026-10-19  | @at \nsummary: \" : fix  with add core: *star, æøå #add: \\t very-long-hyphenated-identifier-without-spaces\\n\"\n"
+  },
+  {
+   "name": "fuzz-389",
+   "data": {
+    "title": "a,   #very-long-hyphenated-identifier-without-spaces, @at clients: a æøå  #1 #\t  `tick`  ",
+    "summary": "1.5  "
+   },
+   "yaml": "title: \"a,   #very-long-hyphenated-identifier-without-spaces, @at clients: a æøå  #1 #\\t  `tick`  \"\nsummary: '1.5  '\n"
+  },
+  {
+   "name": "fuzz-390",
+   "data": {
+    "title": "&amp add!bang\n : core: #\t\n   very-long-hyphenated-identifier-without-spaces #clients it's `tick`  50%, very-long-hyphenated-identifier-without-spaces #daemon {brace} yes, fix core:  !bang\n2026-10-19: add #core: background key: #",
+    "summary": "null: > *star: a  add, ? (paren), æøå  core:: --- very-long-hyphenated-identifier-without-spaces #remote \"quoted\", &amp #clients >æøå:"
+   },
+   "yaml": "title: \"&amp add!bang\\n : core: #\\t\\n   very-long-hyphenated-identifier-without-spaces #clients it's `tick`  50%, very-long-hyphenated-identifier-without-spaces #daemon {brace} yes, fix core:  !bang\\n2026-10-19: add #core: background key: #\"\nsummary: >-\n  null: > *star: a  add, ? (paren), æøå  core:: ---\n  very-long-hyphenated-identifier-without-spaces #remote \"quoted\", &amp #clients\n  >æøå:\n"
+  },
+  {
+   "name": "fuzz-391",
+   "data": {
+    "title": "daemon: æøå, yes daemon #- æøå: background #tag #2026-10-19 #tag!bang x:y #tag\n50%: remote [bracket]  1.5 !bang `tick` #>null\n@at  , > 1.5",
+    "summary": "a\n- #background\n(paren), - #core:\nTUI-DO - > 50%: 1.5 with #&amp *starit's&amp 50%\n[bracket] #\"quoted\"  the #yes (paren)fix: !bang a: null, 50% | 50%\nnull: x:y, \t  x:y \"quoted\" #*star  background #with\n-\n"
+   },
+   "yaml": "title: |-\n  daemon: æøå, yes daemon #- æøå: background #tag #2026-10-19 #tag!bang x:y #tag\n  50%: remote [bracket]  1.5 !bang `tick` #>null\n  @at  , > 1.5\nsummary: \"a\\n- #background\\n(paren), - #core:\\nTUI-DO - > 50%: 1.5 with #&amp *starit's&amp 50%\\n[bracket] #\\\"quoted\\\"  the #yes (paren)fix: !bang a: null, 50% | 50%\\nnull: x:y, \\t  x:y \\\"quoted\\\" #*star  background #with\\n-\\n\"\n"
+  },
+  {
+   "name": "fuzz-392",
+   "data": {
+    "title": "--very-long-hyphenated-identifier-without-spaces\n*star #TUI-DO, key:  it's",
+    "summary": "?  🚀@at key: !bang\n"
+   },
+   "yaml": "title: |-\n  --very-long-hyphenated-identifier-without-spaces\n  *star #TUI-DO, key:  it's\nsummary: |\n  ?  🚀@at key: !bang\n"
+  },
+  {
+   "name": "fuzz-393",
+   "data": {
+    "title": "clients: *star  ?  *star (paren), key:  50%\n[bracket] #",
+    "summary": "add | &amp #-: key: #@at (paren) #the "
+   },
+   "yaml": "title: |-\n  clients: *star  ?  *star (paren), key:  50%\n  [bracket] #\nsummary: 'add | &amp #-: key: #@at (paren) #the '\n"
+  },
+  {
+   "name": "fuzz-394",
+   "data": {
+    "title": "\"quoted\" # : daemon, ?clients\nfix    , [bracket]",
+    "summary": "--, --: the 1.5: TUI-DO | #[bracket] add"
+   },
+   "yaml": "title: |-\n  \"quoted\" # : daemon, ?clients\n  fix    , [bracket]\nsummary: '--, --: the 1.5: TUI-DO | #[bracket] add'\n"
+  },
+  {
+   "name": "fuzz-395",
+   "data": {
+    "title": "`tick`: {brace}",
+    "summary": "2026-10-19  it's,"
+   },
+   "yaml": "title: '`tick`: {brace}'\nsummary: 2026-10-19  it's,\n"
+  },
+  {
+   "name": "fuzz-396",
+   "data": {
+    "title": "50%  (paren): `tick`  null #add: @at yes, the background, a  \"quoted\"- #1, ",
+    "summary": " @at, "
+   },
+   "yaml": "title: '50%  (paren): `tick`  null #add: @at yes, the background, a  \"quoted\"- #1, '\nsummary: ' @at, '\n"
+  },
+  {
+   "name": "fuzz-397",
+   "data": {
+    "title": "with *star: [bracket]: add\n\t fix yes  add >, æøå clients #--, it's #*star -- -, it's, add  TUI-DO #very-long-hyphenated-identifier-without-spaces yes core:  ",
+    "summary": "daemon: @at \"quoted\" #very-long-hyphenated-identifier-without-spaces,"
+   },
+   "yaml": "title: \"with *star: [bracket]: add\\n\\t fix yes  add >, æøå clients #--, it's #*star -- -, it's, add  TUI-DO #very-long-hyphenated-identifier-without-spaces yes core:  \"\nsummary: 'daemon: @at \"quoted\" #very-long-hyphenated-identifier-without-spaces,'\n"
+  },
+  {
+   "name": "fuzz-398",
+   "data": {
+    "title": "-  \nnull  daemon (paren)\"quoted\"  ",
+    "summary": "|: 🚀the "
+   },
+   "yaml": "title: |-\n  -  \n  null  daemon (paren)\"quoted\"  \nsummary: '|: 🚀the '\n"
+  },
+  {
+   "name": "fuzz-399",
+   "data": {
+    "title": "a 1.5: |!bang #with\n#1æøå key:\n   fix add🚀: fix #tag: ?\n`tick`, fix #50%\n[bracket], æøå\nadd",
+    "summary": "clients a -- >  very-long-hyphenated-identifier-without-spaces, core:, [bracket]"
+   },
+   "yaml": "title: |-\n  a 1.5: |!bang #with\n  #1æøå key:\n     fix add🚀: fix #tag: ?\n  `tick`, fix #50%\n  [bracket], æøå\n  add\nsummary: >-\n  clients a -- >  very-long-hyphenated-identifier-without-spaces, core:,\n  [bracket]\n"
+  },
+  {
+   "name": "task",
+   "data": {
+    "id": "26-955",
+    "title": "TUI-DO Core: background daemon with remote clients",
+    "state": "in-progress",
+    "project": "tui-do",
+    "due": null,
+    "recurrence": null,
+    "plan": "26-955-molten-banner",
+    "created": "2026-11-07T09:00:10.859Z",
+    "position": -3,
+    "completed": null,
+    "attachments": [
+     "/Users/me/a.png",
+     "b c.png"
+    ]
+   },
+   "yaml": "id: 26-955\ntitle: 'TUI-DO Core: background daemon with remote clients'\nstate: in-progress\nproject: tui-do\ndue: null\nrecurrence: null\nplan: 26-955-molten-banner\ncreated: '2026-11-07T09:00:10.859Z'\nposition: -3\ncompleted: null\nattachments:\n  - /Users/me/a.png\n  - b c.png\n"
+  },
+  {
+   "name": "project",
+   "data": {
+    "title": "Cube",
+    "muted": false,
+    "directory": "~/",
+    "ssh": {
+     "host": "cube",
+     "user": "nwa",
+     "port": 2222,
+     "identityFile": "~/.ssh/id_ed25519"
+    }
+   },
+   "yaml": "title: Cube\nmuted: false\ndirectory: ~/\nssh:\n  host: cube\n  user: nwa\n  port: 2222\n  identityFile: ~/.ssh/id_ed25519\n"
+  },
+  {
+   "name": "empty-collections",
+   "data": {
+    "attachments": [],
+    "ssh": {}
+   },
+   "yaml": "attachments: []\nssh: {}\n"
+  },
+  {
+   "name": "numbers",
+   "data": {
+    "a": 0,
+    "b": -525,
+    "c": 1.5,
+    "d": 1e+21,
+    "e": {
+     "$num": "-0"
+    },
+    "f": 0.1,
+    "g": 123456789,
+    "h": 9007199254740992,
+    "i": 1e-7
+   },
+   "yaml": "a: 0\nb: -525\nc: 1.5\nd: 1.e+21\ne: -0.0\nf: 0.1\ng: 123456789\nh: 9007199254740992\ni: 1.e-7\n"
+  },
+  {
+   "name": "dates",
+   "data": {
+    "a": {
+     "$date": 1772323200000
+    },
+    "b": {
+     "$date": 1762199718600
+    }
+   },
+   "yaml": "a: 2026-03-01T00:00:00.000Z\nb: 2025-11-03T19:55:18.600Z\n"
+  },
+  {
+   "name": "bools",
+   "data": {
+    "a": true,
+    "b": false
+   },
+   "yaml": "a: true\nb: false\n"
+  },
+  {
+   "name": "nested-seq",
+   "data": {
+    "a": [
+     [
+      1,
+      2
+     ],
+     [],
+     [
+      "x"
+     ]
+    ],
+    "b": [
+     {
+      "k": "v",
+      "k2": "v2"
+     }
+    ]
+   },
+   "yaml": "a:\n  - - 1\n    - 2\n  - []\n  - - x\nb:\n  - k: v\n    k2: v2\n"
+  }
+ ],
+ "loads": [
+  {
+   "yaml": "due: 2026-03-01",
+   "data": {
+    "due": {
+     "$date": 1772323200000
+    }
+   }
+  },
+  {
+   "yaml": "due: '2026-03-01'",
+   "data": {
+    "due": "2026-03-01"
+   }
+  },
+  {
+   "yaml": "t: 2026-02-20T23:33:57.161Z",
+   "data": {
+    "t": {
+     "$date": 1771630437161
+    }
+   }
+  },
+  {
+   "yaml": "t: 2026-02-20 23:33:57",
+   "data": {
+    "t": {
+     "$date": 1771630437000
+    }
+   }
+  },
+  {
+   "yaml": "t: 2026-1-5t1:02:03+01",
+   "data": {
+    "t": {
+     "$date": 1767571323000
+    }
+   }
+  },
+  {
+   "yaml": "t: 2025-11-03T19:55:18.600725Z",
+   "data": {
+    "t": {
+     "$date": 1762199718600
+    }
+   }
+  },
+  {
+   "yaml": "d: 2026-02-30",
+   "data": {
+    "d": "2026-02-30"
+   }
+  },
+  {
+   "yaml": "a: yes\nb: No\nc: on\nd: y",
+   "data": {
+    "a": true,
+    "b": false,
+    "c": true,
+    "d": true
+   }
+  },
+  {
+   "yaml": "n: ~\nm:\no: null",
+   "data": {
+    "false": null,
+    "m": null,
+    "o": null
+   }
+  },
+  {
+   "yaml": "i: 0123\nj: 0x1F\nk: 1_000\nl: 1:30\nm: 0o17\nn: 08\no: 09:30",
+   "data": {
+    "i": 83,
+    "j": 31,
+    "k": 1000,
+    "l": 90,
+    "m": "0o17",
+    "false": "08",
+    "o": 570
+   }
+  },
+  {
+   "yaml": "f: 1.5\ng: .5\nh: 1e3\ni: 1.e+21\nj: .inf\nk: -.inf",
+   "data": {
+    "f": 1.5,
+    "g": 0.5,
+    "h": "1e3",
+    "i": 1e+21,
+    "j": {
+     "$num": "Infinity"
+    },
+    "k": {
+     "$num": "-Infinity"
+    }
+   }
+  },
+  {
+   "yaml": "title: >-\n  Add particles that are long\n  and folded",
+   "data": {
+    "title": "Add particles that are long and folded"
+   }
+  },
+  {
+   "yaml": "summary: |\n  line one\n  line two\n",
+   "data": {
+    "summary": "line one\nline two\n"
+   }
+  },
+  {
+   "yaml": "s: \"a\\tb\\x41\\u00e9\"",
+   "data": {
+    "s": "a\tbAé"
+   }
+  },
+  {
+   "yaml": "a: [1, two, 'three']\nb: {x: 1}",
+   "data": {
+    "a": [
+     1,
+     "two",
+     "three"
+    ],
+    "b": {
+     "x": 1
+    }
+   }
+  },
+  {
+   "yaml": "list:\n  - a\n  - b",
+   "data": {
+    "list": [
+     "a",
+     "b"
+    ]
+   }
+  },
+  {
+   "yaml": "base: &b {a: 1}\nchild:\n  <<: *b\n  c: 2",
+   "data": {
+    "base": {
+     "a": 1
+    },
+    "child": {
+     "a": 1,
+     "c": 2
+    }
+   }
+  },
+  {
+   "yaml": "yes: 1\n1: 2",
+   "data": {
+    "1": 2,
+    "true": 1
+   }
+  }
+ ]
+}

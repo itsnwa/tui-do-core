@@ -5,10 +5,7 @@
 //! `token` (bearer token, 0600), `endpoint` (base URL clients connect to),
 //! and `claude-hooks/`.
 
-mod api;
-mod hooks;
-mod session;
-mod utf8;
+use tui_do_core::{api, hooks, session};
 
 use std::io::IsTerminal;
 use std::os::unix::fs::PermissionsExt;
