@@ -155,7 +155,7 @@ pub async fn install(
     progress("Adding it to the fleet");
     let mut last_error = None;
     for _ in 0..15 {
-        match fleet.add(&address, &token, own_id).await {
+        match fleet.add(&address, &token, own_id, Some(&req.host)).await {
             Ok(device) => {
                 progress("Done");
                 return Ok(device);

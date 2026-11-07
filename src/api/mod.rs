@@ -37,6 +37,7 @@ pub struct AppState {
     pub registry: Arc<Registry>,
     pub config: Arc<ConfigStore>,
     pub fleet: Arc<crate::fleet::Fleet>,
+    pub relays: Arc<crate::relay::Relays>,
     /// This core's loopback base URL, for requests addressed to its own device id.
     pub local_endpoint: Arc<str>,
     pub workspace: Arc<SharedWorkspace>,
@@ -82,9 +83,11 @@ async fn require_token(State(state): State<AppState>, req: Request, next: Next) 
         .and_then(|q| q.split('&').find_map(|pair| pair.strip_prefix("token=")));
     let presented = from_header.or(from_query);
     let full = presented.is_some_and(|t| constant_time_eq(t.as_bytes(), state.token.as_bytes()));
-    // MCP-only tokens (see mcp::issue_token) open /mcp and nothing else
-    let mcp_only = req.uri().path().starts_with("/mcp")
-        && presented.is_some_and(|t| state.mcp_tokens.contains(t));
+    // MCP-only tokens (see mcp::issue_token, and each fleet device's) open
+    // the MCP endpoints and nothing else
+    let path = req.uri().path();
+    let mcp_only = (path.starts_with("/mcp") || path == "/v0/mcp/call")
+        && presented.is_some_and(|t| state.mcp_tokens.contains(t) || state.fleet.is_mcp_token(t));
     if full || mcp_only {
         next.run(req).await
     } else {
@@ -313,8 +316,20 @@ async fn attach_loop(mut socket: WebSocket, registry: Arc<Registry>, id: String)
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum EventsClientMessage {
-    Input { id: String, data: String },
-    Resize { id: String, cols: u16, rows: u16 },
+    Input {
+        id: String,
+        data: String,
+        /// A fleet device's session (relayed); absent for this core's own.
+        #[serde(default)]
+        device: Option<String>,
+    },
+    Resize {
+        id: String,
+        cols: u16,
+        rows: u16,
+        #[serde(default)]
+        device: Option<String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -330,10 +345,13 @@ async fn events(
     ws: WebSocketUpgrade,
 ) -> Response {
     let with_output = matches!(query.output.as_deref(), Some("1" | "true"));
-    ws.on_upgrade(move |socket| events_loop(socket, state.registry, with_output))
+    ws.on_upgrade(move |socket| events_loop(socket, state, with_output))
 }
 
-async fn events_loop(mut socket: WebSocket, registry: Arc<Registry>, with_output: bool) {
+async fn events_loop(mut socket: WebSocket, state: AppState, with_output: bool) {
+    let registry = Arc::clone(&state.registry);
+    let relays = Arc::clone(&state.relays);
+    let own_id = state.config.get().device_id;
     let mut rx = registry.subscribe();
     // Clients sync from this list, then apply events in order.
     if !send_json(
@@ -348,6 +366,7 @@ async fn events_loop(mut socket: WebSocket, registry: Arc<Registry>, with_output
         tokio::select! {
             event = rx.recv() => match event {
                 Ok(Event::Output { .. }) if !with_output => {}
+                Ok(Event::DeviceEvent { ref event, .. }) if !with_output && event["type"] == "output" => {}
                 Ok(event) => {
                     if !send_json(&mut socket, &event).await {
                         break;
@@ -364,8 +383,14 @@ async fn events_loop(mut socket: WebSocket, registry: Arc<Registry>, with_output
             },
             msg = socket.recv() => match msg {
                 Some(Ok(Message::Text(text))) => match serde_json::from_str::<EventsClientMessage>(&text) {
-                    Ok(EventsClientMessage::Input { id, data }) => { registry.input(&id, data.into_bytes()); }
-                    Ok(EventsClientMessage::Resize { id, cols, rows }) => { registry.resize(&id, cols, rows); }
+                    Ok(EventsClientMessage::Input { device: Some(device), id, data }) if device != own_id => {
+                        relays.send(&device, json!({ "type": "input", "id": id, "data": data }).to_string());
+                    }
+                    Ok(EventsClientMessage::Resize { device: Some(device), id, cols, rows }) if device != own_id => {
+                        relays.send(&device, json!({ "type": "resize", "id": id, "cols": cols, "rows": rows }).to_string());
+                    }
+                    Ok(EventsClientMessage::Input { id, data, .. }) => { registry.input(&id, data.into_bytes()); }
+                    Ok(EventsClientMessage::Resize { id, cols, rows, .. }) => { registry.resize(&id, cols, rows); }
                     Err(err) => tracing::debug!(%err, "ignoring client message"),
                 },
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,

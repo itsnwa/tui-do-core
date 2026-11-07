@@ -236,3 +236,16 @@ A home core can know other machines' cores (devices) and forward requests to the
 | `POST` | `/v0/fleet/install` | `{ host, port?, identityFile?, version? }` | the new device, once it's installed and reachable (takes about a minute); `502` with the reason if it fails |
 
 The home core connects with `ssh` (key-based, no prompts) to `host` (an alias from `~/.ssh/config`, `host` or `user@host`), and on that machine: downloads the GitHub release matching the home core's version for its platform (macOS arm64, Linux x86_64 or arm64), checks its SHA-256, installs it to `~/.tui-do/bin`, runs it as a systemd user service (Linux) or launchd agent (macOS), turns on remote access, and reports its Tailscale address and token, which the home core uses to add it to the fleet. Requires `curl`, `tar` and Tailscale on the target; on Linux, `loginctl enable-linger` keeps it running while you're logged out. Progress is sent on `/v0/events` as `{ "type": "installProgress", "host", "step" }`.
+
+## Fleet events and runners
+
+The home core relays every device's events on its own `/v0/events`:
+
+```json
+{ "type": "deviceEvent", "device": "<id>", "event": { "type": "output", "id": "my-task", "data": "…" } }
+{ "type": "deviceStatus", "device": "<id>", "online": false }
+```
+
+`event` is exactly what that device sends on its own stream (`sessions`, `sessionCreated`, `output`, `agentState`, …). Without `?output=1`, relayed `output` events are left out too. Clients load the current state with `GET /v0/fleet` and `GET /v0/fleet/sessions`, then apply events. To type into a device's session over the same socket, add its id: `{ "type": "input", "device": "<id>", "id": "my-task", "data": "ls\n" }` (also for `resize`); the home core passes it on in order.
+
+When a device is added, the home core turns on its own remote access and gives the device a home link (`PUT /v0/fleet/home { address, token }` on the device): the home core's Tailscale address and a token that only opens the home core's MCP endpoints (`/mcp`, `/v0/mcp/call`). A core without a workspace (a runner) forwards MCP tool calls there, so `tui-do-core mcp` works the same on every machine.

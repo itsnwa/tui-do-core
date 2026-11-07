@@ -23,8 +23,19 @@ pub struct CoreConfig {
     /// fleet reach it there). Off until the machine joins a fleet.
     #[serde(default)]
     pub remote_access: bool,
+    /// On a runner: the home core to forward MCP tool calls to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<HomeLink>,
     #[serde(flatten)]
     pub other: serde_json::Map<String, serde_json::Value>,
+}
+
+/// How a runner reaches its home core: its Tailscale base URL and an
+/// MCP-only token the home core issued for this runner.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HomeLink {
+    pub address: String,
+    pub token: String,
 }
 
 pub struct ConfigStore {

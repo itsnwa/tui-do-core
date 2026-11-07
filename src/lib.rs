@@ -10,6 +10,7 @@ pub mod install;
 pub mod links;
 pub mod mcp;
 pub mod net;
+pub mod relay;
 pub mod session;
 mod utf8;
 pub mod workspace;

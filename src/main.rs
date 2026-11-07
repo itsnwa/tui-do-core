@@ -13,6 +13,7 @@ use tui_do_core::config::ConfigStore;
 use tui_do_core::fleet::Fleet;
 use tui_do_core::links::{SessionLink, TaskSessions};
 use tui_do_core::mcp::TuiDoMcp;
+use tui_do_core::relay::Relays;
 use tui_do_core::workspace::shared::SharedWorkspace;
 use tui_do_core::{api, hooks, net, session};
 
@@ -117,12 +118,18 @@ async fn serve() -> anyhow::Result<()> {
     std::fs::write(dir.join("endpoint"), format!("http://{local}"))?;
     tracing::info!(%local, dir = %dir.display(), "tui-do-core listening");
 
+    let fleet = Arc::new(Fleet::load(dir.join("fleet.json"))?);
+    let relays = Arc::new(Relays::new(registry.sender()));
+    for device in fleet.devices() {
+        relays.start(device);
+    }
     let device = config.get();
     tracing::info!(id = %device.device_id, name = %device.device_name, "device");
     let app = api::router(api::AppState {
         registry: Arc::clone(&registry),
         config: Arc::clone(&config),
-        fleet: Arc::new(Fleet::load(dir.join("fleet.json"))?),
+        fleet: Arc::clone(&fleet),
+        relays: Arc::clone(&relays),
         local_endpoint: format!("http://{local}").into(),
         workspace,
         sessions: Arc::new(TaskSessions::new(dir.join("task-sessions"))),

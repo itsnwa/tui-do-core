@@ -97,13 +97,26 @@ pub enum Event {
         host: String,
         step: String,
     },
+    /// An event from a fleet device's own stream (relayed by the home core).
+    DeviceEvent {
+        device: String,
+        event: serde_json::Value,
+    },
+    /// A fleet device became reachable or unreachable.
+    DeviceStatus {
+        device: String,
+        online: bool,
+    },
 }
 
 impl Event {
     /// The session an event is about; empty for workspace events.
     pub fn session_id(&self) -> &str {
         match self {
-            Event::WorkspaceChanged { .. } | Event::InstallProgress { .. } => "",
+            Event::WorkspaceChanged { .. }
+            | Event::InstallProgress { .. }
+            | Event::DeviceEvent { .. }
+            | Event::DeviceStatus { .. } => "",
             Event::SessionCreated { session } => &session.id,
             Event::Output { id, .. }
             | Event::SessionExited { id, .. }

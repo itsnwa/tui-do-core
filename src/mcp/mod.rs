@@ -19,6 +19,7 @@ use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde::{Deserialize, Serialize};
 
+use crate::config::{ConfigStore, HomeLink};
 use crate::links::{SessionLink, TaskSessions};
 use crate::workspace::shared::SharedWorkspace;
 
@@ -40,13 +41,41 @@ pub enum CallOutcome {
     Error(String),
 }
 
-/// Run a call against the workspace (in the daemon), off the async workers.
+/// Send a call to another core's `POST /v0/mcp/call`.
+async fn forward_call(
+    client: &reqwest::Client,
+    endpoint: &str,
+    token: &str,
+    call: &ForwardedCall,
+) -> CallOutcome {
+    let sent = client
+        .post(format!("{endpoint}/v0/mcp/call"))
+        .bearer_auth(token)
+        .json(call)
+        .send()
+        .await;
+    match sent {
+        Ok(res) if res.status().is_success() => res
+            .json::<CallOutcome>()
+            .await
+            .unwrap_or_else(|e| CallOutcome::Error(format!("bad answer from tui-do-core: {e}"))),
+        Ok(res) => CallOutcome::Error(format!("tui-do-core answered {}", res.status())),
+        Err(e) => CallOutcome::Error(format!("tui-do-core isn't reachable at {endpoint}: {e}")),
+    }
+}
+
+/// Run a call in the daemon: against its workspace, off the async workers,
+/// or, on a runner (no workspace), on the home core it was linked to.
 pub async fn run_call(
     workspace: Arc<SharedWorkspace>,
     sessions: Arc<TaskSessions>,
+    home: Option<HomeLink>,
     call: ForwardedCall,
 ) -> CallOutcome {
     let Some(ws) = workspace.current() else {
+        if let Some(home) = home {
+            return forward_call(&reqwest::Client::new(), &home.address, &home.token, &call).await;
+        }
         return CallOutcome::Error(
             "Workspace not configured. Please select a workspace folder first.".into(),
         );
@@ -74,6 +103,7 @@ enum Backend {
     Local {
         workspace: Arc<SharedWorkspace>,
         sessions: Arc<TaskSessions>,
+        config: Arc<ConfigStore>,
     },
     /// In `tui-do-core mcp`: forward to the daemon over HTTP.
     Daemon {
@@ -90,11 +120,16 @@ pub struct TuiDoMcp {
 }
 
 impl TuiDoMcp {
-    pub fn local(workspace: Arc<SharedWorkspace>, sessions: Arc<TaskSessions>) -> Self {
+    pub fn local(
+        workspace: Arc<SharedWorkspace>,
+        sessions: Arc<TaskSessions>,
+        config: Arc<ConfigStore>,
+    ) -> Self {
         Self {
             backend: Backend::Local {
                 workspace,
                 sessions,
+                config,
             },
         }
     }
@@ -115,13 +150,20 @@ impl TuiDoMcp {
             Backend::Local {
                 workspace,
                 sessions,
+                config,
             } => {
                 let call = ForwardedCall {
                     name,
                     arguments,
                     session: None,
                 };
-                run_call(Arc::clone(workspace), Arc::clone(sessions), call).await
+                run_call(
+                    Arc::clone(workspace),
+                    Arc::clone(sessions),
+                    config.get().home,
+                    call,
+                )
+                .await
             }
             Backend::Daemon {
                 endpoint,
@@ -134,23 +176,7 @@ impl TuiDoMcp {
                     arguments,
                     session: session.clone(),
                 };
-                let sent = client
-                    .post(format!("{endpoint}/v0/mcp/call"))
-                    .bearer_auth(token)
-                    .json(&call)
-                    .send()
-                    .await;
-                match sent {
-                    Ok(res) if res.status().is_success() => {
-                        res.json::<CallOutcome>().await.unwrap_or_else(|e| {
-                            CallOutcome::Error(format!("bad answer from tui-do-core: {e}"))
-                        })
-                    }
-                    Ok(res) => CallOutcome::Error(format!("tui-do-core answered {}", res.status())),
-                    Err(e) => CallOutcome::Error(format!(
-                        "tui-do-core isn't reachable at {endpoint}: {e}"
-                    )),
-                }
+                forward_call(client, endpoint, token, &call).await
             }
         }
     }

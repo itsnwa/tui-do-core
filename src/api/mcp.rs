@@ -17,12 +17,17 @@ use crate::links::SessionLink;
 use crate::mcp::{ForwardedCall, TuiDoMcp, run_call};
 
 pub fn routes(state: &AppState) -> axum::Router<AppState> {
-    let (workspace, sessions) = (Arc::clone(&state.workspace), Arc::clone(&state.sessions));
+    let (workspace, sessions, config) = (
+        Arc::clone(&state.workspace),
+        Arc::clone(&state.sessions),
+        Arc::clone(&state.config),
+    );
     let service = StreamableHttpService::new(
         move || {
             Ok(TuiDoMcp::local(
                 Arc::clone(&workspace),
                 Arc::clone(&sessions),
+                Arc::clone(&config),
             ))
         },
         Arc::new(LocalSessionManager::default()),
@@ -46,6 +51,7 @@ async fn forwarded_call(
     let outcome = run_call(
         Arc::clone(&state.workspace),
         Arc::clone(&state.sessions),
+        state.config.get().home,
         call,
     )
     .await;

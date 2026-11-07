@@ -22,6 +22,13 @@ pub struct Device {
     pub token: String,
     pub platform: String,
     pub added_at: String,
+    /// The ssh host it was installed through, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_host: Option<String>,
+    /// The token this device uses to call the home core's MCP tools (and
+    /// nothing else).
+    #[serde(default)]
+    pub mcp_token: String,
 }
 
 /// A device as clients see it: no token, plus whether it's reachable.
@@ -33,6 +40,7 @@ pub struct DeviceStatus {
     pub address: String,
     pub platform: String,
     pub added_at: String,
+    pub ssh_host: Option<String>,
     pub online: bool,
     pub version: Option<String>,
 }
@@ -144,7 +152,13 @@ impl Fleet {
 
     /// Register a device after checking it answers with its token. Adding a
     /// device that's already known updates its address and token.
-    pub async fn add(&self, address: &str, token: &str, own_id: &str) -> anyhow::Result<Device> {
+    pub async fn add(
+        &self,
+        address: &str,
+        token: &str,
+        own_id: &str,
+        ssh_host: Option<&str>,
+    ) -> anyhow::Result<Device> {
         let address = address.trim_end_matches('/').to_string();
         let info = self.identify(&address, token).await?;
         if info.id == own_id {
@@ -157,6 +171,8 @@ impl Fleet {
             token: token.to_string(),
             platform: info.platform,
             added_at: crate::workspace::dates::now_iso(),
+            ssh_host: ssh_host.map(str::to_string),
+            mcp_token: uuid::Uuid::new_v4().simple().to_string(),
         };
         let mut record = self.record.lock().unwrap_or_else(|p| p.into_inner());
         let mut next = record.clone();
@@ -166,12 +182,29 @@ impl Fleet {
                 existing.address.clone_from(&device.address);
                 existing.token.clone_from(&device.token);
                 existing.platform.clone_from(&device.platform);
+                if device.ssh_host.is_some() {
+                    existing.ssh_host.clone_from(&device.ssh_host);
+                }
+                if existing.mcp_token.is_empty() {
+                    existing.mcp_token.clone_from(&device.mcp_token);
+                }
             }
             None => next.devices.push(device.clone()),
         }
         self.save(&next)?;
+        let stored = next
+            .devices
+            .iter()
+            .find(|d| d.id == device.id)
+            .cloned()
+            .unwrap_or(device);
         *record = next;
-        Ok(device)
+        Ok(stored)
+    }
+
+    /// Whether `token` is a device's MCP-only token.
+    pub fn is_mcp_token(&self, token: &str) -> bool {
+        !token.is_empty() && self.snapshot().devices.iter().any(|d| d.mcp_token == token)
     }
 
     pub fn remove(&self, id: &str) -> anyhow::Result<bool> {
@@ -199,6 +232,7 @@ impl Fleet {
                 address: d.address,
                 platform: d.platform,
                 added_at: d.added_at,
+                ssh_host: d.ssh_host,
             }
         });
         futures_util::future::join_all(checks).await

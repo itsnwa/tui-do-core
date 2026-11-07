@@ -7,7 +7,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{FromRequestParts, Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, delete, get, post};
+use axum::routing::{any, delete, get, post, put};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
@@ -25,6 +25,7 @@ pub fn routes() -> axum::Router<AppState> {
         .route("/v0/fleet", get(get_fleet))
         .route("/v0/fleet/devices", post(add_device))
         .route("/v0/fleet/install", post(install_device))
+        .route("/v0/fleet/home", put(set_home))
         .route("/v0/fleet/devices/{id}", delete(remove_device))
         .route("/v0/fleet/sessions", get(fleet_sessions))
         .route("/v0/devices/{id}/{*rest}", any(proxy))
@@ -52,9 +53,14 @@ async fn add_device(State(state): State<AppState>, Json(body): Json<AddDevice>) 
         return error(StatusCode::BAD_REQUEST, "address must be an http(s) URL");
     }
     let own_id = state.config.get().device_id;
-    match state.fleet.add(&body.address, &body.token, &own_id).await {
+    match state
+        .fleet
+        .add(&body.address, &body.token, &own_id, None)
+        .await
+    {
         Ok(device) => {
             tracing::info!(id = %device.id, name = %device.name, address = %device.address, "device added");
+            joined(&state, &device).await;
             let status = state
                 .fleet
                 .statuses()
@@ -77,6 +83,7 @@ async fn install_device(
     let events = state.registry.sender();
     match crate::install::install(req, &state.fleet, &own_id, &events).await {
         Ok(device) => {
+            joined(&state, &device).await;
             let status = state
                 .fleet
                 .statuses()
@@ -91,8 +98,60 @@ async fn install_device(
 
 async fn remove_device(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     match state.fleet.remove(&id) {
-        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(true) => {
+            state.relays.stop(&id);
+            StatusCode::NO_CONTENT.into_response()
+        }
         Ok(false) => error(StatusCode::NOT_FOUND, "no such device"),
+        Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{err:#}")),
+    }
+}
+
+/// A device joined (or was updated): relay its events, and tell it how to
+/// reach this core for MCP tool calls. That needs this core reachable over
+/// Tailscale, so remote access is turned on here too.
+async fn joined(state: &AppState, device: &Device) {
+    state.relays.start(device.clone());
+    if let Err(err) = link_home(state, device).await {
+        tracing::warn!(device = %device.name, error = %format!("{err:#}"), "couldn't give the device a home link");
+    }
+}
+
+async fn link_home(state: &AppState, device: &Device) -> anyhow::Result<()> {
+    if !state.config.get().remote_access {
+        state.config.update(|c| c.remote_access = true)?;
+    }
+    let ip = crate::net::tailscale_ipv4()
+        .await
+        .ok_or_else(|| anyhow::anyhow!("Tailscale isn't running here"))?;
+    let port = state.local_endpoint.rsplit(':').next().unwrap_or("47821");
+    let address = format!("http://{ip}:{port}");
+    let res = state
+        .fleet
+        .client()
+        .put(format!("{}/v0/fleet/home", device.address))
+        .bearer_auth(&device.token)
+        .json(&json!({ "address": address, "token": device.mcp_token }))
+        .send()
+        .await?;
+    anyhow::ensure!(
+        res.status().is_success(),
+        "the device answered {}",
+        res.status()
+    );
+    Ok(())
+}
+
+/// On a runner: remember which home core to forward MCP tool calls to.
+async fn set_home(
+    State(state): State<AppState>,
+    Json(link): Json<crate::config::HomeLink>,
+) -> Response {
+    if !(link.address.starts_with("http://") || link.address.starts_with("https://")) {
+        return error(StatusCode::BAD_REQUEST, "address must be an http(s) URL");
+    }
+    match state.config.update(|c| c.home = Some(link)) {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{err:#}")),
     }
 }
@@ -148,6 +207,8 @@ fn target(state: &AppState, id: &str) -> Option<Device> {
             token: state.token.to_string(),
             platform: String::new(),
             added_at: String::new(),
+            ssh_host: None,
+            mcp_token: String::new(),
         });
     }
     state.fleet.device(id)
