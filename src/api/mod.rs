@@ -8,6 +8,7 @@
 //! the terminal, then write this": it's sent on attach and again whenever a
 //! client fell too far behind to receive every output event.
 
+mod mcp;
 mod workspace;
 
 use std::sync::Arc;
@@ -23,6 +24,7 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
 
+use crate::links::TaskSessions;
 use crate::session::{Event, Registry, SpawnRequest};
 use crate::workspace::shared::SharedWorkspace;
 
@@ -32,6 +34,7 @@ pub const API_VERSION: u32 = 0;
 pub struct AppState {
     pub registry: Arc<Registry>,
     pub workspace: Arc<SharedWorkspace>,
+    pub sessions: Arc<TaskSessions>,
     pub token: Arc<str>,
 }
 
@@ -45,6 +48,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v0/sessions/{id}/attach", get(attach))
         .route("/v0/events", get(events))
         .merge(workspace::routes())
+        .merge(mcp::routes(&state))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
         .route("/v0/health", get(health))

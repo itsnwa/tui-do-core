@@ -197,3 +197,18 @@ These take a short ID or slug and answer like the TUI-DO MCP tools (business err
 ## Events
 
 `/v0/events` also carries `{ "type": "workspaceChanged", "areas": ["tasks", "plans"] }` when workspace files change, from the core or from outside (an editor, iCloud). Changes are coalesced over 150 ms.
+
+# MCP (for coding agents)
+
+The core is also the TUI-DO MCP server: 22 tools (`start_task`, `update_plan`, `complete_task`, `list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task`, projects, plans, daily notes, weekly updates) with the same names, descriptions and parameters as the original Node server, so existing agent instructions keep working. Results are JSON text; business errors (unknown task, `PROJECT_MISMATCH`, `SUMMARY_REQUIRED`) are normal results with an `error` or `warning` field.
+
+Two ways in:
+
+- **stdio** — register `tui-do-core mcp` as the server command (e.g. in `~/.claude.json`: `{"command": "/Users/me/.tui-do/bin/tui-do-core", "args": ["mcp"]}`). It forwards every call to the running core. When Claude Code launches it, it also passes along which Claude session that is, so `start_task` links the task to the session.
+- **HTTP** — `/mcp` (MCP streamable HTTP), with the core's token as `Authorization: Bearer <token>`. Useful from a remote machine through an SSH reverse tunnel.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `POST` | `/v0/mcp/call` | `{ name, arguments, session? }` | `{ result }` or `{ error }` (what `tui-do-core mcp` uses) |
+| `GET` | `/v0/tasks/{slug}/claude-session` | | `{ sessionId, cwd, linkedAt }` or 404 |
+| `PUT` | `/v0/tasks/{slug}/claude-session` | `{ sessionId, cwd }` (UUID, absolute path) | the stored link |
