@@ -228,3 +228,11 @@ A home core can know other machines' cores (devices) and forward requests to the
 | `DELETE` | `/v0/fleet/devices/{id}` | | 204 |
 | `GET` | `/v0/fleet/sessions` | | sessions on this core and every reachable device, each with a `device` id |
 | any | `/v0/devices/{id}/…` | | forwarded to that device's `/v0/…` with its token, including WebSockets (`/v0/devices/{id}/sessions/{sid}/attach`, `/v0/devices/{id}/events`). `{id}` may also be the home core's own id. `502` if the device isn't reachable. |
+
+## Installing on another machine
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `POST` | `/v0/fleet/install` | `{ host, port?, identityFile?, version? }` | the new device, once it's installed and reachable (takes about a minute); `502` with the reason if it fails |
+
+The home core connects with `ssh` (key-based, no prompts) to `host` (an alias from `~/.ssh/config`, `host` or `user@host`), and on that machine: downloads the GitHub release matching the home core's version for its platform (macOS arm64, Linux x86_64 or arm64), checks its SHA-256, installs it to `~/.tui-do/bin`, runs it as a systemd user service (Linux) or launchd agent (macOS), turns on remote access, and reports its Tailscale address and token, which the home core uses to add it to the fleet. Requires `curl`, `tar` and Tailscale on the target; on Linux, `loginctl enable-linger` keeps it running while you're logged out. Progress is sent on `/v0/events` as `{ "type": "installProgress", "host", "step" }`.

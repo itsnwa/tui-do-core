@@ -6,6 +6,7 @@ pub mod config;
 pub mod fleet;
 pub mod format;
 pub mod hooks;
+pub mod install;
 pub mod links;
 pub mod mcp;
 pub mod net;

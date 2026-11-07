@@ -2,7 +2,6 @@
 //! devices, sessions across the fleet, and `/v0/devices/{id}/…`, which
 //! forwards any request (including WebSockets) to that device with its token.
 
-
 use axum::Json;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{FromRequestParts, Path, Request, State};
@@ -16,6 +15,7 @@ use tokio_tungstenite::tungstenite;
 
 use super::{AppState, error};
 use crate::fleet::Device;
+use crate::install::InstallRequest;
 
 /// Largest request body forwarded to a device.
 const MAX_BODY: usize = 32 * 1024 * 1024;
@@ -24,6 +24,7 @@ pub fn routes() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/v0/fleet", get(get_fleet))
         .route("/v0/fleet/devices", post(add_device))
+        .route("/v0/fleet/install", post(install_device))
         .route("/v0/fleet/devices/{id}", delete(remove_device))
         .route("/v0/fleet/sessions", get(fleet_sessions))
         .route("/v0/devices/{id}/{*rest}", any(proxy))
@@ -63,6 +64,28 @@ async fn add_device(State(state): State<AppState>, Json(body): Json<AddDevice>) 
             Json(status).into_response()
         }
         Err(err) => error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
+    }
+}
+
+/// Install a core on another machine over ssh and add it (takes a minute;
+/// progress goes out as `installProgress` events).
+async fn install_device(
+    State(state): State<AppState>,
+    Json(req): Json<InstallRequest>,
+) -> Response {
+    let own_id = state.config.get().device_id;
+    let events = state.registry.sender();
+    match crate::install::install(req, &state.fleet, &own_id, &events).await {
+        Ok(device) => {
+            let status = state
+                .fleet
+                .statuses()
+                .await
+                .into_iter()
+                .find(|d| d.id == device.id);
+            Json(status).into_response()
+        }
+        Err(err) => error(StatusCode::BAD_GATEWAY, &format!("{err:#}")),
     }
 }
 

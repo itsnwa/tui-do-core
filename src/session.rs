@@ -92,13 +92,18 @@ pub enum Event {
     WorkspaceChanged {
         areas: Vec<String>,
     },
+    /// Progress installing a core on another machine (`POST /v0/fleet/install`).
+    InstallProgress {
+        host: String,
+        step: String,
+    },
 }
 
 impl Event {
     /// The session an event is about; empty for workspace events.
     pub fn session_id(&self) -> &str {
         match self {
-            Event::WorkspaceChanged { .. } => "",
+            Event::WorkspaceChanged { .. } | Event::InstallProgress { .. } => "",
             Event::SessionCreated { session } => &session.id,
             Event::Output { id, .. }
             | Event::SessionExited { id, .. }
@@ -179,7 +184,8 @@ fn valid_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
-fn expand_home(path: &str) -> PathBuf {
+/// Expand a leading `~/` to the home directory.
+pub fn expand_home(path: &str) -> PathBuf {
     match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
         (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
         _ if path == "~" => std::env::var_os("HOME").map_or_else(|| path.into(), PathBuf::from),
