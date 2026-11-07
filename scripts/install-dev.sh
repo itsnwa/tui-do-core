@@ -47,6 +47,13 @@ cat > "$plist" <<EOF
 EOF
 
 domain="gui/$(id -u)"
-launchctl bootout "$domain/$label" 2>/dev/null || true
+if launchctl print "$domain/$label" >/dev/null 2>&1; then
+  launchctl bootout "$domain/$label" || true
+  # bootstrap fails while the old instance is still shutting down
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    launchctl print "$domain/$label" >/dev/null 2>&1 || break
+    sleep 0.5
+  done
+fi
 launchctl bootstrap "$domain" "$plist"
 echo "tui-do-core installed and running ($label). Log: $core_dir/core.log"

@@ -210,5 +210,7 @@ Two ways in:
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `POST` | `/v0/mcp/call` | `{ name, arguments, session? }` | `{ result }` or `{ error }` (what `tui-do-core mcp` uses) |
+| `POST` | `/v0/mcp/tokens` | | `{ token }`: a token that only opens `/mcp`, for a remote machine (kept until revoked or the core restarts) |
+| `DELETE` | `/v0/mcp/tokens/{token}` | | 204 |
 | `GET` | `/v0/tasks/{slug}/claude-session` | | `{ sessionId, cwd, linkedAt }` or 404 |
 | `PUT` | `/v0/tasks/{slug}/claude-session` | `{ sessionId, cwd }` (UUID, absolute path) | the stored link |

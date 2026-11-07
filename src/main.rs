@@ -119,6 +119,7 @@ async fn serve() -> anyhow::Result<()> {
         workspace,
         sessions: Arc::new(TaskSessions::new(dir.join("task-sessions"))),
         token: token.into(),
+        mcp_tokens: Arc::default(),
     });
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

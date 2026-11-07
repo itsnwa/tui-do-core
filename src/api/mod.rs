@@ -8,7 +8,7 @@
 //! the terminal, then write this": it's sent on attach and again whenever a
 //! client fell too far behind to receive every output event.
 
-mod mcp;
+pub(crate) mod mcp;
 mod workspace;
 
 use std::sync::Arc;
@@ -36,6 +36,8 @@ pub struct AppState {
     pub workspace: Arc<SharedWorkspace>,
     pub sessions: Arc<TaskSessions>,
     pub token: Arc<str>,
+    /// Tokens that only grant `/mcp`, handed to remote machines.
+    pub mcp_tokens: Arc<mcp::McpTokens>,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -70,10 +72,12 @@ async fn require_token(State(state): State<AppState>, req: Request, next: Next) 
         .uri()
         .query()
         .and_then(|q| q.split('&').find_map(|pair| pair.strip_prefix("token=")));
-    let ok = from_header
-        .or(from_query)
-        .is_some_and(|t| constant_time_eq(t.as_bytes(), state.token.as_bytes()));
-    if ok {
+    let presented = from_header.or(from_query);
+    let full = presented.is_some_and(|t| constant_time_eq(t.as_bytes(), state.token.as_bytes()));
+    // MCP-only tokens (see mcp::issue_token) open /mcp and nothing else
+    let mcp_only = req.uri().path().starts_with("/mcp")
+        && presented.is_some_and(|t| state.mcp_tokens.contains(t));
+    if full || mcp_only {
         next.run(req).await
     } else {
         error(StatusCode::UNAUTHORIZED, "missing or wrong token")
