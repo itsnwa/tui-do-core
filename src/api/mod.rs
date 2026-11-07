@@ -8,6 +8,8 @@
 //! the terminal, then write this": it's sent on attach and again whenever a
 //! client fell too far behind to receive every output event.
 
+mod workspace;
+
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -22,12 +24,14 @@ use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::session::{Event, Registry, SpawnRequest};
+use crate::workspace::shared::SharedWorkspace;
 
 pub const API_VERSION: u32 = 0;
 
 #[derive(Clone)]
 pub struct AppState {
     pub registry: Arc<Registry>,
+    pub workspace: Arc<SharedWorkspace>,
     pub token: Arc<str>,
 }
 
@@ -40,6 +44,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v0/sessions/{id}/snapshot", get(snapshot))
         .route("/v0/sessions/{id}/attach", get(attach))
         .route("/v0/events", get(events))
+        .merge(workspace::routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
         .route("/v0/health", get(health))

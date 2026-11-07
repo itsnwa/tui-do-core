@@ -3,8 +3,9 @@
 //!
 //! Runtime files live in `$TUI_DO_CORE_DIR` (default `~/.tui-do/core`):
 //! `token` (bearer token, 0600), `endpoint` (base URL clients connect to),
-//! and `claude-hooks/`.
+//! `config.json` (the workspace folder) and `claude-hooks/`.
 
+use tui_do_core::workspace::shared::SharedWorkspace;
 use tui_do_core::{api, hooks, session};
 
 use std::io::IsTerminal;
@@ -59,6 +60,10 @@ async fn main() -> anyhow::Result<()> {
     let token = load_token(&dir)?;
     let hooks = hooks::Hooks::prepare(&dir.join("claude-hooks"))?;
     let registry = Arc::new(session::Registry::new(hooks));
+    let workspace = Arc::new(SharedWorkspace::load(
+        dir.join("config.json"),
+        registry.sender(),
+    ));
 
     let addr = std::env::var("TUI_DO_CORE_ADDR").unwrap_or_else(|_| DEFAULT_ADDR.to_string());
     let listener = tokio::net::TcpListener::bind(&addr)
@@ -70,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = api::router(api::AppState {
         registry: Arc::clone(&registry),
+        workspace,
         token: token.into(),
     });
     axum::serve(listener, app)

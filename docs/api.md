@@ -111,3 +111,89 @@ Client → server (one connection keeps keystrokes for all sessions in order):
 - The core doesn't answer terminal queries (device attributes, cursor position reports); the client's terminal emulator does, by sending its replies as input. If several clients are attached, each answers.
 - Resizes apply to the PTY; the last client to resize wins.
 - While a full-screen app uses the alternate screen, snapshots don't include the primary screen's scrollback.
+
+# Workspace
+
+The core serves one workspace: a folder of markdown files with YAML frontmatter (`tasks/`, `projects/`, `plans/`, `daily/`, `weekly/`, `attachments/`). Files are read and written exactly like the original TUI-DO app, so the folder can be shared with it (and synced with iCloud). Until a workspace is set, these routes return `409`.
+
+Writes are atomic and serialized: task IDs are never handed out twice, and creating something whose name is taken picks a free slug (`my-task-2`) instead of overwriting. Errors: `404` not found, `400` invalid input.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/workspace` | | `{ workspacePath }` (`null` if not set) |
+| `PUT` | `/v0/workspace` | `{ path }` (absolute) | `{ workspacePath }` |
+
+## Tasks
+
+```json
+{
+  "slug": "my-task", "id": "26-058", "title": "My task", "state": "in-progress",
+  "project": "tui-do", "due": "2026-11-20", "recurrence": null, "plan": "26-058-cosmic-thor",
+  "position": -12, "completed": null, "created": "2026-11-07T09:00:10.859Z", "attachments": []
+}
+```
+
+`state` is `not-started`, `in-progress` or `completed`; `recurrence` is `daily`, `weekly`, `monthly`, `yearly` or `null`. Detail responses add `description` (the markdown body).
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/tasks?project=&state=&due=` | | `[Task]`, sorted: open tasks by due date then position, then completed tasks, most recent first. `due` also matches recurring tasks that fall on that date. |
+| `POST` | `/v0/tasks` | `{ title, project?, due?, recurrence?, description? }` | Task + `description` |
+| `GET` | `/v0/tasks/lookup?ref=58` | | Task by short ID (`58`, `#58`, `26-058`; bare numbers are this year's) or slug |
+| `GET` | `/v0/tasks/{slug}` | | Task + `description` + `content` |
+| `PATCH` | `/v0/tasks/{slug}` | any of `{ title, state, project, due, recurrence, plan, description }` (`null` clears `due`, `recurrence`, `plan`) | Task + `description`. Completing a recurring task moves it to its next due date instead. |
+| `DELETE` | `/v0/tasks/{slug}` | | Undo token `{ task, planSnapshot, attachmentSnapshots }`; also deletes the task's plan and stored attachments |
+| `POST` | `/v0/tasks/restore` | the undo token | Task + `description` |
+| `POST` | `/v0/tasks/{slug}/reorder` | `{ direction: "up" \| "down", project? }` | `{ success, error? }` (moves within the same due date) |
+| `POST` | `/v0/tasks/{slug}/attachments` | `{ filePath }` or `{ fileName, dataBase64 }` (stored under `attachments/<slug>/`) | Task + `description` |
+| `POST` | `/v0/tasks/{slug}/attachments/remove` | `{ filePath }` | Task + `description` |
+
+### Agent workflow
+
+These take a short ID or slug and answer like the TUI-DO MCP tools (business errors are `200` with an `error` or `warning` field).
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `POST` | `/v0/tasks/{ref}/start` | `{ expectedProject? }` | `{ status: "started", task, plan: { slug, content } }`, or a `PROJECT_MISMATCH` warning with alternatives. Reserves a plan slug. |
+| `PUT` | `/v0/tasks/{ref}/plan` | `{ content }` | `{ status: "updated", plan: { slug, task } }` |
+| `POST` | `/v0/tasks/{ref}/complete` | `{ summary }` | `{ status: "completed" \| "recurring_advanced", task }`; the summary is stored in the plan as `## Completion Summary`. Without a summary: `SUMMARY_REQUIRED`. |
+
+## Projects
+
+`{ slug, title, muted, created, directory, ssh? }`, where `ssh` is `{ host, user?, port?, identityFile? }`.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/projects` | | `[Project]` |
+| `POST` | `/v0/projects` | `{ title, directory?, ssh? }` | Project |
+| `GET` | `/v0/projects/{slug}` | | Project + `content` |
+| `PATCH` | `/v0/projects/{slug}` | any of `{ title, muted, directory, ssh }` (`ssh: null` removes it) | Project. A new title renames the project and moves its tasks to the new slug. |
+| `DELETE` | `/v0/projects/{slug}` | | `{ deleted }` |
+
+## Plans
+
+`{ slug, title, task, created }`.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/plans` | | `[Plan]` |
+| `GET` | `/v0/plans/{slug}` | | Plan + `content` (an empty placeholder if the plan hasn't been written yet) |
+| `PUT` | `/v0/plans/{slug}` | `{ content, title?, task? }` | Plan |
+| `DELETE` | `/v0/plans/{slug}` | | `{ deleted }` |
+
+## Daily notes and weekly updates
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/daily` | | `[{ date, preview, summary }]`, newest first |
+| `GET` | `/v0/daily/{YYYY-MM-DD}` | | `{ date, content, tasks }`: tasks due that day (incl. recurring) and undated tasks completed that day |
+| `PUT` | `/v0/daily/{date}` | `{ content }` | `{ date }`; blank content deletes the note |
+| `PUT` | `/v0/daily/{date}/summary` | `{ content, summary }` | `{ saved }`; only saved if the note still has `content` |
+| `GET` | `/v0/weekly` | | `[{ weekId, generated, preview, summary }]`, newest first |
+| `GET` | `/v0/weekly/{YYYY-Www}` | | `{ weekId, generated, content }` |
+| `PUT` | `/v0/weekly/{week}` | `{ content, generated? }` | `{ weekId, generated }`; `generated: true` stamps it as freshly generated |
+| `PUT` | `/v0/weekly/{week}/summary` | `{ content, summary }` | `{ saved }` |
+
+## Events
+
+`/v0/events` also carries `{ "type": "workspaceChanged", "areas": ["tasks", "plans"] }` when workspace files change, from the core or from outside (an editor, iCloud). Changes are coalesced over 150 ms.

@@ -39,6 +39,12 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Parse a YAML 1.1 timestamp (`2026-03-01`, `2026-03-01T10:00:00Z`, …) to
+/// milliseconds since the epoch.
+pub fn parse_timestamp(s: &str) -> Option<i64> {
+    resolve::resolve_timestamp(s)
+}
+
 /// js-yaml `dump(data, { schema: YAML11_SCHEMA })`.
 pub fn dump_yaml(data: &Map) -> String {
     dump::dump(data)

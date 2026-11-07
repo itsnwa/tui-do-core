@@ -88,11 +88,17 @@ pub enum Event {
     SessionQuiet {
         id: Arc<str>,
     },
+    /// Workspace files changed (`tasks`, `projects`, `plans`, `daily`, `weekly`).
+    WorkspaceChanged {
+        areas: Vec<String>,
+    },
 }
 
 impl Event {
+    /// The session an event is about; empty for workspace events.
     pub fn session_id(&self) -> &str {
         match self {
+            Event::WorkspaceChanged { .. } => "",
             Event::SessionCreated { session } => &session.id,
             Event::Output { id, .. }
             | Event::SessionExited { id, .. }
@@ -189,6 +195,11 @@ impl Registry {
             events,
             hooks,
         }
+    }
+
+    /// The event channel, for other parts of the core that publish events.
+    pub fn sender(&self) -> broadcast::Sender<Event> {
+        self.events.clone()
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<Event> {

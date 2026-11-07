@@ -4,7 +4,7 @@ A background service that owns TUI-DO terminal sessions and serves them to clien
 
 Sessions run inside the core, not inside a client, so they keep running when a client quits and can be watched or driven from any device. Each session's output is mirrored into a headless [libghostty-vt](https://ghostty.org) terminal, so a client that attaches gets the current screen (with scrollback, styles and modes) as a VT snapshot, then live output.
 
-> Status: early. Phase 1 (terminal sessions) works. Task/project/plan data, multi-machine fleets and code handoff between machines are planned.
+> Status: early. Terminal sessions and the task workspace work. An MCP endpoint for agents, multi-machine fleets and code handoff between machines are planned.
 
 ## Build
 

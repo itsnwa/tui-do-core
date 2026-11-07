@@ -175,7 +175,7 @@ fn valid_date(year: i64, month: u32, day: u32) -> bool {
     (1..=12).contains(&month) && day >= 1 && day <= js::days_in_month(year, month)
 }
 
-fn resolve_timestamp(source: &str) -> Option<i64> {
+pub fn resolve_timestamp(source: &str) -> Option<i64> {
     if let Some(caps) = DATE.captures(source) {
         let year = i64::from(num(&caps, 1));
         let (month, day) = (num(&caps, 2), num(&caps, 3));

@@ -6,3 +6,4 @@ pub mod format;
 pub mod hooks;
 pub mod session;
 mod utf8;
+pub mod workspace;
