@@ -24,7 +24,7 @@ rmcp = { version = "3.9", features = ["server", "transport-io", "transport-strea
 saphyr-parser = "0.3.3"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "net", "fs"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "net", "fs", "process"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 uuid = { version = "1.29.1", features = ["v4"] }

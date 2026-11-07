@@ -28,9 +28,10 @@ On macOS, `scripts/install-dev.sh` builds a release binary, installs it to `~/.t
 | --- | --- |
 | `TUI_DO_CORE_ADDR` | `127.0.0.1:47821` |
 | `TUI_DO_CORE_DIR` | `~/.tui-do/core` |
+| `TUI_DO_WORKSPACE` | the workspace set through the API (overrides it, for testing) |
 | `RUST_LOG` | `tui_do_core=info` |
 
-The core writes `token` (bearer token, `0600`) and `endpoint` (base URL) to its directory. Clients on the same machine read both from there.
+The core writes `token` (bearer token, `0600`), `endpoint` (base URL) and `config.json` (device id and name, workspace, remote access) to its directory. Clients on the same machine read the token and endpoint from there. The core listens on loopback; turning on remote access (`PATCH /v0/device`) also makes it listen on the machine's Tailscale address.
 
 ## API
 

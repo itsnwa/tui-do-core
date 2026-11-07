@@ -24,6 +24,7 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
 
+use crate::config::ConfigStore;
 use crate::links::TaskSessions;
 use crate::session::{Event, Registry, SpawnRequest};
 use crate::workspace::shared::SharedWorkspace;
@@ -33,6 +34,7 @@ pub const API_VERSION: u32 = 0;
 #[derive(Clone)]
 pub struct AppState {
     pub registry: Arc<Registry>,
+    pub config: Arc<ConfigStore>,
     pub workspace: Arc<SharedWorkspace>,
     pub sessions: Arc<TaskSessions>,
     pub token: Arc<str>,
@@ -49,6 +51,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v0/sessions/{id}/snapshot", get(snapshot))
         .route("/v0/sessions/{id}/attach", get(attach))
         .route("/v0/events", get(events))
+        .route("/v0/device", get(get_device).patch(update_device))
         .merge(workspace::routes())
         .merge(mcp::routes(&state))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
@@ -92,12 +95,60 @@ fn not_found() -> Response {
     error(StatusCode::NOT_FOUND, "no such session")
 }
 
-async fn health() -> Json<serde_json::Value> {
+async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = state.config.get();
     Json(json!({
         "name": "tui-do-core",
         "version": env!("CARGO_PKG_VERSION"),
         "apiVersion": API_VERSION,
+        "device": { "id": config.device_id, "name": config.device_name },
     }))
+}
+
+/// This core's identity and network settings.
+async fn device_info(state: &AppState) -> serde_json::Value {
+    let config = state.config.get();
+    let tailscale = crate::net::tailscale_ipv4().await.map(|ip| ip.to_string());
+    json!({
+        "id": config.device_id,
+        "name": config.device_name,
+        "remoteAccess": config.remote_access,
+        "tailscaleAddress": tailscale,
+        "platform": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+        "version": env!("CARGO_PKG_VERSION"),
+    })
+}
+
+async fn get_device(State(state): State<AppState>) -> Response {
+    Json(device_info(&state).await).into_response()
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceChange {
+    name: Option<String>,
+    remote_access: Option<bool>,
+}
+
+async fn update_device(
+    State(state): State<AppState>,
+    Json(change): Json<DeviceChange>,
+) -> Response {
+    if change.name.as_deref().is_some_and(|n| n.trim().is_empty()) {
+        return error(StatusCode::BAD_REQUEST, "the device name can't be empty");
+    }
+    let updated = state.config.update(|c| {
+        if let Some(name) = change.name {
+            c.device_name = name.trim().to_string();
+        }
+        if let Some(remote) = change.remote_access {
+            c.remote_access = remote;
+        }
+    });
+    match updated {
+        Ok(_) => Json(device_info(&state).await).into_response(),
+        Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{err:#}")),
+    }
 }
 
 async fn list_sessions(State(state): State<AppState>) -> Response {

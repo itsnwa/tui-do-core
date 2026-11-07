@@ -1,24 +1,17 @@
 //! The workspace the core serves, chosen by a client (`PUT /v0/workspace`)
-//! and remembered in the core's `config.json`.
+//! and remembered in the core's config.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
-use anyhow::Context;
-use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
 use super::{Result, Workspace, lock, watch};
+use crate::config::ConfigStore;
 use crate::session::Event;
 
-#[derive(Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Config {
-    workspace_path: Option<PathBuf>,
-}
-
 pub struct SharedWorkspace {
-    config_path: PathBuf,
+    config: Arc<ConfigStore>,
     current: RwLock<Option<Arc<Workspace>>>,
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
     events: broadcast::Sender<Event>,
@@ -27,19 +20,16 @@ pub struct SharedWorkspace {
 impl SharedWorkspace {
     /// Open the configured workspace, if any. `TUI_DO_WORKSPACE` overrides the
     /// config (for testing against a copy).
-    pub fn load(config_path: PathBuf, events: broadcast::Sender<Event>) -> Self {
+    pub fn load(config: Arc<ConfigStore>, events: broadcast::Sender<Event>) -> Self {
+        let path = std::env::var_os("TUI_DO_WORKSPACE")
+            .map(PathBuf::from)
+            .or_else(|| config.get().workspace_path);
         let shared = Self {
-            config_path,
+            config,
             current: RwLock::new(None),
             watcher: Mutex::new(None),
             events,
         };
-        let path = std::env::var_os("TUI_DO_WORKSPACE")
-            .map(PathBuf::from)
-            .or_else(|| {
-                let text = std::fs::read_to_string(&shared.config_path).ok()?;
-                serde_json::from_str::<Config>(&text).ok()?.workspace_path
-            });
         if let Some(path) = path
             && let Err(err) = shared.open(&path)
         {
@@ -76,12 +66,8 @@ impl SharedWorkspace {
             ));
         }
         self.open(path)?;
-        let config = Config {
-            workspace_path: Some(path.to_path_buf()),
-        };
-        let text = serde_json::to_string_pretty(&config).context("encoding the config")? + "\n";
-        std::fs::write(&self.config_path, text)
-            .with_context(|| format!("writing {}", self.config_path.display()))?;
+        self.config
+            .update(|c| c.workspace_path = Some(path.to_path_buf()))?;
         Ok(())
     }
 }

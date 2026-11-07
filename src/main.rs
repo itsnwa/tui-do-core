@@ -9,10 +9,11 @@
 //! `tui-do-core mcp` runs the TUI-DO MCP server on stdio for an agent to
 //! launch; it forwards tool calls to the running core (see `mcp`).
 
+use tui_do_core::config::ConfigStore;
 use tui_do_core::links::{SessionLink, TaskSessions};
 use tui_do_core::mcp::TuiDoMcp;
 use tui_do_core::workspace::shared::SharedWorkspace;
-use tui_do_core::{api, hooks, session};
+use tui_do_core::{api, hooks, net, session};
 
 use std::io::IsTerminal;
 use std::os::unix::fs::PermissionsExt;
@@ -101,8 +102,9 @@ async fn serve() -> anyhow::Result<()> {
     let token = load_token(&dir)?;
     let hooks = hooks::Hooks::prepare(&dir.join("claude-hooks"))?;
     let registry = Arc::new(session::Registry::new(hooks));
+    let config = Arc::new(ConfigStore::load(dir.join("config.json"))?);
     let workspace = Arc::new(SharedWorkspace::load(
-        dir.join("config.json"),
+        Arc::clone(&config),
         registry.sender(),
     ));
 
@@ -114,13 +116,17 @@ async fn serve() -> anyhow::Result<()> {
     std::fs::write(dir.join("endpoint"), format!("http://{local}"))?;
     tracing::info!(%local, dir = %dir.display(), "tui-do-core listening");
 
+    let device = config.get();
+    tracing::info!(id = %device.device_id, name = %device.device_name, "device");
     let app = api::router(api::AppState {
         registry: Arc::clone(&registry),
+        config: Arc::clone(&config),
         workspace,
         sessions: Arc::new(TaskSessions::new(dir.join("task-sessions"))),
         token: token.into(),
         mcp_tokens: Arc::default(),
     });
+    tokio::spawn(net::serve_tailscale(app.clone(), local.port(), config));
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;

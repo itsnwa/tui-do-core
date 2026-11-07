@@ -29,7 +29,9 @@ Every route except `/v0/health` needs the token from `~/.tui-do/core/token`, sen
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/health` | | `{ name, version, apiVersion }` (no token needed) |
+| `GET` | `/v0/health` | | `{ name, version, apiVersion, device: { id, name } }` (no token needed) |
+| `GET` | `/v0/device` | | `{ id, name, remoteAccess, tailscaleAddress, platform, version }` |
+| `PATCH` | `/v0/device` | `{ name?, remoteAccess? }` | same as `GET`. With `remoteAccess` on, the core also listens on this machine's Tailscale address (same port, token still required); it never listens on other interfaces. |
 | `GET` | `/v0/sessions` | | `[Session]` |
 | `POST` | `/v0/sessions` | Spawn request | `Session` |
 | `GET` | `/v0/sessions/{id}` | | `Session` or 404 |
