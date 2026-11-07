@@ -2,6 +2,10 @@
 name = "tui-do-core"
 version = "0.1.0"
 edition = "2024"
+description = "Background service that owns TUI-DO terminal sessions and tasks, and serves them to clients over HTTP + WebSocket"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/itsnwa/tui-do-core"
+publish = false
 
 [dependencies]
 anyhow = "1.0.104"
