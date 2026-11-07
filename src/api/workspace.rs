@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use serde::{Deserialize, Serialize};
@@ -34,6 +34,7 @@ pub fn routes() -> axum::Router<AppState> {
             "/v0/tasks/{slug}/attachments/remove",
             post(remove_attachment),
         )
+        .route("/v0/tasks/{slug}/attachments/{index}", get(attachment_file))
         .route("/v0/tasks/{reference}/start", post(start_task))
         .route("/v0/tasks/{reference}/complete", post(complete_task))
         .route("/v0/tasks/{reference}/plan", put(write_task_plan))
@@ -218,6 +219,57 @@ async fn remove_attachment(
         return error(StatusCode::BAD_REQUEST, "filePath is required");
     };
     run(&state, move |ws| ws.remove_attachment(&slug, &path)).await
+}
+
+/// The type a client needs to show an attachment, from its extension.
+fn content_type(path: &std::path::Path) -> &'static str {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
+    match ext.as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("heic") => "image/heic",
+        Some("svg") => "image/svg+xml",
+        Some("pdf") => "application/pdf",
+        Some("json") => "application/json",
+        Some("md" | "markdown") => "text/markdown; charset=utf-8",
+        Some("txt" | "log" | "csv") => "text/plain; charset=utf-8",
+        Some("mov") => "video/quicktime",
+        Some("mp4") => "video/mp4",
+        _ => "application/octet-stream",
+    }
+}
+
+/// One of a task's attachments, by its position in the task's list. Only
+/// files the task lists are served, wherever they are.
+async fn attachment_file(
+    State(state): State<AppState>,
+    Path((slug, index)): Path<(String, usize)>,
+) -> Response {
+    let Some(ws) = state.workspace.current() else {
+        return error(StatusCode::CONFLICT, "Workspace not configured.");
+    };
+    let listed = tokio::task::spawn_blocking(move || ws.get_task(&slug)).await;
+    let path = match listed {
+        Ok(Ok(task)) => match task.task.attachments.get(index) {
+            Some(path) => crate::session::expand_home(path),
+            None => return error(StatusCode::NOT_FOUND, "no such attachment"),
+        },
+        Ok(Err(Error::NotFound(msg))) => return error(StatusCode::NOT_FOUND, &msg),
+        Ok(Err(err)) => return error(StatusCode::BAD_REQUEST, &err.to_string()),
+        Err(err) => return error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+    };
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => ([(header::CONTENT_TYPE, content_type(&path))], bytes).into_response(),
+        Err(err) => error(
+            StatusCode::NOT_FOUND,
+            &format!("couldn't read {}: {err}", path.display()),
+        ),
+    }
 }
 
 #[derive(Default, Deserialize)]

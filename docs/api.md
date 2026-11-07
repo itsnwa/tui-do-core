@@ -2,7 +2,7 @@
 
 Base URL: the contents of `~/.tui-do/core/endpoint` (default `http://127.0.0.1:47821`).
 
-Every route except `/v0/health` needs the token from `~/.tui-do/core/token`, sent as `Authorization: Bearer <token>` or as a `?token=` query parameter (browsers can't set headers on WebSockets). Errors are JSON: `{ "error": "message" }`.
+Every route except `/v0/health` needs a token, sent as `Authorization: Bearer <token>` or as a `?token=` query parameter (browsers can't set headers on WebSockets): the core's own token from `~/.tui-do/core/token`, or a [paired client's](#paired-clients) token. Errors are JSON: `{ "error": "message" }`.
 
 ## Session object
 
@@ -67,9 +67,9 @@ With `"agent": "claude"` the core adds `TUI_DO_CLAUDE_SETTINGS` (a Claude Code s
 
 All messages are JSON text frames.
 
-### `GET /v0/sessions/{id}/attach`
+### `GET /v0/sessions/{id}/attach` and `?cols=&rows=`
 
-One session. The server first sends
+One session. With `cols` and `rows`, the session takes that size for this connection first (see [Several clients on one session](#several-clients-on-one-session)), so the snapshot arrives at it. The server first sends
 
 ```json
 { "type": "snapshot", "data": "<VT>", "session": { ... } }
@@ -82,7 +82,10 @@ Client → server:
 ```json
 { "type": "input", "data": "ls\n" }
 { "type": "resize", "cols": 120, "rows": 40 }
+{ "type": "snapshot" }
 ```
+
+`snapshot` asks for the screen again (answered with a `snapshot` message, in order with the events), for a client that wants its emulator to match the core's exactly, say after another client changed the size.
 
 ### `GET /v0/events` and `GET /v0/events?output=1`
 
@@ -104,15 +107,25 @@ Client → server (one connection keeps keystrokes for all sessions in order):
 { "type": "sessionRemoved", "id": "my-task" }
 { "type": "agentState", "id": "my-task", "state": "waiting" }
 { "type": "sessionQuiet", "id": "my-task" }
+{ "type": "sessionResized", "id": "my-task", "cols": 120, "rows": 40 }
 ```
 
-`output` data is always valid UTF-8; a character split across PTY reads is held back until it's complete. `sessionQuiet` fires when a session has produced no output for 2 seconds.
+`output` data is always valid UTF-8; a character split across PTY reads is held back until it's complete. `sessionQuiet` fires when a session has produced no output for 2 seconds. `sessionResized` fires when the PTY takes another size (see [Several clients on one session](#several-clients-on-one-session)).
 
 ## Notes for clients
 
 - The core doesn't answer terminal queries (device attributes, cursor position reports); the client's terminal emulator does, by sending its replies as input. If several clients are attached, each answers.
-- Resizes apply to the PTY; the last client to resize wins.
 - While a full-screen app uses the alternate screen, snapshots don't include the primary screen's scrollback.
+
+### Several clients on one session
+
+A session has one PTY, so one size. The core remembers the size each WebSocket connection asked for (per session), and the PTY follows the client in use:
+
+- A `resize` on a socket applies, and is remembered for that connection.
+- `input` from a connection whose size isn't the PTY's gives it its size back first, when it's something typed: anything but escape sequences alone (a terminal's answers to queries are left alone), or a lone Esc.
+- When a connection closes, a session that had its size goes back to the size of the connection that used it before, or, with none left, to the size it was started with or last given over HTTP.
+
+Every size change goes out as `sessionResized`. Output always matches the PTY's size, so a client showing a session at another size should size its emulator to the PTY (scaling it to fit, say) until the user types there. Input over HTTP doesn't take the size.
 
 # Workspace
 
@@ -149,6 +162,7 @@ Writes are atomic and serialized: task IDs are never handed out twice, and creat
 | `POST` | `/v0/tasks/{slug}/reorder` | `{ direction: "up" \| "down", project? }` | `{ success, error? }` (moves within the same due date) |
 | `POST` | `/v0/tasks/{slug}/attachments` | `{ filePath }` or `{ fileName, dataBase64 }` (stored under `attachments/<slug>/`) | Task + `description` |
 | `POST` | `/v0/tasks/{slug}/attachments/remove` | `{ filePath }` | Task + `description` |
+| `GET` | `/v0/tasks/{slug}/attachments/{index}` | | the file at that position in the task's `attachments` (on the home machine), with a `Content-Type` from its extension |
 
 ### Agent workflow
 
@@ -214,6 +228,32 @@ Two ways in:
 | `POST` | `/v0/mcp/call` | `{ name, arguments, session? }` | `{ result }` or `{ error }` (what `tui-do-core mcp` uses) |
 | `GET` | `/v0/tasks/{slug}/claude-session` | | `{ sessionId, cwd, linkedAt }` or 404 |
 | `PUT` | `/v0/tasks/{slug}/claude-session` | `{ sessionId, cwd }` (UUID, absolute path) | the stored link |
+
+# Paired clients
+
+A client on another device (a phone, say) gets its own token from the home core instead of the core's token, so it can be revoked on its own. A client token opens every route except these three, which only the core's own token can use (also through `/v0/devices/{id}/…`). The core stores a SHA-256 hash of each client token in `clients.json`, never the token.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/clients` | | `[{ id, name, createdAt, lastSeenAt }]` (`lastSeenAt` is updated at most every 10 minutes) |
+| `POST` | `/v0/clients` | `{ name }` | `{ client, token }`. The token (`tdc_…`) is only returned here. |
+| `DELETE` | `/v0/clients/{id}` | | 204. The token stops working, and the client's open WebSockets close. |
+
+The TUI-DO Mac app pairs a phone with a QR code holding a link: `tuido://pair?address=<home core's Tailscale URL>&token=<client token>&name=<home core's name>`.
+
+# Coding agents
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/agents` | | `{ claude, codex }`: what the agents installed on this machine offer, `null` for one that isn't installed. `claude`: `{ models: [{ value, label, description, effortLevels, supportsAutoMode }], permissionModes }` (the models `/model` lists, and the `--permission-mode` choices). `codex`: `{ models: [{ slug, label, efforts }] }`. Cached for 30 minutes. Ask a fleet device through `/v0/devices/{id}/agents`. |
+| `POST` | `/v0/tasks/{ref}/agent` | `{ device?, agent?, model?, effort?, permissionMode?, yolo?, includeUncommitted?, cols?, rows? }` | `{ session, device, path, started }` |
+
+`POST /v0/tasks/{ref}/agent` starts a coding agent on a task the way the Mac app does, so a client only picks the options:
+
+- `device`: a fleet device to run on (absent: the home machine). On a device, the task's code is handed over first, as with [`/handoff`](#running-a-task-on-another-machine) (`includeUncommitted` takes uncommitted changes along), and the task's `device` is set.
+- `agent`: `claude` (default) or `codex`. `model` is Claude's `--model` value (`default` adds no flag) or a Codex model slug; `effort` is an effort level from `/v0/agents`; `permissionMode` is Claude's; `yolo` skips permission prompts (and Codex's sandbox).
+- The session is the task's slug, a login shell in the project's folder (or the task's folder on the device) with `agent` set. Once the shell prints its first output (or after 5 s), the core types the agent's command with the prompt `Start working on task <id>`.
+- If the task's session is already running there, it's returned as it is with `started: false`.
 
 # Fleet
 

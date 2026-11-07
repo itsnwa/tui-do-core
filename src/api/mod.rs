@@ -1,13 +1,15 @@
 //! HTTP + WebSocket API, version 0.
 //!
-//! Every route except `/v0/health` needs the core's token, as
-//! `Authorization: Bearer <token>` or a `?token=` query parameter (browsers
-//! can't set headers on WebSockets).
+//! Every route except `/v0/health` needs the core's token or a paired
+//! client's token (see `clients`), as `Authorization: Bearer <token>` or a
+//! `?token=` query parameter (browsers can't set headers on WebSockets).
 //!
 //! WebSocket messages are JSON text. A `snapshot` message always means "reset
 //! the terminal, then write this": it's sent on attach and again whenever a
 //! client fell too far behind to receive every output event.
 
+mod agent;
+mod clients;
 mod fleet;
 mod handoff;
 pub(crate) mod mcp;
@@ -17,7 +19,7 @@ mod workspace;
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, Query, Request, State};
+use axum::extract::{Extension, Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -27,9 +29,10 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
 
+use crate::clients::{Caller, Clients, Revocation};
 use crate::config::ConfigStore;
 use crate::links::TaskSessions;
-use crate::session::{Event, Registry, SpawnRequest};
+use crate::session::{ClientId, Event, Registry, SpawnRequest};
 use crate::workspace::shared::SharedWorkspace;
 
 pub const API_VERSION: u32 = 0;
@@ -46,6 +49,7 @@ pub struct AppState {
     pub workspace: Arc<SharedWorkspace>,
     pub sessions: Arc<TaskSessions>,
     pub token: Arc<str>,
+    pub clients: Arc<Clients>,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -59,6 +63,8 @@ pub fn router(state: AppState) -> Router {
         .route("/v0/events", get(events))
         .route("/v0/device", get(get_device).patch(update_device))
         .merge(workspace::routes())
+        .merge(agent::routes())
+        .merge(clients::routes())
         .merge(fleet::routes())
         .merge(handoff::routes())
         .merge(update::routes())
@@ -90,11 +96,26 @@ async fn require_token(State(state): State<AppState>, req: Request, next: Next) 
     let path = req.uri().path();
     let mcp_only = (path.starts_with("/mcp") || path == "/v0/mcp/call")
         && presented.is_some_and(|t| state.fleet.is_mcp_token(t));
-    if full || mcp_only {
-        next.run(req).await
+    let caller = if full {
+        Caller::Owner
+    } else if let Some(client) = presented.and_then(|t| state.clients.authenticate(t)) {
+        // A paired client can't make or revoke client tokens, here or through
+        // the device proxy (which forwards with the core's own token)
+        if clients::owner_only(path) {
+            return error(
+                StatusCode::FORBIDDEN,
+                "only this machine can manage paired clients",
+            );
+        }
+        Caller::Client(client)
+    } else if mcp_only {
+        return next.run(req).await;
     } else {
-        error(StatusCode::UNAUTHORIZED, "missing or wrong token")
-    }
+        return error(StatusCode::UNAUTHORIZED, "missing or wrong token");
+    };
+    let mut req = req;
+    req.extensions_mut().insert(caller);
+    next.run(req).await
 }
 
 fn error(status: StatusCode, message: &str) -> Response {
@@ -241,8 +262,16 @@ async fn snapshot(State(state): State<AppState>, Path(id): Path<String>) -> Resp
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum ClientMessage {
-    Input { data: String },
-    Resize { cols: u16, rows: u16 },
+    Input {
+        data: String,
+    },
+    Resize {
+        cols: u16,
+        rows: u16,
+    },
+    /// Send the screen again (e.g. after another client changed the size,
+    /// so the client's emulator matches the core's exactly).
+    Snapshot,
 }
 
 async fn send_json(socket: &mut WebSocket, value: &impl serde::Serialize) -> bool {
@@ -252,15 +281,26 @@ async fn send_json(socket: &mut WebSocket, value: &impl serde::Serialize) -> boo
     }
 }
 
+/// An attaching client's size, taken before the snapshot so it arrives at that size.
+#[derive(Deserialize)]
+struct AttachQuery {
+    cols: Option<u16>,
+    rows: Option<u16>,
+}
+
 async fn attach(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(size): Query<AttachQuery>,
+    caller: Option<Extension<Caller>>,
     ws: WebSocketUpgrade,
 ) -> Response {
     if state.registry.info(&id).is_none() {
         return not_found();
     }
-    ws.on_upgrade(move |socket| attach_loop(socket, state.registry, id))
+    let revocation = Revocation::new(&state.clients, caller.as_deref());
+    let size = size.cols.zip(size.rows);
+    ws.on_upgrade(move |socket| attach_loop(socket, state.registry, id, size, revocation))
 }
 
 async fn send_snapshot(
@@ -278,12 +318,24 @@ async fn send_snapshot(
     .then_some(rx)
 }
 
-async fn attach_loop(mut socket: WebSocket, registry: Arc<Registry>, id: String) {
+async fn attach_loop(
+    mut socket: WebSocket,
+    registry: Arc<Registry>,
+    id: String,
+    size: Option<(u16, u16)>,
+    mut revocation: Revocation,
+) {
+    let client = registry.connect();
+    if let Some((cols, rows)) = size {
+        registry.resize_from(&id, client, cols, rows);
+    }
     let Some(mut rx) = send_snapshot(&mut socket, &registry, &id).await else {
+        registry.detach(&id, client);
         return;
     };
     loop {
         tokio::select! {
+            () = revocation.revoked() => break,
             event = rx.recv() => match event {
                 Ok(event) if event.session_id() == id => {
                     let removed = matches!(event, Event::SessionRemoved { .. });
@@ -302,8 +354,12 @@ async fn attach_loop(mut socket: WebSocket, registry: Arc<Registry>, id: String)
             },
             msg = socket.recv() => match msg {
                 Some(Ok(Message::Text(text))) => match serde_json::from_str::<ClientMessage>(&text) {
-                    Ok(ClientMessage::Input { data }) => { registry.input(&id, data.into_bytes()); }
-                    Ok(ClientMessage::Resize { cols, rows }) => { registry.resize(&id, cols, rows); }
+                    Ok(ClientMessage::Input { data }) => { registry.input_from(&id, client, data.into_bytes()); }
+                    Ok(ClientMessage::Resize { cols, rows }) => { registry.resize_from(&id, client, cols, rows); }
+                    Ok(ClientMessage::Snapshot) => match send_snapshot(&mut socket, &registry, &id).await {
+                        Some(fresh) => rx = fresh,
+                        None => break,
+                    },
                     Err(err) => tracing::debug!(%err, "ignoring client message"),
                 },
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
@@ -311,6 +367,7 @@ async fn attach_loop(mut socket: WebSocket, registry: Arc<Registry>, id: String)
             },
         }
     }
+    registry.detach(&id, client);
 }
 
 /// Messages a client may send on `/v0/events`, so one connection can drive
@@ -344,16 +401,26 @@ struct EventsQuery {
 async fn events(
     State(state): State<AppState>,
     Query(query): Query<EventsQuery>,
+    caller: Option<Extension<Caller>>,
     ws: WebSocketUpgrade,
 ) -> Response {
     let with_output = matches!(query.output.as_deref(), Some("1" | "true"));
-    ws.on_upgrade(move |socket| events_loop(socket, state, with_output))
+    let revocation = Revocation::new(&state.clients, caller.as_deref());
+    ws.on_upgrade(move |socket| events_loop(socket, state, with_output, revocation))
 }
 
-async fn events_loop(mut socket: WebSocket, state: AppState, with_output: bool) {
+async fn events_loop(
+    mut socket: WebSocket,
+    state: AppState,
+    with_output: bool,
+    mut revocation: Revocation,
+) {
     let registry = Arc::clone(&state.registry);
     let relays = Arc::clone(&state.relays);
     let own_id = state.config.get().device_id;
+    let client: ClientId = registry.connect();
+    // This core's sessions this connection sized, to hand their size back on close
+    let mut sized = std::collections::HashSet::new();
     let mut rx = registry.subscribe();
     // Clients sync from this list, then apply events in order.
     if !send_json(
@@ -366,6 +433,7 @@ async fn events_loop(mut socket: WebSocket, state: AppState, with_output: bool) 
     }
     loop {
         tokio::select! {
+            () = revocation.revoked() => break,
             event = rx.recv() => match event {
                 Ok(Event::Output { .. }) if !with_output => {}
                 Ok(Event::DeviceEvent { ref event, .. }) if !with_output && event["type"] == "output" => {}
@@ -391,13 +459,20 @@ async fn events_loop(mut socket: WebSocket, state: AppState, with_output: bool) 
                     Ok(EventsClientMessage::Resize { device: Some(device), id, cols, rows }) if device != own_id => {
                         relays.send(&device, json!({ "type": "resize", "id": id, "cols": cols, "rows": rows }).to_string());
                     }
-                    Ok(EventsClientMessage::Input { id, data, .. }) => { registry.input(&id, data.into_bytes()); }
-                    Ok(EventsClientMessage::Resize { id, cols, rows, .. }) => { registry.resize(&id, cols, rows); }
+                    Ok(EventsClientMessage::Input { id, data, .. }) => { registry.input_from(&id, client, data.into_bytes()); }
+                    Ok(EventsClientMessage::Resize { id, cols, rows, .. }) => {
+                        if registry.resize_from(&id, client, cols, rows) {
+                            sized.insert(id);
+                        }
+                    }
                     Err(err) => tracing::debug!(%err, "ignoring client message"),
                 },
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                 Some(Ok(_)) => {}
             },
         }
+    }
+    for id in sized {
+        registry.detach(&id, client);
     }
 }

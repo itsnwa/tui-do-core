@@ -1,6 +1,6 @@
 [package]
 name = "tui-do-core"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 description = "Background service that owns TUI-DO terminal sessions and tasks, and serves them to clients over HTTP + WebSocket"
 license = "MIT OR Apache-2.0"
@@ -24,6 +24,7 @@ rmcp = { version = "3.9", features = ["server", "transport-io", "transport-strea
 saphyr-parser = "0.3.3"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
+sha2 = "0.11.1"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "net", "fs", "process"] }
 tokio-tungstenite = "0.29"
 tracing = "0.1.44"

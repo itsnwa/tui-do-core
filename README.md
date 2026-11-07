@@ -1,12 +1,12 @@
 # tui-do-core
 
-A background service that owns TUI-DO's tasks and terminal sessions and serves them to clients — the TUI-DO Mac app today, an iOS app and web clients next — over an HTTP + WebSocket API. It also serves the TUI-DO tools to coding agents over MCP.
+A background service that owns TUI-DO's tasks and terminal sessions and serves them to clients — the TUI-DO Mac app, the [iOS app](https://github.com/itsnwa/tui-do-ios), and web clients next — over an HTTP + WebSocket API. It also serves the TUI-DO tools to coding agents over MCP.
 
 Sessions run inside the core, not inside a client, so they keep running when a client quits and can be watched or driven from any device. Each session's output is mirrored into a headless [libghostty-vt](https://ghostty.org) terminal, so a client that attaches gets the current screen (with scrollback, styles and modes) as a VT snapshot, then live output.
 
 The core runs on every machine you work from. One of them, the home core, holds the task workspace; the others run tasks for it, reached over [Tailscale](https://tailscale.com).
 
-> Status: early, and the API (`/v0`) may still change. Sessions, the task workspace, the MCP server, machines, code handoff and self-update work.
+> Status: early, and the API (`/v0`) may still change. Sessions, the task workspace, the MCP server, machines, code handoff, self-update and paired clients work.
 
 ## Build
 
@@ -42,11 +42,12 @@ Other machines join through the home core, which needs `ssh` access to them (key
 - **Adding a machine** installs the release for its platform (macOS arm64, Linux x86_64 or arm64) as a launchd agent or systemd user service, links it to the home core, and sets up Claude Code and Codex there with the TUI-DO tools.
 - **Running a task there** sends the project's code along (a git bundle with only the commits the machine lacks, and optionally your uncommitted changes). The agent works in its own folder on branch `tui-do/<task id>`. Completing the task brings that branch back to your repo without touching your checkout, and cleans up on the machine.
 - **Sessions on any machine** show up on the home core, so a client can follow and type into all of them through one connection.
+- **Phones and other clients** pair with the home core and get their own token, which can be revoked on its own. They start agents on any machine (`POST /v0/tasks/{ref}/agent`) and follow sessions through the home core. Two clients on one session share its size: the one typing has it.
 - **Updating:** each core downloads the new release, checks its SHA-256, replaces its own binary and lets its service restart it. The home core can update every machine. Updating a core ends its running sessions.
 
 ## API
 
-See [docs/api.md](docs/api.md): sessions, tasks and the rest of the workspace, events, machines, handoff and updating. The API is versioned by path (`/v0`); v0 may still change.
+See [docs/api.md](docs/api.md): sessions, tasks and the rest of the workspace, events, paired clients, starting agents, machines, handoff and updating. The API is versioned by path (`/v0`); v0 may still change.
 
 ## License
 

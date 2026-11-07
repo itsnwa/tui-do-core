@@ -3,12 +3,13 @@
 //!
 //! Runtime files live in `$TUI_DO_CORE_DIR` (default `~/.tui-do/core`):
 //! `token` (bearer token, 0600), `endpoint` (base URL clients connect to),
-//! `config.json` (the workspace folder), `claude-hooks/` and
-//! `task-sessions/`.
+//! `config.json` (the workspace folder), `clients.json` (paired clients),
+//! `claude-hooks/` and `task-sessions/`.
 //!
 //! `tui-do-core mcp` runs the TUI-DO MCP server on stdio for an agent to
 //! launch; it forwards tool calls to the running core (see `mcp`).
 
+use tui_do_core::clients::Clients;
 use tui_do_core::config::ConfigStore;
 use tui_do_core::fleet::Fleet;
 use tui_do_core::handoff::Handoffs;
@@ -138,6 +139,7 @@ async fn serve() -> anyhow::Result<()> {
         workspace,
         sessions: Arc::new(TaskSessions::new(dir.join("task-sessions"))),
         token: token.into(),
+        clients: Arc::new(Clients::load(dir.join("clients.json"))?),
     });
     tokio::spawn(net::serve_tailscale(app.clone(), local.port(), config));
     axum::serve(listener, app)

@@ -4,7 +4,7 @@
 
 use axum::Json;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{FromRequestParts, Path, Request, State};
+use axum::extract::{Extension, FromRequestParts, Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, delete, get, post, put};
@@ -14,6 +14,7 @@ use serde_json::json;
 use tokio_tungstenite::tungstenite;
 
 use super::{AppState, error};
+use crate::clients::{Caller, Revocation};
 use crate::fleet::Device;
 use crate::install::InstallRequest;
 
@@ -359,6 +360,7 @@ fn target(state: &AppState, id: &str) -> Option<Device> {
 async fn proxy(
     State(state): State<AppState>,
     Path((id, rest)): Path<(String, String)>,
+    caller: Option<Extension<Caller>>,
     req: Request,
 ) -> Response {
     let Some(device) = target(&state, &id) else {
@@ -392,7 +394,8 @@ async fn proxy(
             device.address.replacen("http", "ws", 1),
             encode_pairs(&query)
         );
-        return ws.on_upgrade(move |socket| bridge(socket, url));
+        let revocation = Revocation::new(&state.clients, caller.as_deref());
+        return ws.on_upgrade(move |socket| bridge(socket, url, revocation));
     }
 
     let method = req.method().clone();
@@ -479,8 +482,9 @@ fn encode_pairs(pairs: &[(String, String)]) -> String {
         .join("&")
 }
 
-/// Pass WebSocket messages both ways between a client and a device.
-async fn bridge(client: WebSocket, url: String) {
+/// Pass WebSocket messages both ways between a client and a device, until
+/// either side closes or the client is revoked.
+async fn bridge(client: WebSocket, url: String, mut revocation: Revocation) {
     let upstream = match tokio_tungstenite::connect_async(url.as_str()).await {
         Ok((upstream, _)) => upstream,
         Err(err) => {
@@ -524,6 +528,7 @@ async fn bridge(client: WebSocket, url: String) {
     tokio::select! {
         () = to_device => {}
         () = to_client => {}
+        () = revocation.revoked() => {}
     }
 }
 

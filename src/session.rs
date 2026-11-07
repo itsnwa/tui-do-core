@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -88,6 +89,12 @@ pub enum Event {
     SessionQuiet {
         id: Arc<str>,
     },
+    /// The PTY took another size (another client typed or resized).
+    SessionResized {
+        id: Arc<str>,
+        cols: u16,
+        rows: u16,
+    },
     /// Workspace files changed (`tasks`, `projects`, `plans`, `daily`, `weekly`).
     WorkspaceChanged {
         areas: Vec<String>,
@@ -131,7 +138,8 @@ impl Event {
             | Event::SessionExited { id, .. }
             | Event::SessionRemoved { id }
             | Event::AgentState { id, .. }
-            | Event::SessionQuiet { id } => id,
+            | Event::SessionQuiet { id }
+            | Event::SessionResized { id, .. } => id,
         }
     }
 }
@@ -169,12 +177,20 @@ pub struct Snapshot {
     pub info: SessionInfo,
 }
 
+/// A client connection (a WebSocket), so the PTY can follow the size of the
+/// client in use. `ANONYMOUS` is for plain HTTP requests, whose size isn't
+/// remembered.
+pub type ClientId = u64;
+pub const ANONYMOUS: ClientId = 0;
+
 enum Msg {
     Output(Vec<u8>),
     Eof,
     Exited(Option<u32>),
-    Input(Vec<u8>),
-    Resize(u16, u16),
+    Input(Vec<u8>, ClientId),
+    Resize(u16, u16, ClientId),
+    /// The client's connection closed.
+    Detach(ClientId),
     Snapshot(oneshot::Sender<String>),
     Attach(oneshot::Sender<(String, broadcast::Receiver<Event>)>),
 }
@@ -189,6 +205,7 @@ pub struct Registry {
     sessions: Mutex<HashMap<String, Session>>,
     events: broadcast::Sender<Event>,
     hooks: Hooks,
+    next_client: AtomicU64,
 }
 
 /// Lock a mutex, recovering the data if another thread panicked while holding it.
@@ -222,7 +239,13 @@ impl Registry {
             sessions: Mutex::new(HashMap::new()),
             events,
             hooks,
+            next_client: AtomicU64::new(ANONYMOUS + 1),
         }
+    }
+
+    /// An id for a new client connection.
+    pub fn connect(&self) -> ClientId {
+        self.next_client.fetch_add(1, Ordering::Relaxed)
     }
 
     /// The event channel, for other parts of the core that publish events.
@@ -368,6 +391,8 @@ impl Registry {
             last_input: Instant::now() - ECHO_WINDOW,
             quiet_sent: true,
             utf8: Utf8Stream::default(),
+            sizes: Vec::new(),
+            base_size: (req.cols, req.rows),
         };
         let (ready_tx, ready_rx) = mpsc::channel();
         let (cols, rows) = (req.cols, req.rows);
@@ -397,11 +422,30 @@ impl Registry {
     }
 
     pub fn input(&self, id: &str, data: Vec<u8>) -> bool {
-        self.send(id, Msg::Input(data))
+        self.input_from(id, ANONYMOUS, data)
     }
 
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> bool {
-        cols > 0 && rows > 0 && self.send(id, Msg::Resize(cols, rows))
+        self.resize_from(id, ANONYMOUS, cols, rows)
+    }
+
+    /// Type into a session. If this client sized the session before and
+    /// another client changed the size since, the PTY takes this client's size back.
+    pub fn input_from(&self, id: &str, client: ClientId, data: Vec<u8>) -> bool {
+        self.send(id, Msg::Input(data, client))
+    }
+
+    /// Resize a session; the size is remembered for this client.
+    pub fn resize_from(&self, id: &str, client: ClientId, cols: u16, rows: u16) -> bool {
+        cols > 0 && rows > 0 && self.send(id, Msg::Resize(cols, rows, client))
+    }
+
+    /// A client's connection closed: if the session has its size, it goes back
+    /// to the size of the client that used it before.
+    pub fn detach(&self, id: &str, client: ClientId) {
+        if client != ANONYMOUS {
+            self.send(id, Msg::Detach(client));
+        }
     }
 
     /// Kill a session's process and forget the session.
@@ -516,6 +560,11 @@ struct Actor {
     last_input: Instant,
     quiet_sent: bool,
     utf8: Utf8Stream,
+    /// Each client's last requested size, the client in use last.
+    sizes: Vec<(ClientId, u16, u16)>,
+    /// The size asked for without a connection (at spawn, or over HTTP), for
+    /// when every client that sized the session has gone.
+    base_size: (u16, u16),
 }
 
 impl Actor {
@@ -599,23 +648,35 @@ impl Actor {
             Msg::Output(bytes) => self.on_output(term, &bytes),
             Msg::Eof => *eof = true,
             Msg::Exited(code) => *exited = Some((Instant::now(), code)),
-            Msg::Input(data) => {
+            Msg::Input(data, client) => {
+                // The client typing gets its size back before its keys arrive
+                // (not for its terminal's answers to queries)
+                if is_typing(&data)
+                    && let Some(at) = self.sizes.iter().position(|s| s.0 == client)
+                {
+                    let size = self.sizes.remove(at);
+                    self.sizes.push(size);
+                    self.apply_size(term, size.1, size.2);
+                }
                 self.last_input = Instant::now();
                 let _ = self.writer.send(data);
             }
-            Msg::Resize(cols, rows) => {
-                let _ = self.master.resize(PtySize {
-                    rows,
-                    cols,
-                    pixel_width: 0,
-                    pixel_height: 0,
-                });
-                if let Err(err) = term.resize(cols, rows, 0, 0) {
-                    tracing::warn!(id = %self.id, ?err, "terminal resize failed");
+            Msg::Resize(cols, rows, client) => {
+                if client == ANONYMOUS {
+                    self.base_size = (cols, rows);
+                } else {
+                    self.sizes.retain(|s| s.0 != client);
+                    self.sizes.push((client, cols, rows));
                 }
-                let mut info = lock(&self.info);
-                info.cols = cols;
-                info.rows = rows;
+                self.apply_size(term, cols, rows);
+            }
+            Msg::Detach(client) => {
+                let had_size = self.sizes.last().is_some_and(|s| s.0 == client);
+                self.sizes.retain(|s| s.0 != client);
+                if had_size {
+                    let (cols, rows) = self.sizes.last().map_or(self.base_size, |s| (s.1, s.2));
+                    self.apply_size(term, cols, rows);
+                }
             }
             Msg::Snapshot(reply) => {
                 let _ = reply.send(vt_snapshot(term));
@@ -625,6 +686,33 @@ impl Actor {
                 let _ = reply.send((vt_snapshot(term), self.events.subscribe()));
             }
         }
+    }
+
+    fn apply_size(&self, term: &mut Terminal, cols: u16, rows: u16) {
+        {
+            let info = lock(&self.info);
+            if (info.cols, info.rows) == (cols, rows) {
+                return;
+            }
+        }
+        let _ = self.master.resize(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        });
+        if let Err(err) = term.resize(cols, rows, 0, 0) {
+            tracing::warn!(id = %self.id, ?err, "terminal resize failed");
+        }
+        let mut info = lock(&self.info);
+        info.cols = cols;
+        info.rows = rows;
+        drop(info);
+        let _ = self.events.send(Event::SessionResized {
+            id: Arc::clone(&self.id),
+            cols,
+            rows,
+        });
     }
 
     fn on_output(&mut self, term: &mut Terminal, bytes: &[u8]) {
@@ -708,6 +796,44 @@ impl Actor {
             exit_code: code,
         });
     }
+}
+
+/// Whether input has something a person typed: anything outside escape
+/// sequences, or a lone Esc. A terminal's answers to queries (device
+/// attributes, cursor reports, colors) are escape sequences only.
+fn is_typing(data: &[u8]) -> bool {
+    let mut i = 0;
+    while i < data.len() {
+        if data[i] != 0x1b {
+            return true;
+        }
+        i += 1;
+        match data.get(i) {
+            None => return true,
+            // CSI: parameters, then a final byte
+            Some(b'[') => {
+                i += 1;
+                while i < data.len() && !(0x40..=0x7e).contains(&data[i]) {
+                    i += 1;
+                }
+                i += 1;
+            }
+            // OSC, DCS, APC: up to BEL or ST
+            Some(b']' | b'P' | b'_') => {
+                i += 1;
+                while i < data.len()
+                    && data[i] != 0x07
+                    && !(data[i] == 0x1b && data.get(i + 1) == Some(&b'\\'))
+                {
+                    i += 1;
+                }
+                i += if data.get(i) == Some(&0x07) { 1 } else { 2 };
+            }
+            Some(b'O') => i += 2,
+            Some(_) => i += 1,
+        }
+    }
+    false
 }
 
 /// The terminal's screen and scrollback as VT sequences. Writing this into a
@@ -811,6 +937,53 @@ mod tests {
         }
         registry.kill_all();
         assert!(found);
+    }
+
+    #[tokio::test]
+    async fn size_should_follow_the_client_in_use() {
+        let registry = registry();
+        registry
+            .spawn(spawn_request("sizes", &["/bin/sh", "-c", "sleep 5"]))
+            .expect("spawns");
+        let size = |registry: &Registry| {
+            let info = registry.info("sizes").expect("session");
+            (info.cols, info.rows)
+        };
+        let (mac, phone) = (registry.connect(), registry.connect());
+        registry.resize_from("sizes", mac, 120, 40);
+        registry.resize_from("sizes", phone, 50, 30);
+        // A snapshot round-trips through the actor, so earlier messages are done
+        registry.snapshot("sizes").await.expect("snapshot");
+        assert_eq!(size(&registry), (50, 30));
+
+        // The Mac types: it takes its size back
+        registry.input_from("sizes", mac, b"x".to_vec());
+        registry.snapshot("sizes").await.expect("snapshot");
+        assert_eq!(size(&registry), (120, 40));
+
+        // The phone types, then leaves: back to the Mac's size
+        registry.input_from("sizes", phone, b"x".to_vec());
+        registry.detach("sizes", phone);
+        registry.snapshot("sizes").await.expect("snapshot");
+        assert_eq!(size(&registry), (120, 40));
+
+        // Once every client that sized it has gone, it's back to its own size
+        registry.detach("sizes", mac);
+        registry.snapshot("sizes").await.expect("snapshot");
+        assert_eq!(size(&registry), (80, 24));
+        registry.kill_all();
+    }
+
+    #[test]
+    fn query_answers_should_not_count_as_typing() {
+        assert!(!is_typing(b"\x1b[?62;22c"));
+        assert!(!is_typing(b"\x1b[12;40R\x1b[?1u"));
+        assert!(!is_typing(b"\x1b]11;rgb:0000/0000/0000\x1b\\"));
+        assert!(!is_typing(b"\x1bP>|xterm\x1b\\"));
+        assert!(is_typing(b"y"));
+        assert!(is_typing(b"\r"));
+        assert!(is_typing(b"\x1b"));
+        assert!(is_typing(b"\x1b[Ax"));
     }
 
     #[test]
