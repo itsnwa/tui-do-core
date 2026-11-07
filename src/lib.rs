@@ -14,5 +14,6 @@ pub mod mcp;
 pub mod net;
 pub mod relay;
 pub mod session;
+pub mod update;
 mod utf8;
 pub mod workspace;

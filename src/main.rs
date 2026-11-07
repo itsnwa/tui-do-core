@@ -118,6 +118,8 @@ async fn serve() -> anyhow::Result<()> {
     let local = listener.local_addr()?;
     std::fs::write(dir.join("endpoint"), format!("http://{local}"))?;
     tracing::info!(%local, dir = %dir.display(), "tui-do-core listening");
+    // Look up the latest release now, so update checks have it
+    let _ = tui_do_core::update::latest_known();
 
     let fleet = Arc::new(Fleet::load(dir.join("fleet.json"))?);
     let relays = Arc::new(Relays::new(registry.sender()));

@@ -27,6 +27,7 @@ pub fn routes() -> axum::Router<AppState> {
         .route("/v0/fleet/install", post(install_device))
         .route("/v0/fleet/home", put(set_home))
         .route("/v0/fleet/devices/{id}", delete(remove_device))
+        .route("/v0/fleet/devices/{id}/update", post(update_device))
         .route("/v0/fleet/sessions", get(fleet_sessions))
         .route("/v0/devices/{id}/{*rest}", any(proxy))
 }
@@ -35,7 +36,12 @@ async fn get_fleet(State(state): State<AppState>) -> Response {
     let config = state.config.get();
     Json(json!({
         "generation": state.fleet.generation(),
-        "home": { "id": config.device_id, "name": config.device_name },
+        "home": {
+            "id": config.device_id,
+            "name": config.device_name,
+            "platform": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+            "version": env!("CARGO_PKG_VERSION"),
+        },
         "devices": state.fleet.statuses().await,
     }))
     .into_response()
@@ -98,6 +104,116 @@ async fn install_device(
         }
         Err(err) => error(StatusCode::BAD_GATEWAY, &format!("{err:#}")),
     }
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct UpdateDevice {
+    /// Release to install; defaults to the latest.
+    version: Option<String>,
+    /// Workflow instructions for the coding agents there, set up again afterwards.
+    instructions: Option<String>,
+}
+
+/// Update a device's core to a release: it updates itself and restarts, and
+/// this waits until it's back on the new version. A device too old to update
+/// itself is reinstalled over the ssh host it was installed through.
+async fn update_device(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    body: Option<Json<UpdateDevice>>,
+) -> Response {
+    let Some(device) = state.fleet.device(&id) else {
+        return error(StatusCode::NOT_FOUND, "no such device");
+    };
+    let body = body.map(|Json(b)| b).unwrap_or_default();
+    let version = match body.version {
+        Some(version) => version,
+        None => match crate::update::latest().await {
+            Ok(version) => version,
+            Err(err) => return error(StatusCode::BAD_GATEWAY, &format!("{err:#}")),
+        },
+    };
+    let sent = state
+        .fleet
+        .client()
+        .post(format!("{}/v0/update", device.address))
+        .bearer_auth(&device.token)
+        .json(&json!({ "version": version }))
+        .timeout(std::time::Duration::from_secs(600))
+        .send()
+        .await;
+    let res = match sent {
+        Ok(res) => res,
+        Err(err) => {
+            return error(
+                StatusCode::BAD_GATEWAY,
+                &format!("{} isn't reachable: {err}", device.name),
+            );
+        }
+    };
+    if res.status() == StatusCode::NOT_FOUND || res.status() == StatusCode::METHOD_NOT_ALLOWED {
+        // Older than self-updating: install over ssh instead
+        let Some(host) = device.ssh_host.clone() else {
+            return error(
+                StatusCode::CONFLICT,
+                "this machine's core is too old to update itself and wasn't added over ssh",
+            );
+        };
+        return install_device(
+            State(state),
+            Json(InstallRequest {
+                host,
+                version: Some(version),
+                instructions: body.instructions,
+                ..InstallRequest::default()
+            }),
+        )
+        .await;
+    }
+    if !res.status().is_success() {
+        let text = res.text().await.unwrap_or_default();
+        return error(
+            StatusCode::BAD_GATEWAY,
+            &format!("{} couldn't update: {text}", device.name),
+        );
+    }
+    // Wait for it to come back on the new version
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
+    let back = loop {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let running = state
+            .fleet
+            .statuses()
+            .await
+            .into_iter()
+            .find(|d| d.id == device.id)
+            .and_then(|d| d.version);
+        if running.as_deref() == Some(version.as_str()) {
+            break true;
+        }
+        if std::time::Instant::now() > deadline {
+            break false;
+        }
+    };
+    if !back {
+        return error(
+            StatusCode::GATEWAY_TIMEOUT,
+            &format!("{} didn't come back on {version}", device.name),
+        );
+    }
+    tracing::info!(device = %device.name, version, "device updated");
+    joined(&state, &device).await;
+    if let Some(instructions) = body.instructions {
+        setup_agents_on(&state, &device, &instructions).await;
+    }
+    let status = state
+        .fleet
+        .statuses()
+        .await
+        .into_iter()
+        .find(|d| d.id == device.id);
+    Json(status).into_response()
 }
 
 async fn remove_device(State(state): State<AppState>, Path(id): Path<String>) -> Response {

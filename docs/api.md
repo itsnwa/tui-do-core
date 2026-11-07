@@ -223,7 +223,7 @@ A home core can know other machines' cores (devices) and forward requests to the
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/fleet` | | `{ generation, home: { id, name }, devices: [{ id, name, address, platform, addedAt, online, version }] }` (reachability is checked live) |
+| `GET` | `/v0/fleet` | | `{ generation, home: { id, name, platform, version }, devices: [{ id, name, address, platform, addedAt, online, version }] }` (reachability is checked live) |
 | `POST` | `/v0/fleet/devices` | `{ address, token }` (e.g. `http://100.79.154.110:47821` and that core's token) | the device; it's asked who it is with the token first, so a wrong token or address is rejected. Adding a known device updates it. |
 | `DELETE` | `/v0/fleet/devices/{id}` | | 204 |
 | `GET` | `/v0/fleet/sessions` | | sessions on this core and every reachable device, each with a `device` id |
@@ -233,9 +233,21 @@ A home core can know other machines' cores (devices) and forward requests to the
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `POST` | `/v0/fleet/install` | `{ host, port?, identityFile?, version? }` | the new device, once it's installed and reachable (takes about a minute); `502` with the reason if it fails |
+| `POST` | `/v0/fleet/install` | `{ host, port?, identityFile?, version?, instructions? }` | the new device, once it's installed and reachable (takes about a minute); `502` with the reason if it fails |
 
 The home core connects with `ssh` (key-based, no prompts) to `host` (an alias from `~/.ssh/config`, `host` or `user@host`), and on that machine: downloads the GitHub release matching the home core's version for its platform (macOS arm64, Linux x86_64 or arm64), checks its SHA-256, installs it to `~/.tui-do/bin`, runs it as a systemd user service (Linux) or launchd agent (macOS), turns on remote access, and reports its Tailscale address and token, which the home core uses to add it to the fleet. Requires `curl`, `tar` and Tailscale on the target; on Linux, `loginctl enable-linger` keeps it running while you're logged out. Progress is sent on `/v0/events` as `{ "type": "installProgress", "host", "step" }`.
+
+## Updating
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/update` | | `{ current, latest, canUpdate }`: this core's version, the newest GitHub release as last checked (the core checks when it starts and again when asked after 15 minutes, in the background; `null` until it knows), and whether it can update itself |
+| `POST` | `/v0/update` | `{ version? }` (default: the latest) | `{ version }`, then the core restarts |
+| `POST` | `/v0/fleet/devices/{id}/update` | `{ version?, instructions? }` | the device, once it's back on the new version |
+
+A core updates itself by downloading the release for its platform, checking its SHA-256 and putting it in place of its own binary, then exiting; its service (the launchd agent or systemd user service both installs set up) starts the new one. A core that isn't running as that service refuses (`400`). Restarting ends the sessions running on that core.
+
+On the home core, `POST /v0/fleet/devices/{id}/update` has the device update itself and waits until it's back on the new version (up to 90 seconds), then sets up its coding agents again when `instructions` is given. A device whose core is too old to update itself (before 0.1.6) is reinstalled over the ssh host it was installed through, as with `POST /v0/fleet/install`.
 
 ## Fleet events and runners
 

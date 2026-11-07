@@ -18,7 +18,7 @@ use crate::fleet::{Device, Fleet};
 use crate::session::Event;
 
 const SCRIPT: &str = include_str!("remote.sh");
-const REPO: &str = "itsnwa/tui-do-core";
+pub(crate) const REPO: &str = "itsnwa/tui-do-core";
 /// The port cores listen on (loopback and Tailscale).
 const PORT: u16 = 47821;
 
@@ -55,7 +55,7 @@ fn valid_host(host: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '@' | ':'))
 }
 
-fn valid_version(version: &str) -> bool {
+pub(crate) fn valid_version(version: &str) -> bool {
     !version.is_empty()
         && version
             .chars()

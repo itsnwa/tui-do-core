@@ -11,6 +11,7 @@
 mod fleet;
 mod handoff;
 pub(crate) mod mcp;
+mod update;
 mod workspace;
 
 use std::sync::Arc;
@@ -62,6 +63,7 @@ pub fn router(state: AppState) -> Router {
         .merge(workspace::routes())
         .merge(fleet::routes())
         .merge(handoff::routes())
+        .merge(update::routes())
         .merge(mcp::routes(&state))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
