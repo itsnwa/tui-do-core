@@ -162,14 +162,14 @@ These take a short ID or slug and answer like the TUI-DO MCP tools (business err
 
 ## Projects
 
-`{ slug, title, muted, created, directory, ssh? }`, where `ssh` is `{ host, user?, port?, identityFile? }`.
+`{ slug, title, muted, created, directory }`. `directory` is on the home machine; a task runs on another machine with a copy of it (see [Running a task on another machine](#running-a-task-on-another-machine)).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/projects` | | `[Project]` |
-| `POST` | `/v0/projects` | `{ title, directory?, ssh? }` | Project |
+| `POST` | `/v0/projects` | `{ title, directory? }` | Project |
 | `GET` | `/v0/projects/{slug}` | | Project + `content` |
-| `PATCH` | `/v0/projects/{slug}` | any of `{ title, muted, directory, ssh }` (`ssh: null` removes it) | Project. A new title renames the project and moves its tasks to the new slug. |
+| `PATCH` | `/v0/projects/{slug}` | any of `{ title, muted, directory }` | Project. A new title renames the project and moves its tasks to the new slug. |
 | `DELETE` | `/v0/projects/{slug}` | | `{ deleted }` |
 
 ## Plans
@@ -207,13 +207,11 @@ The core is also the TUI-DO MCP server: 22 tools (`start_task`, `update_plan`, `
 Two ways in:
 
 - **stdio** — register `tui-do-core mcp` as the server command (e.g. in `~/.claude.json`: `{"command": "/Users/me/.tui-do/bin/tui-do-core", "args": ["mcp"]}`). It forwards every call to the running core. When Claude Code launches it, it also passes along which Claude session that is, so `start_task` links the task to the session.
-- **HTTP** — `/mcp` (MCP streamable HTTP), with the core's token as `Authorization: Bearer <token>`. Useful from a remote machine through an SSH reverse tunnel.
+- **HTTP** — `/mcp` (MCP streamable HTTP), with the core's token as `Authorization: Bearer <token>`.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `POST` | `/v0/mcp/call` | `{ name, arguments, session? }` | `{ result }` or `{ error }` (what `tui-do-core mcp` uses) |
-| `POST` | `/v0/mcp/tokens` | | `{ token }`: a token that only opens `/mcp`, for a remote machine (kept until revoked or the core restarts) |
-| `DELETE` | `/v0/mcp/tokens/{token}` | | 204 |
 | `GET` | `/v0/tasks/{slug}/claude-session` | | `{ sessionId, cwd, linkedAt }` or 404 |
 | `PUT` | `/v0/tasks/{slug}/claude-session` | `{ sessionId, cwd }` (UUID, absolute path) | the stored link |
 

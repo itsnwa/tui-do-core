@@ -1,8 +1,7 @@
 //! The TUI-DO MCP server, for coding agents (Claude Code, Codex).
 //!
 //! Tools always run in the core daemon. Agents reach them two ways:
-//! - `/mcp` on the daemon (streamable HTTP, token required), e.g. from a
-//!   remote ssh session through a reverse tunnel;
+//! - `/mcp` on the daemon (streamable HTTP, token required);
 //! - `tui-do-core mcp`, a stdio server the agent launches. It forwards each
 //!   call to the daemon, along with the Claude session that launched it, so
 //!   `start_task` can link the task to that session.

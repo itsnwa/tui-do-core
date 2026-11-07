@@ -46,8 +46,6 @@ pub struct AppState {
     pub workspace: Arc<SharedWorkspace>,
     pub sessions: Arc<TaskSessions>,
     pub token: Arc<str>,
-    /// Tokens that only grant `/mcp`, handed to remote machines.
-    pub mcp_tokens: Arc<mcp::McpTokens>,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -88,11 +86,10 @@ async fn require_token(State(state): State<AppState>, req: Request, next: Next) 
         .and_then(|q| q.split('&').find_map(|pair| pair.strip_prefix("token=")));
     let presented = from_header.or(from_query);
     let full = presented.is_some_and(|t| constant_time_eq(t.as_bytes(), state.token.as_bytes()));
-    // MCP-only tokens (see mcp::issue_token, and each fleet device's) open
-    // the MCP endpoints and nothing else
+    // Each fleet device's MCP-only token opens the MCP endpoints and nothing else
     let path = req.uri().path();
     let mcp_only = (path.starts_with("/mcp") || path == "/v0/mcp/call")
-        && presented.is_some_and(|t| state.mcp_tokens.contains(t) || state.fleet.is_mcp_token(t));
+        && presented.is_some_and(|t| state.fleet.is_mcp_token(t));
     if full || mcp_only {
         next.run(req).await
     } else {

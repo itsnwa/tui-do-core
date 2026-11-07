@@ -1,23 +1,14 @@
-//! Projects: `projects/<slug>.md`. A project can point at a local directory
-//! or, with `ssh`, a directory on another machine.
-
-use std::collections::BTreeMap;
+//! Projects: `projects/<slug>.md`, each pointing at a directory on the home
+//! machine. A task runs on another machine with a copy of it (see handoff).
 
 use serde::{Deserialize, Serialize};
 
 use super::store::Dir;
-use super::tasks::{double_option, text_or};
+use super::tasks::text_or;
 use super::{Error, Result, Workspace, dates, slug};
 use crate::format::{Map, Value};
 
-const PROJECT_KEYS: [&str; 6] = [
-    "title",
-    "muted",
-    "created",
-    "directory",
-    "ssh",
-    "directories",
-];
+const PROJECT_KEYS: [&str; 4] = ["title", "muted", "created", "directory"];
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Project {
@@ -27,21 +18,7 @@ pub struct Project {
     pub created: String,
     pub directory: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssh: Option<serde_json::Value>,
-    /// The project's folder on other machines, by device id (`directory` is the home machine's).
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub directories: BTreeMap<String, String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct SshConfig {
-    pub host: String,
-    pub user: Option<String>,
-    pub port: Option<f64>,
-    pub identity_file: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -49,7 +26,6 @@ pub struct SshConfig {
 pub struct CreateProject {
     pub title: String,
     pub directory: Option<String>,
-    pub ssh: Option<SshConfig>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -58,36 +34,6 @@ pub struct UpdateProject {
     pub title: Option<String>,
     pub muted: Option<bool>,
     pub directory: Option<String>,
-    /// `null` removes the SSH settings.
-    #[serde(deserialize_with = "double_option")]
-    pub ssh: Option<Option<SshConfig>>,
-    /// Merged into the per-device folders; a `null` value removes that device's.
-    pub directories: Option<BTreeMap<String, Option<String>>>,
-}
-
-/// Keep only meaningful SSH settings: host, a non-blank user, a non-default
-/// port and a non-blank identity file.
-fn prune_ssh(ssh: &SshConfig) -> Option<Value> {
-    if ssh.host.is_empty() {
-        return None;
-    }
-    let mut map = Map::new();
-    map.insert("host".into(), ssh.host.clone().into());
-    if let Some(user) = ssh.user.as_deref().map(str::trim).filter(|u| !u.is_empty()) {
-        map.insert("user".into(), user.into());
-    }
-    if let Some(port) = ssh.port.filter(|p| *p != 0.0 && *p != 22.0) {
-        map.insert("port".into(), port.into());
-    }
-    if let Some(file) = ssh
-        .identity_file
-        .as_deref()
-        .map(str::trim)
-        .filter(|f| !f.is_empty())
-    {
-        map.insert("identityFile".into(), file.into());
-    }
-    Some(Value::Map(map))
 }
 
 fn summarize(slug: &str, data: &Map, content: Option<String>) -> Project {
@@ -97,14 +43,6 @@ fn summarize(slug: &str, data: &Map, content: Option<String>) -> Project {
         muted: matches!(data.get("muted"), Some(Value::Bool(true))),
         created: text_or(data.get("created"), ""),
         directory: text_or(data.get("directory"), ""),
-        ssh: data.get("ssh").filter(|v| !v.is_null()).map(Value::to_json),
-        directories: match data.get("directories") {
-            Some(Value::Map(map)) => map
-                .iter()
-                .map(|(k, v)| (k.clone(), v.to_js_string()))
-                .collect(),
-            _ => BTreeMap::new(),
-        },
         content,
     }
 }
@@ -151,9 +89,6 @@ impl Workspace {
         data.insert("muted".into(), false.into());
         data.insert("created".into(), dates::now_iso().into());
         data.insert("directory".into(), req.directory.unwrap_or_default().into());
-        if let Some(ssh) = req.ssh.as_ref().and_then(prune_ssh) {
-            data.insert("ssh".into(), ssh);
-        }
         self.store.write(Dir::Projects, &slug, &data, "")?;
         Ok(summarize(&slug, &data, None))
     }
@@ -176,41 +111,6 @@ impl Workspace {
             .directory
             .unwrap_or_else(|| text_or(data.get("directory"), ""));
         data.insert("directory".into(), directory.into());
-        match &req.ssh {
-            Some(Some(ssh)) => match prune_ssh(ssh) {
-                Some(v) => {
-                    data.insert("ssh".into(), v);
-                }
-                None => {
-                    data.shift_remove("ssh");
-                }
-            },
-            Some(None) => {
-                data.shift_remove("ssh");
-            }
-            None => {}
-        }
-        if let Some(changes) = req.directories {
-            let mut dirs = match data.get("directories") {
-                Some(Value::Map(map)) => map.clone(),
-                _ => Map::new(),
-            };
-            for (device, dir) in changes {
-                match dir.filter(|d| !d.trim().is_empty()) {
-                    Some(dir) => {
-                        dirs.insert(device, dir.trim().into());
-                    }
-                    None => {
-                        dirs.shift_remove(&device);
-                    }
-                }
-            }
-            if dirs.is_empty() {
-                data.shift_remove("directories");
-            } else {
-                data.insert("directories".into(), Value::Map(dirs));
-            }
-        }
         let data = ordered(data);
 
         let new_slug = match req.title.as_deref().map(slug::slugify) {

@@ -340,7 +340,6 @@ pub fn call(
             let req = CreateProject {
                 title: args.req("title")?,
                 directory: args.opt("directory"),
-                ssh: None,
             };
             ws.create_project(req).and_then(to_json)
         }
@@ -349,8 +348,6 @@ pub fn call(
                 title: args.opt("title"),
                 muted: args.0.get("muted").and_then(Json::as_bool),
                 directory: args.opt("directory"),
-                ssh: None,
-                directories: None,
             };
             ws.update_project(&args.req("slug")?, req).and_then(to_json)
         }

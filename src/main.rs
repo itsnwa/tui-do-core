@@ -138,7 +138,6 @@ async fn serve() -> anyhow::Result<()> {
         workspace,
         sessions: Arc::new(TaskSessions::new(dir.join("task-sessions"))),
         token: token.into(),
-        mcp_tokens: Arc::default(),
     });
     tokio::spawn(net::serve_tailscale(app.clone(), local.port(), config));
     axum::serve(listener, app)
