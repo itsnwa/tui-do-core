@@ -366,6 +366,12 @@ async fn proxy(
     let Some(device) = target(&state, &id) else {
         return error(StatusCode::NOT_FOUND, "no such device");
     };
+    if matches!(caller.as_deref(), Some(Caller::Client(_))) && reaches_owner_only(&device, &rest) {
+        return error(
+            StatusCode::FORBIDDEN,
+            "only this machine can manage paired clients",
+        );
+    }
     // The client's own token is for this core; it's never passed on
     let query: Vec<(String, String)> = req
         .uri()
@@ -430,6 +436,14 @@ async fn proxy(
             &format!("{} isn't reachable: {err}", device.name),
         ),
     }
+}
+
+/// Whether forwarding `rest` to a device lands on a route only the core's own
+/// token may use. `rest` arrives percent-decoded, and the URL it's sent to is
+/// normalized again (`..`, a `?` in it), so this checks where it really goes.
+fn reaches_owner_only(device: &Device, rest: &str) -> bool {
+    reqwest::Url::parse(&format!("{}/v0/{rest}", device.address))
+        .map_or(true, |url| super::clients::owner_only(url.path()))
 }
 
 /// Decode `a=1&b=2`, percent-decoding keys and values.
@@ -544,6 +558,30 @@ mod tests {
             encode_pairs(&pairs),
             "project=tui-do&due=2026-11-07&q=a%20b"
         );
+    }
+
+    #[test]
+    fn client_routes_should_not_be_reachable_through_the_proxy() {
+        let device = Device {
+            id: "d".into(),
+            name: "d".into(),
+            address: "http://127.0.0.1:47821".into(),
+            token: String::new(),
+            platform: String::new(),
+            added_at: String::new(),
+            ssh_host: None,
+            mcp_token: String::new(),
+        };
+        for rest in [
+            "clients",
+            "sessions/../clients",
+            "clients?x=1",
+            "clients/abc",
+            "./clients",
+        ] {
+            assert!(reaches_owner_only(&device, rest), "{rest}");
+        }
+        assert!(!reaches_owner_only(&device, "sessions/my-task/attach"));
     }
 
     #[test]
