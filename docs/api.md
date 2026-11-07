@@ -216,3 +216,15 @@ Two ways in:
 | `DELETE` | `/v0/mcp/tokens/{token}` | | 204 |
 | `GET` | `/v0/tasks/{slug}/claude-session` | | `{ sessionId, cwd, linkedAt }` or 404 |
 | `PUT` | `/v0/tasks/{slug}/claude-session` | `{ sessionId, cwd }` (UUID, absolute path) | the stored link |
+
+# Fleet
+
+A home core can know other machines' cores (devices) and forward requests to them, so a client only needs the home core's address and token. Device tokens stay on the home core (in `fleet.json`, readable only by its user) and are never returned to clients. Devices reach each other over Tailscale: turn on `remoteAccess` on each device (`PATCH /v0/device`).
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/fleet` | | `{ generation, home: { id, name }, devices: [{ id, name, address, platform, addedAt, online, version }] }` (reachability is checked live) |
+| `POST` | `/v0/fleet/devices` | `{ address, token }` (e.g. `http://100.79.154.110:47821` and that core's token) | the device; it's asked who it is with the token first, so a wrong token or address is rejected. Adding a known device updates it. |
+| `DELETE` | `/v0/fleet/devices/{id}` | | 204 |
+| `GET` | `/v0/fleet/sessions` | | sessions on this core and every reachable device, each with a `device` id |
+| any | `/v0/devices/{id}/…` | | forwarded to that device's `/v0/…` with its token, including WebSockets (`/v0/devices/{id}/sessions/{sid}/attach`, `/v0/devices/{id}/events`). `{id}` may also be the home core's own id. `502` if the device isn't reachable. |

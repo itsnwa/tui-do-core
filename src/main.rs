@@ -10,6 +10,7 @@
 //! launch; it forwards tool calls to the running core (see `mcp`).
 
 use tui_do_core::config::ConfigStore;
+use tui_do_core::fleet::Fleet;
 use tui_do_core::links::{SessionLink, TaskSessions};
 use tui_do_core::mcp::TuiDoMcp;
 use tui_do_core::workspace::shared::SharedWorkspace;
@@ -121,6 +122,8 @@ async fn serve() -> anyhow::Result<()> {
     let app = api::router(api::AppState {
         registry: Arc::clone(&registry),
         config: Arc::clone(&config),
+        fleet: Arc::new(Fleet::load(dir.join("fleet.json"))?),
+        local_endpoint: format!("http://{local}").into(),
         workspace,
         sessions: Arc::new(TaskSessions::new(dir.join("task-sessions"))),
         token: token.into(),

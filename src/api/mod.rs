@@ -8,6 +8,7 @@
 //! the terminal, then write this": it's sent on attach and again whenever a
 //! client fell too far behind to receive every output event.
 
+mod fleet;
 pub(crate) mod mcp;
 mod workspace;
 
@@ -35,6 +36,9 @@ pub const API_VERSION: u32 = 0;
 pub struct AppState {
     pub registry: Arc<Registry>,
     pub config: Arc<ConfigStore>,
+    pub fleet: Arc<crate::fleet::Fleet>,
+    /// This core's loopback base URL, for requests addressed to its own device id.
+    pub local_endpoint: Arc<str>,
     pub workspace: Arc<SharedWorkspace>,
     pub sessions: Arc<TaskSessions>,
     pub token: Arc<str>,
@@ -53,6 +57,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v0/events", get(events))
         .route("/v0/device", get(get_device).patch(update_device))
         .merge(workspace::routes())
+        .merge(fleet::routes())
         .merge(mcp::routes(&state))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
