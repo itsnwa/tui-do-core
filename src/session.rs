@@ -255,7 +255,16 @@ impl Registry {
             .context("opening a PTY")?;
 
         let mut cmd = if req.argv.is_empty() {
-            let mut cmd = CommandBuilder::new_default_prog();
+            // The user's login shell (portable-pty's default-program builder
+            // can't take arguments, so name the shell explicitly)
+            let shell = req
+                .env
+                .get("SHELL")
+                .cloned()
+                .or_else(|| std::env::var("SHELL").ok())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "/bin/sh".into());
+            let mut cmd = CommandBuilder::new(shell);
             cmd.arg("-l");
             cmd
         } else {
@@ -729,6 +738,57 @@ mod tests {
     fn snapshot_should_include_scrollback() {
         let lines: String = (0..20).map(|i| format!("line{i}\r\n")).collect();
         assert!(feed(lines.as_bytes()).contains("line0"));
+    }
+
+    fn registry() -> Registry {
+        let dir = std::env::temp_dir().join(format!("tui-do-core-test-{}", uuid::Uuid::new_v4()));
+        Registry::new(Hooks::prepare(&dir).expect("hooks"))
+    }
+
+    fn spawn_request(id: &str, argv: &[&str]) -> SpawnRequest {
+        SpawnRequest {
+            id: id.into(),
+            argv: argv.iter().map(|s| (*s).to_string()).collect(),
+            cwd: None,
+            env: HashMap::new(),
+            cols: 80,
+            rows: 24,
+            agent: None,
+            labels: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn spawn_without_argv_should_start_a_login_shell() {
+        let registry = registry();
+        let info = registry.spawn(spawn_request("shell", &[])).expect("spawns");
+        assert!(info.alive);
+        registry.kill_all();
+    }
+
+    #[tokio::test]
+    async fn spawned_command_output_should_reach_the_snapshot() {
+        let registry = registry();
+        registry
+            .spawn(spawn_request(
+                "echo",
+                &["/bin/sh", "-c", "echo snapshot-check; sleep 5"],
+            ))
+            .expect("spawns");
+        let mut found = false;
+        for _ in 0..50 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            if registry
+                .snapshot("echo")
+                .await
+                .is_some_and(|s| s.data.contains("snapshot-check"))
+            {
+                found = true;
+                break;
+            }
+        }
+        registry.kill_all();
+        assert!(found);
     }
 
     #[test]
