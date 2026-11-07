@@ -1,8 +1,8 @@
 //! Running a task on another machine with the project's code.
 //!
 //! Starting a task on a fleet device: the home core snapshots the project's
-//! git repo (unpushed commits and uncommitted changes included, the checkout
-//! untouched), sends only what the device lacks as a `git bundle`, and the
+//! git repo (unpushed commits, plus uncommitted changes when asked; the
+//! checkout untouched), sends only what the device lacks as a `git bundle`, and the
 //! device checks it out in a worktree of its own (`~/.tui-do/work/<project>/
 //! <task>`) on branch `tui-do/<task id>`. Completing the task brings the work
 //! back: the device commits what's left and bundles the branch, and the home
@@ -33,6 +33,9 @@ pub struct Record {
     pub base: String,
     pub dirty: bool,
     pub title: String,
+    /// The task's working folder on the device.
+    #[serde(default)]
+    pub path: String,
 }
 
 /// The snapshot as passed to a device (query parameters).
@@ -179,6 +182,7 @@ impl Handoffs {
     // --- home side ---
 
     /// Hand a task's project to `device` and return its working folder there.
+    /// A task that's already there keeps its copy (and the work in it).
     pub async fn start(
         &self,
         workspace: Arc<Workspace>,
@@ -197,6 +201,12 @@ impl Handoffs {
             Ok((task, project))
         })
         .await??;
+        if let Some(record) = self.record(task_slug)
+            && record.device == device.id
+            && !record.path.is_empty()
+        {
+            return Ok((record.path, record.branch));
+        }
         if project.directory.is_empty() {
             bail!(
                 "the project {} has no folder on this machine",
@@ -280,6 +290,7 @@ impl Handoffs {
             base: snapshot.base,
             dirty: snapshot.dirty,
             title: task.task.title,
+            path: received.path.clone(),
         };
         std::fs::create_dir_all(&self.records)?;
         std::fs::write(
