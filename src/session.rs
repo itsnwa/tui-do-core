@@ -107,6 +107,14 @@ pub enum Event {
         device: String,
         online: bool,
     },
+    /// A task's code moving to or back from another machine: `starting`,
+    /// `started`, `returned` or `failed`.
+    Handoff {
+        task: String,
+        status: String,
+        branch: Option<String>,
+        message: Option<String>,
+    },
 }
 
 impl Event {
@@ -116,7 +124,8 @@ impl Event {
             Event::WorkspaceChanged { .. }
             | Event::InstallProgress { .. }
             | Event::DeviceEvent { .. }
-            | Event::DeviceStatus { .. } => "",
+            | Event::DeviceStatus { .. }
+            | Event::Handoff { .. } => "",
             Event::SessionCreated { session } => &session.id,
             Event::Output { id, .. }
             | Event::SessionExited { id, .. }

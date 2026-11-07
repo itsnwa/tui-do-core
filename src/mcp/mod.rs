@@ -20,6 +20,7 @@ use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde::{Deserialize, Serialize};
 
 use crate::config::{ConfigStore, HomeLink};
+use crate::handoff::Handoffs;
 use crate::links::{SessionLink, TaskSessions};
 use crate::workspace::shared::SharedWorkspace;
 
@@ -70,6 +71,7 @@ pub async fn run_call(
     workspace: Arc<SharedWorkspace>,
     sessions: Arc<TaskSessions>,
     home: Option<HomeLink>,
+    handoffs: Option<Arc<Handoffs>>,
     call: ForwardedCall,
 ) -> CallOutcome {
     let Some(ws) = workspace.current() else {
@@ -91,7 +93,21 @@ pub async fn run_call(
     })
     .await;
     match outcome {
-        Ok(Ok(value)) => CallOutcome::Result(value),
+        Ok(Ok(value)) => {
+            // A completed task that ran on another machine brings its work back
+            let completed = matches!(
+                value["status"].as_str(),
+                Some("completed" | "recurring_advanced")
+            );
+            if let (true, Some(handoffs), Some(task)) =
+                (completed, handoffs, value["task"]["slug"].as_str())
+                && handoffs.record(task).is_some()
+            {
+                let task = task.to_string();
+                tokio::spawn(async move { handoffs.bring_back(&task).await });
+            }
+            CallOutcome::Result(value)
+        }
         Ok(Err(message)) => CallOutcome::Error(message),
         Err(err) => CallOutcome::Error(err.to_string()),
     }
@@ -104,6 +120,7 @@ enum Backend {
         workspace: Arc<SharedWorkspace>,
         sessions: Arc<TaskSessions>,
         config: Arc<ConfigStore>,
+        handoffs: Arc<Handoffs>,
     },
     /// In `tui-do-core mcp`: forward to the daemon over HTTP.
     Daemon {
@@ -124,12 +141,14 @@ impl TuiDoMcp {
         workspace: Arc<SharedWorkspace>,
         sessions: Arc<TaskSessions>,
         config: Arc<ConfigStore>,
+        handoffs: Arc<Handoffs>,
     ) -> Self {
         Self {
             backend: Backend::Local {
                 workspace,
                 sessions,
                 config,
+                handoffs,
             },
         }
     }
@@ -151,6 +170,7 @@ impl TuiDoMcp {
                 workspace,
                 sessions,
                 config,
+                handoffs,
             } => {
                 let call = ForwardedCall {
                     name,
@@ -161,6 +181,7 @@ impl TuiDoMcp {
                     Arc::clone(workspace),
                     Arc::clone(sessions),
                     config.get().home,
+                    Some(Arc::clone(handoffs)),
                     call,
                 )
                 .await

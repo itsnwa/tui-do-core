@@ -249,3 +249,15 @@ The home core relays every device's events on its own `/v0/events`:
 `event` is exactly what that device sends on its own stream (`sessions`, `sessionCreated`, `output`, `agentState`, …). Without `?output=1`, relayed `output` events are left out too. Clients load the current state with `GET /v0/fleet` and `GET /v0/fleet/sessions`, then apply events. To type into a device's session over the same socket, add its id: `{ "type": "input", "device": "<id>", "id": "my-task", "data": "ls\n" }` (also for `resize`); the home core passes it on in order.
 
 When a device is added, the home core turns on its own remote access and gives the device a home link (`PUT /v0/fleet/home { address, token }` on the device): the home core's Tailscale address and a token that only opens the home core's MCP endpoints (`/mcp`, `/v0/mcp/call`). A core without a workspace (a runner) forwards MCP tool calls there, so `tui-do-core mcp` works the same on every machine.
+
+## Running a task on another machine
+
+Starting a task on a fleet device takes the project's code along; completing the task brings the work back as a branch. Only git projects can move.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `POST` | `/v0/tasks/{slug}/handoff` | `{ device }` | `{ device, path, branch }`: the task's working folder on that device. The home core snapshots the project's repo (unpushed commits and uncommitted, untracked changes included; the checkout, index and branch are left alone), sends only the commits the device lacks as a `git bundle`, and the device checks it out in `~/.tui-do/work/<project>/<task>` on branch `tui-do/<task id>`, with uncommitted work still uncommitted. If the task already has a folder there, it's kept. |
+
+Completing the task (in the app, or with `complete_task`) makes the device commit what's left and send the branch back; the home core fetches it into the project as `tui-do/<task id>` (your checkout is never touched), and the device's folder is removed. Progress goes out on `/v0/events` as `{ "type": "handoff", "task", "status": "starting" | "started" | "returned" | "failed", "branch", "message" }`.
+
+Device-side routes used by the home core: `GET /v0/handoff/{project}/commits`, `POST /v0/handoff/{project}/{task}` (bundle body), `POST /v0/handoff/{project}/{task}/collect`.

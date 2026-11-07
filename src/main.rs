@@ -11,6 +11,7 @@
 
 use tui_do_core::config::ConfigStore;
 use tui_do_core::fleet::Fleet;
+use tui_do_core::handoff::Handoffs;
 use tui_do_core::links::{SessionLink, TaskSessions};
 use tui_do_core::mcp::TuiDoMcp;
 use tui_do_core::relay::Relays;
@@ -130,6 +131,7 @@ async fn serve() -> anyhow::Result<()> {
         config: Arc::clone(&config),
         fleet: Arc::clone(&fleet),
         relays: Arc::clone(&relays),
+        handoffs: Arc::new(Handoffs::new(Arc::clone(&fleet), registry.sender(), &dir)),
         local_endpoint: format!("http://{local}").into(),
         workspace,
         sessions: Arc::new(TaskSessions::new(dir.join("task-sessions"))),

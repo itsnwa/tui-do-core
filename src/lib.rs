@@ -5,6 +5,7 @@ pub mod api;
 pub mod config;
 pub mod fleet;
 pub mod format;
+pub mod handoff;
 pub mod hooks;
 pub mod install;
 pub mod links;

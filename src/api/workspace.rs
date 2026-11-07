@@ -140,7 +140,15 @@ async fn update_task(
     Path(slug): Path<String>,
     Json(req): Json<UpdateTask>,
 ) -> Response {
-    run(&state, move |ws| ws.update_task(&slug, req)).await
+    let completing = req.state.as_deref() == Some("completed");
+    let task = slug.clone();
+    let response = run(&state, move |ws| ws.update_task(&slug, req)).await;
+    // A task that ran on another machine brings its work back when it's done
+    if completing && response.status().is_success() && state.handoffs.record(&task).is_some() {
+        let handoffs = std::sync::Arc::clone(&state.handoffs);
+        tokio::spawn(async move { handoffs.bring_back(&task).await });
+    }
+    response
 }
 
 async fn delete_task(State(state): State<AppState>, Path(slug): Path<String>) -> Response {

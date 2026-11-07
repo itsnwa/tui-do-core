@@ -9,6 +9,7 @@
 //! client fell too far behind to receive every output event.
 
 mod fleet;
+mod handoff;
 pub(crate) mod mcp;
 mod workspace;
 
@@ -38,6 +39,7 @@ pub struct AppState {
     pub config: Arc<ConfigStore>,
     pub fleet: Arc<crate::fleet::Fleet>,
     pub relays: Arc<crate::relay::Relays>,
+    pub handoffs: Arc<crate::handoff::Handoffs>,
     /// This core's loopback base URL, for requests addressed to its own device id.
     pub local_endpoint: Arc<str>,
     pub workspace: Arc<SharedWorkspace>,
@@ -59,6 +61,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v0/device", get(get_device).patch(update_device))
         .merge(workspace::routes())
         .merge(fleet::routes())
+        .merge(handoff::routes())
         .merge(mcp::routes(&state))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
