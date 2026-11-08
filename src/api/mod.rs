@@ -58,6 +58,10 @@ pub struct AppState {
     pub core_dir: Arc<std::path::Path>,
     /// Held while the home moves away from this core.
     pub moving: Arc<tokio::sync::Mutex<()>>,
+    /// Held while this core takes a home link.
+    pub linking: Arc<tokio::sync::Mutex<()>>,
+    /// The app tokens this home has made, by device id.
+    pub app_tokens: Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
 }
 
 impl AppState {

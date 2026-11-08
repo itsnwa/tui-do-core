@@ -141,9 +141,31 @@ impl Clients {
         self.add(name, false)
     }
 
-    /// Make the client for the app on a Mac the home moved away from.
+    /// Make the client for the app on a Mac the home moved away from, in
+    /// place of the one it had.
     pub fn create_app(&self, device_name: &str) -> anyhow::Result<(ClientInfo, String)> {
-        self.add(&format!("{APP_NAME_PREFIX}{device_name}"), true)
+        let name = format!("{APP_NAME_PREFIX}{device_name}");
+        let earlier: Vec<String> = self
+            .lock()
+            .clients
+            .iter()
+            .filter(|c| c.manager && c.name == name)
+            .map(|c| c.id.clone())
+            .collect();
+        let created = self.add(&name, true)?;
+        for id in earlier {
+            self.revoke(&id)?;
+        }
+        Ok(created)
+    }
+
+    /// Whether the app on that Mac has a client here.
+    pub fn has_app(&self, device_name: &str) -> bool {
+        let name = format!("{APP_NAME_PREFIX}{device_name}");
+        self.lock()
+            .clients
+            .iter()
+            .any(|c| c.manager && c.name == name)
     }
 
     fn add(&self, name: &str, manager: bool) -> anyhow::Result<(ClientInfo, String)> {
@@ -313,6 +335,21 @@ mod tests {
         assert!(clients.is_manager(&app.id));
         assert!(!clients.is_manager(&phone.id));
         assert!(!clients.is_manager("nobody"));
+    }
+
+    #[test]
+    fn a_new_app_client_should_replace_the_one_for_that_mac() {
+        let clients = clients();
+        assert!(!clients.has_app("my-mac"));
+        let (phone, phone_token) = clients.create("iPhone").expect("creates");
+        let (_, lost) = clients.create_app("my-mac").expect("creates");
+        let (other, other_token) = clients.create_app("other-mac").expect("creates");
+        let (app, token) = clients.create_app("my-mac").expect("creates");
+        assert!(clients.has_app("my-mac"));
+        assert_eq!(clients.authenticate(&lost), None);
+        assert_eq!(clients.authenticate(&token), Some(app.id));
+        assert_eq!(clients.authenticate(&other_token), Some(other.id));
+        assert_eq!(clients.authenticate(&phone_token), Some(phone.id));
     }
 
     #[test]

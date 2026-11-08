@@ -295,23 +295,42 @@ pub fn accepts(core_dir: &Path, root: &Path, default: &Path) -> anyhow::Result<(
 /// Mark `root` as a copy, keeping what's in it first:
 /// `<core dir>/backups/workspace-<time>` (the newest few are kept).
 pub fn mark(core_dir: &Path, root: &Path) -> anyhow::Result<()> {
-    if !manifest(root).files.is_empty() {
-        let backups = core_dir.join("backups");
-        let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-        let backup = backups.join(format!("workspace-{stamp}"));
-        for area in AREAS {
-            copy_dir(&root.join(area), &backup.join(area))?;
-        }
-        tracing::info!(backup = %backup.display(), "kept the folder's contents before it became a copy");
-        let mut old: Vec<PathBuf> = std::fs::read_dir(&backups)
-            .map(|entries| entries.flatten().map(|e| e.path()).collect())
-            .unwrap_or_default();
-        old.sort();
-        let excess = old.len().saturating_sub(BACKUPS_KEPT);
-        for path in old.into_iter().take(excess) {
-            let _ = std::fs::remove_dir_all(path);
-        }
+    back_up(core_dir, root)?;
+    write_mark(core_dir, root)
+}
+
+/// `mark`, for a folder a new home has already taken over: there's no going
+/// back from that, so a backup that fails doesn't stop it.
+pub fn mark_moved(core_dir: &Path, root: &Path) -> anyhow::Result<()> {
+    if let Err(err) = back_up(core_dir, root) {
+        tracing::warn!(error = %format!("{err:#}"), "couldn't keep the folder's contents before it became a copy");
     }
+    write_mark(core_dir, root)
+}
+
+fn back_up(core_dir: &Path, root: &Path) -> anyhow::Result<()> {
+    if manifest(root).files.is_empty() {
+        return Ok(());
+    }
+    let backups = core_dir.join("backups");
+    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let backup = backups.join(format!("workspace-{stamp}"));
+    for area in AREAS {
+        copy_dir(&root.join(area), &backup.join(area))?;
+    }
+    tracing::info!(backup = %backup.display(), "kept the folder's contents before it became a copy");
+    let mut old: Vec<PathBuf> = std::fs::read_dir(&backups)
+        .map(|entries| entries.flatten().map(|e| e.path()).collect())
+        .unwrap_or_default();
+    old.sort();
+    let excess = old.len().saturating_sub(BACKUPS_KEPT);
+    for path in old.into_iter().take(excess) {
+        let _ = std::fs::remove_dir_all(path);
+    }
+    Ok(())
+}
+
+fn write_mark(core_dir: &Path, root: &Path) -> anyhow::Result<()> {
     std::fs::write(
         core_dir.join("replica.json"),
         serde_json::json!({ "folder": root }).to_string() + "\n",
@@ -531,6 +550,18 @@ mod tests {
         assert_eq!(backups, 1);
         unmark(&core);
         assert!(accepts(&core, &own, &default).is_err());
+    }
+
+    #[test]
+    fn a_failed_backup_should_only_stop_marking_before_a_move() {
+        let (core, own, default) = (temp(), temp(), temp());
+        write(&own, "tasks/mine.md", "mine");
+        // A file where the backups folder goes
+        std::fs::write(core.join("backups"), "").expect("write");
+        assert!(mark(&core, &own).is_err());
+        assert!(accepts(&core, &own, &default).is_err());
+        mark_moved(&core, &own).expect("marks");
+        accepts(&core, &own, &default).expect("marked");
     }
 
     #[test]

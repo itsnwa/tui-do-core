@@ -1,6 +1,6 @@
 [package]
 name = "tui-do-core"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "Background service that owns TUI-DO terminal sessions and tasks, and serves them to clients over HTTP + WebSocket"
 license = "MIT OR Apache-2.0"
@@ -20,6 +20,7 @@ portable-pty = "0.9.0"
 rand = "0.10.3"
 regex = "1.13.1"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "query"] }
+rlimit = "0.11.0"
 rmcp = { version = "3.9", features = ["server", "transport-io", "transport-streamable-http-server"] }
 saphyr-parser = "0.3.3"
 serde = { version = "1.0.229", features = ["derive", "rc"] }

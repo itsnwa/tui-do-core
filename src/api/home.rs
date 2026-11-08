@@ -13,7 +13,8 @@
 //! Whenever a core that still holds a fleet takes a link from a newer home,
 //! it gives the home role away (`give_away`), so a move whose answer got lost
 //! still finishes once the new home reaches the old one. Until it's sure,
-//! the old home takes no writes.
+//! the old home takes no writes. The app's token goes in that answer too; a
+//! Mac that never got it is given one when the new home next reaches it.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -135,10 +136,41 @@ pub(super) async fn link_home(
     Ok(())
 }
 
+/// The token for the app on a Mac the home moved away from. The same one
+/// while this core is the home: the answer to a move and the link that
+/// follows it can reach the Mac in either order.
+fn app_token(state: &AppState, device: &Device) -> anyhow::Result<String> {
+    let mut tokens = state.app_tokens.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(token) = tokens.get(&device.id) {
+        return Ok(token.clone());
+    }
+    let (client, token) = state.clients.create_app(&device.name)?;
+    tracing::info!(client = %client.id, "paired the old home's app");
+    tokens.insert(device.id.clone(), token.clone());
+    Ok(token)
+}
+
+/// A token for a Mac the home moved away from that doesn't have one, as when
+/// the answer to the move got lost.
+async fn missing_app_token(state: &AppState, device: &Device) -> Option<String> {
+    if !device.platform.starts_with("macos") || !state.clients.has_app(&device.name) {
+        return None;
+    }
+    let home = device_home(state.fleet.client(), device).await?;
+    if !home["clientToken"].is_null() {
+        return None;
+    }
+    app_token(state, device)
+        .inspect_err(|err| tracing::warn!(device = %device.name, error = %format!("{err:#}"), "couldn't pair the app"))
+        .ok()
+}
+
 /// Take a home link: this core is a runner of that home from now on. A link
 /// from an older home than the one this core knows is refused. A core that
 /// was the home gives the role away.
 async fn take_link(state: &AppState, link: HomeLink) -> Result<(), (StatusCode, String)> {
+    // The answer to a move and the new home's own link arrive close together
+    let _linking = state.linking.lock().await;
     let config = state.config.get();
     let was_home = config.is_home() && !state.fleet.devices().is_empty();
     let known = match &config.home {
@@ -158,10 +190,11 @@ async fn take_link(state: &AppState, link: HomeLink) -> Result<(), (StatusCode, 
             .await
             .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, format!("{err:#}")))?;
     }
-    let changed = config
-        .home
-        .as_ref()
-        .is_none_or(|current| current.id != link.id || current.address != link.address);
+    let changed = config.home.as_ref().is_none_or(|current| {
+        current.id != link.id
+            || current.address != link.address
+            || (current.client_token.is_none() && link.client_token.is_some())
+    });
     state
         .config
         .update(|c| {
@@ -195,7 +228,7 @@ async fn take_link(state: &AppState, link: HomeLink) -> Result<(), (StatusCode, 
 /// records, which the new home has, are cleared here.
 async fn give_away(state: &AppState, generation: u64) -> anyhow::Result<()> {
     let (core_dir, folder) = (Arc::clone(&state.core_dir), state.workspace.folder());
-    tokio::task::spawn_blocking(move || crate::replica::mark(&core_dir, &folder)).await??;
+    tokio::task::spawn_blocking(move || crate::replica::mark_moved(&core_dir, &folder)).await??;
     let old_devices = state.fleet.devices();
     state.fleet.replace(FleetRecord {
         generation,
@@ -206,6 +239,11 @@ async fn give_away(state: &AppState, generation: u64) -> anyhow::Result<()> {
         state.relays.stop(&device.id);
     }
     state.clients.replace(crate::clients::Record::default())?;
+    state
+        .app_tokens
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clear();
     state.sessions.replace(&[])?;
     state.handoffs.replace_records(&[])?;
     tracing::info!(generation, "gave the home away");
@@ -307,7 +345,8 @@ fn welcome(state: &AppState, device: Device) {
         if !state.config.get().is_home() {
             return;
         }
-        if let Err(err) = link_home(&state, &device, None).await {
+        let client_token = missing_app_token(&state, &device).await;
+        if let Err(err) = link_home(&state, &device, client_token).await {
             tracing::warn!(device = %device.name, error = %format!("{err:#}"), "couldn't give the device a home link");
         }
         if state.workspace.current().is_some()
@@ -576,10 +615,9 @@ async fn send_adopt(
     Ok(res.json().await?)
 }
 
-/// Whether a device says it's the home, and its generation (`None` if it
-/// can't be asked).
-async fn home_of(client: &reqwest::Client, device: &Device) -> Option<(bool, u64)> {
-    let home: Value = client
+/// A device's `GET /v0/home` (`None` if it can't be asked).
+async fn device_home(client: &reqwest::Client, device: &Device) -> Option<Value> {
+    client
         .get(format!("{}/v0/home", device.address))
         .bearer_auth(&device.token)
         .timeout(Duration::from_secs(10))
@@ -590,7 +628,13 @@ async fn home_of(client: &reqwest::Client, device: &Device) -> Option<(bool, u64
         .ok()?
         .json()
         .await
-        .ok()?;
+        .ok()
+}
+
+/// Whether a device says it's the home, and its generation (`None` if it
+/// can't be asked).
+async fn home_of(client: &reqwest::Client, device: &Device) -> Option<(bool, u64)> {
+    let home = device_home(client, device).await?;
     Some((home["self"] == true, home["generation"].as_u64()?))
 }
 
@@ -645,9 +689,7 @@ async fn adopt_inner(state: &AppState, handover: Handover) -> anyhow::Result<Hom
 
     // The app runs on Macs: one the home left keeps reaching it as a client
     let client_token = if old_home.platform.starts_with("macos") {
-        let (client, token) = state.clients.create_app(&old_home.name)?;
-        tracing::info!(client = %client.id, "paired the old home's app");
-        Some(token)
+        Some(app_token(state, &old_home)?)
     } else {
         None
     };

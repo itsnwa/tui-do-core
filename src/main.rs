@@ -32,6 +32,8 @@ use base64::Engine;
 use rand::RngExt;
 
 const DEFAULT_ADDR: &str = "127.0.0.1:47821";
+/// launchd starts services with a limit of only 256 open files.
+const OPEN_FILES: u64 = 10_240;
 
 fn core_dir() -> anyhow::Result<PathBuf> {
     if let Some(dir) = std::env::var_os("TUI_DO_CORE_DIR") {
@@ -103,6 +105,9 @@ async fn serve_mcp_stdio() -> anyhow::Result<()> {
 }
 
 async fn serve() -> anyhow::Result<()> {
+    if let Err(err) = rlimit::increase_nofile_limit(OPEN_FILES) {
+        tracing::warn!(%err, "couldn't raise the open files limit");
+    }
     let dir = core_dir()?;
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
@@ -161,6 +166,8 @@ async fn serve() -> anyhow::Result<()> {
         replicas: Arc::new(Replicas::default()),
         core_dir: dir.clone().into(),
         moving: Arc::default(),
+        linking: Arc::default(),
+        app_tokens: Arc::default(),
     };
     // Devices are linked and given the workspace as their relays come online
     api::spawn_background(state.clone());
