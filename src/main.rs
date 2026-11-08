@@ -3,8 +3,10 @@
 //!
 //! Runtime files live in `$TUI_DO_CORE_DIR` (default `~/.tui-do/core`):
 //! `token` (bearer token, 0600), `endpoint` (base URL clients connect to),
-//! `config.json` (the workspace folder), `clients.json` (paired clients),
-//! `claude-hooks/` and `task-sessions/`.
+//! `config.json` (the workspace folder, the home link), `fleet.json`,
+//! `clients.json` (paired clients), `handoffs/`, `claude-hooks/` and
+//! `task-sessions/`. A runner keeps its copy of the workspace in
+//! `~/.tui-do/workspace` unless a folder is configured.
 //!
 //! `tui-do-core mcp` runs the TUI-DO MCP server on stdio for an agent to
 //! launch; it forwards tool calls to the running core (see `mcp`).
@@ -16,6 +18,7 @@ use tui_do_core::handoff::Handoffs;
 use tui_do_core::links::{SessionLink, TaskSessions};
 use tui_do_core::mcp::TuiDoMcp;
 use tui_do_core::relay::Relays;
+use tui_do_core::replica::Replicas;
 use tui_do_core::workspace::shared::SharedWorkspace;
 use tui_do_core::{api, hooks, net, session};
 
@@ -107,9 +110,13 @@ async fn serve() -> anyhow::Result<()> {
     let hooks = hooks::Hooks::prepare(&dir.join("claude-hooks"))?;
     let registry = Arc::new(session::Registry::new(hooks));
     let config = Arc::new(ConfigStore::load(dir.join("config.json"))?);
+    let default_workspace = dir
+        .parent()
+        .map_or_else(|| dir.join("workspace"), |p| p.join("workspace"));
     let workspace = Arc::new(SharedWorkspace::load(
         Arc::clone(&config),
         registry.sender(),
+        default_workspace,
     ));
 
     let addr = std::env::var("TUI_DO_CORE_ADDR").unwrap_or_else(|_| DEFAULT_ADDR.to_string());
@@ -124,23 +131,43 @@ async fn serve() -> anyhow::Result<()> {
 
     let fleet = Arc::new(Fleet::load(dir.join("fleet.json"))?);
     let relays = Arc::new(Relays::new(registry.sender()));
-    for device in fleet.devices() {
-        relays.start(device);
-    }
     let device = config.get();
     tracing::info!(id = %device.device_id, name = %device.device_name, "device");
-    let app = api::router(api::AppState {
+    let state = api::AppState {
         registry: Arc::clone(&registry),
         config: Arc::clone(&config),
         fleet: Arc::clone(&fleet),
         relays: Arc::clone(&relays),
-        handoffs: Arc::new(Handoffs::new(Arc::clone(&fleet), registry.sender(), &dir)),
+        handoffs: Arc::new(Handoffs::new(
+            Arc::clone(&fleet),
+            tui_do_core::fleet::Device {
+                id: device.device_id.clone(),
+                name: device.device_name.clone(),
+                address: format!("http://{local}"),
+                token: token.clone(),
+                platform: String::new(),
+                added_at: String::new(),
+                ssh_host: None,
+                mcp_token: String::new(),
+            },
+            registry.sender(),
+            &dir,
+        )),
         local_endpoint: format!("http://{local}").into(),
         workspace,
         sessions: Arc::new(TaskSessions::new(dir.join("task-sessions"))),
         token: token.into(),
         clients: Arc::new(Clients::load(dir.join("clients.json"))?),
-    });
+        replicas: Arc::new(Replicas::default()),
+        core_dir: dir.clone().into(),
+        moving: Arc::default(),
+    };
+    // Devices are linked and given the workspace as their relays come online
+    api::spawn_background(state.clone());
+    for device in fleet.devices() {
+        relays.start(device);
+    }
+    let app = api::router(state);
     tokio::spawn(net::serve_tailscale(app.clone(), local.port(), config));
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

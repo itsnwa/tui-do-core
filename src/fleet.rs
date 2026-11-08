@@ -45,14 +45,19 @@ pub struct DeviceStatus {
     pub version: Option<String>,
 }
 
+/// What `fleet.json` holds; it moves to the new home with the home role.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct FleetRecord {
-    /// Bumped whenever the home role moves (see phase 3f).
+pub struct FleetRecord {
+    /// Bumped whenever the home role moves.
     #[serde(default)]
-    generation: u64,
+    pub generation: u64,
+    /// The machine the projects' folders are on; absent means the home.
+    /// Set to the old home when the home first moves away from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_device: Option<String>,
     #[serde(default)]
-    devices: Vec<Device>,
+    pub devices: Vec<Device>,
 }
 
 /// What a device answers on `GET /v0/device`.
@@ -120,6 +125,27 @@ impl Fleet {
 
     pub fn generation(&self) -> u64 {
         self.snapshot().generation
+    }
+
+    /// The machine the projects' folders are on (`own_id` when it's the home).
+    pub fn code_device(&self, own_id: &str) -> String {
+        self.snapshot()
+            .code_device
+            .unwrap_or_else(|| own_id.to_string())
+    }
+
+    /// The whole record, tokens included, to hand to a new home.
+    pub fn record(&self) -> FleetRecord {
+        self.snapshot()
+    }
+
+    /// Replace the record: taking over as home, or giving the role away
+    /// (an empty record that keeps the generation).
+    pub fn replace(&self, next: FleetRecord) -> anyhow::Result<()> {
+        let mut record = self.record.lock().unwrap_or_else(|p| p.into_inner());
+        self.save(&next)?;
+        *record = next;
+        Ok(())
     }
 
     pub fn devices(&self) -> Vec<Device> {

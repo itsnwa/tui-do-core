@@ -79,6 +79,33 @@ impl TaskSessions {
         serde_json::from_str(&text).ok()
     }
 
+    /// Every link, by task, to hand to a new home.
+    pub fn all(&self) -> Vec<(String, SessionLink)> {
+        let Ok(entries) = std::fs::read_dir(&self.dir) else {
+            return Vec::new();
+        };
+        entries
+            .flatten()
+            .filter_map(|e| {
+                let task = e.file_name().to_str()?.strip_suffix(".json")?.to_string();
+                Some((task.clone(), self.get(&task)?))
+            })
+            .collect()
+    }
+
+    /// Replace every link (taking over as home, or giving the role away).
+    pub fn replace(&self, links: &[(String, SessionLink)]) -> anyhow::Result<()> {
+        if self.dir.exists() {
+            std::fs::remove_dir_all(&self.dir)?;
+        }
+        std::fs::create_dir_all(&self.dir)?;
+        for (task, link) in links {
+            let path = self.path(task).context("invalid task slug")?;
+            std::fs::write(path, serde_json::to_string_pretty(link)? + "\n")?;
+        }
+        Ok(())
+    }
+
     /// Store a link (atomically), stamping when it was made.
     pub fn set(&self, task_slug: &str, link: &SessionLink) -> anyhow::Result<SessionLink> {
         link.validate().map_err(anyhow::Error::msg)?;

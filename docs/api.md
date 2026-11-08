@@ -29,7 +29,7 @@ Every route except `/v0/health` needs a token, sent as `Authorization: Bearer <t
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/health` | | `{ name, version, apiVersion, device: { id, name } }` (no token needed) |
+| `GET` | `/v0/health` | | `{ name, version, apiVersion, device: { id, name }, home: { id, name, address?, generation } }` (no token needed; see [Finding the home](#finding-the-home)) |
 | `GET` | `/v0/device` | | `{ id, name, remoteAccess, tailscaleAddress, platform, version }` |
 | `PATCH` | `/v0/device` | `{ name?, remoteAccess? }` | same as `GET`. With `remoteAccess` on, the core also listens on this machine's Tailscale address (same port, token still required); it never listens on other interfaces. |
 | `GET` | `/v0/sessions` | | `[Session]` |
@@ -133,6 +133,8 @@ The core serves one workspace: a folder of markdown files with YAML frontmatter 
 
 Writes are atomic and serialized: task IDs are never handed out twice, and creating something whose name is taken picks a free slug (`my-task-2`) instead of overwriting. Errors: `404` not found, `400` invalid input.
 
+Only the [home core](#the-home-role) writes the workspace. Every other core serves a read-only copy: reads work there, and anything that changes the workspace (any non-`GET` request to `/v0/tasks…`, `/v0/projects…`, `/v0/plans…`, `/v0/daily…`, `/v0/weekly…` or `/v0/workspace`) answers `409 { error, home }`, where `home` says where to send it. While the home moves, the home answers those with `503`.
+
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/workspace` | | `{ workspacePath }` (`null` if not set) |
@@ -162,7 +164,9 @@ Writes are atomic and serialized: task IDs are never handed out twice, and creat
 | `POST` | `/v0/tasks/{slug}/reorder` | `{ direction: "up" \| "down", project? }` | `{ success, error? }` (moves within the same due date) |
 | `POST` | `/v0/tasks/{slug}/attachments` | `{ filePath }` or `{ fileName, dataBase64 }` (stored under `attachments/<slug>/`) | Task + `description` |
 | `POST` | `/v0/tasks/{slug}/attachments/remove` | `{ filePath }` | Task + `description` |
-| `GET` | `/v0/tasks/{slug}/attachments/{index}` | | the file at that position in the task's `attachments` (on the home machine), with a `Content-Type` from its extension |
+| `GET` | `/v0/tasks/{slug}/attachments/{index}` | | the file at that position in the task's `attachments`, with a `Content-Type` from its extension. Files stored with the task (under `attachments/`) are in the workspace on every machine; an attachment that's a path elsewhere is only found on the machine it's on. |
+
+Stored attachments are kept as absolute paths into the workspace of the home that stored them (`…/attachments/<task>/<file>`). Every core has a copy of that folder. So the MCP tools answer with this machine's path to the same file, `/attachments/{index}` serves it from the home's copy, and `/attachments/remove` takes any machine's path to it.
 
 ### Agent workflow
 
@@ -176,7 +180,7 @@ These take a short ID or slug and answer like the TUI-DO MCP tools (business err
 
 ## Projects
 
-`{ slug, title, muted, created, directory }`. `directory` is on the home machine; a task runs on another machine with a copy of it (see [Running a task on another machine](#running-a-task-on-another-machine)).
+`{ slug, title, muted, created, directory }`. `directory` is on the code machine (`codeDevice` in [`/v0/fleet`](#fleet); the home core unless the home moved away from it). A task runs on another machine with a copy of it (see [Running a task on another machine](#running-a-task-on-another-machine)).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
@@ -231,7 +235,7 @@ Two ways in:
 
 # Paired clients
 
-A client on another device (a phone, say) gets its own token from the home core instead of the core's token, so it can be revoked on its own. A client token opens every route except these three, which only the core's own token can use (also through `/v0/devices/{id}/…`). The core stores a SHA-256 hash of each client token in `clients.json`, never the token.
+A client on another device (a phone, say) gets its own token from the home core instead of the core's token, so it can be revoked on its own. A client token opens every route except the ones below and the home role's plumbing (`/v0/home`, `PUT /v0/fleet/home`, `/v0/fleet/adopt`, `/v0/replica`), which only the core's own token can use (also through `/v0/devices/{id}/…`). The core stores a SHA-256 hash of each client token in `clients.json`, never the token.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
@@ -239,7 +243,7 @@ A client on another device (a phone, say) gets its own token from the home core 
 | `POST` | `/v0/clients` | `{ name }` | `{ client, token }`. The token (`tdc_…`) is only returned here. |
 | `DELETE` | `/v0/clients/{id}` | | 204. The token stops working, and the client's open WebSockets close. |
 
-The TUI-DO Mac app pairs a phone with a QR code holding a link: `tuido://pair?address=<home core's Tailscale URL>&token=<client token>&name=<home core's name>`.
+The TUI-DO Mac app pairs a phone with a QR code holding a link: `tuido://pair?address=<home core's Tailscale URL>&token=<client token>&name=<home core's name>`. Paired clients move with the home, so a client token keeps working after a move; the client finds the new address as described in [Finding the home](#finding-the-home).
 
 # Coding agents
 
@@ -250,9 +254,9 @@ The TUI-DO Mac app pairs a phone with a QR code holding a link: `tuido://pair?ad
 
 `POST /v0/tasks/{ref}/agent` starts a coding agent on a task the way the Mac app does, so a client only picks the options:
 
-- `device`: a fleet device to run on (absent: the home machine). On a device, the task's code is handed over first, as with [`/handoff`](#running-a-task-on-another-machine) (`includeUncommitted` takes uncommitted changes along), and the task's `device` is set.
+- `device`: the machine to run on: a fleet device or the home core's own id (absent: the code machine). On the code machine the task works in the project's folder; on any other machine the task's code is handed over first, as with [`/handoff`](#running-a-task-on-another-machine) (`includeUncommitted` takes uncommitted changes along), and the task's `device` is set.
 - `agent`: `claude` (default) or `codex`. `model` is Claude's `--model` value (`default` adds no flag) or a Codex model slug; `effort` is an effort level from `/v0/agents`; `permissionMode` is Claude's; `yolo` skips permission prompts (and Codex's sandbox).
-- The session is the task's slug, a login shell in the project's folder (or the task's folder on the device) with `agent` set. Once the shell prints its first output (or after 5 s), the core types the agent's command with the prompt `Start working on task <id>`.
+- The session is the task's slug, a login shell in the project's folder (or the task's folder on the machine) with `agent` set. Once the shell prints its first output (or after 5 s), the core types the agent's command with the prompt `Start working on task <id>`.
 - If the task's session is already running there, it's returned as it is with `started: false`.
 
 # Fleet
@@ -261,9 +265,9 @@ A home core can know other machines' cores (devices) and forward requests to the
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/fleet` | | `{ generation, home: { id, name, platform, version }, devices: [{ id, name, address, platform, addedAt, online, version }] }` (reachability is checked live) |
+| `GET` | `/v0/fleet` | | `{ generation, home: { id, name, platform, version }, codeDevice, devices: [{ id, name, address, platform, addedAt, online, version }] }` (reachability is checked live). `codeDevice` is the machine the projects' folders are on. |
 | `POST` | `/v0/fleet/devices` | `{ address, token }` (e.g. `http://100.79.154.110:47821` and that core's token) | the device; it's asked who it is with the token first, so a wrong token or address is rejected. Adding a known device updates it. |
-| `DELETE` | `/v0/fleet/devices/{id}` | | 204 |
+| `DELETE` | `/v0/fleet/devices/{id}` | | 204. The code machine can't be removed (`409`). |
 | `GET` | `/v0/fleet/sessions` | | sessions on this core and every reachable device, each with a `device` id |
 | any | `/v0/devices/{id}/…` | | forwarded to that device's `/v0/…` with its token, including WebSockets (`/v0/devices/{id}/sessions/{sid}/attach`, `/v0/devices/{id}/events`). `{id}` may also be the home core's own id. `502` if the device isn't reachable. |
 
@@ -298,20 +302,54 @@ The home core relays every device's events on its own `/v0/events`:
 
 `event` is exactly what that device sends on its own stream (`sessions`, `sessionCreated`, `output`, `agentState`, …). Without `?output=1`, relayed `output` events are left out too. Clients load the current state with `GET /v0/fleet` and `GET /v0/fleet/sessions`, then apply events. To type into a device's session over the same socket, add its id: `{ "type": "input", "device": "<id>", "id": "my-task", "data": "ls\n" }` (also for `resize`); the home core passes it on in order.
 
-When a device is added, the home core turns on its own remote access and gives the device a home link (`PUT /v0/fleet/home { address, token }` on the device): the home core's Tailscale address and a token that only opens the home core's MCP endpoints (`/mcp`, `/v0/mcp/call`). A core without a workspace (a runner) forwards MCP tool calls there, so `tui-do-core mcp` works the same on every machine.
+When a device is added, and whenever its events come back online, the home core turns on its own remote access and gives the device a home link (`PUT /v0/fleet/home { address, token, id, name, generation, clientToken? }` on the device): the home core's Tailscale address and a token that only opens the home core's MCP endpoints (`/mcp`, `/v0/mcp/call`). A core with a home link (a runner) forwards MCP tool calls there, so `tui-do-core mcp` works the same on every machine. A device refuses a link with an older `generation` than the one it has (`409`); a link without `clientToken` keeps the one the device has.
+
+## The home role
+
+One core is the home: it writes the workspace and holds the fleet (`fleet.json`), paired clients, task ↔ Claude session links and handoff records. The others are runners: they have a home link and a read-only copy of the workspace. The role can move to any fleet device.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/home` | | `{ self, id, name, address?, generation, clientToken? }`: where the home is (`self` on the home itself). `clientToken` is set on a Mac the home moved away from: a [paired-client](#paired-clients) token at the home, for the app on that Mac. |
+| `POST` | `/v0/fleet/move` | `{ device }` | `{ home: { id, name, address }, generation }`, once the device is the home (on the home core) |
+
+A move goes like this:
+
+1. The device's copy of the workspace is brought up to date, while the workspace is still in use. A home whose iCloud folder hasn't downloaded every file refuses to move.
+2. The home stops taking writes (`503`, MCP calls included), waits up to 30 seconds for writes under way to finish, and brings the copy up to date again, checking that nothing is left to send.
+3. The device takes the fleet (minus itself, plus the old home), paired clients, session links and handoff records (`POST /v0/fleet/adopt`).
+4. The device serves its copy read-write from then on, and links every device to itself as it reaches them. That includes devices that were offline during the move, once they're back.
+5. The old home becomes a runner, with a read-only copy and a link to the new home. Its folder's contents are kept in `~/.tui-do/core/backups/` first (the newest two are kept). If the old home is a Mac, its link carries a client token for the app there.
+
+`generation` goes up by one with each move. The projects' folders stay where they are: the first move away from a home makes that machine the code machine (`codeDevice`), and handoffs start from there and bring branches back there, wherever the home is. If the move fails before the device takes over, the old home takes writes again and stays the home. If it can't tell (the device stopped answering mid-move), it keeps refusing writes. A core that still holds a fleet gives the role away whenever a newer home links it, so the move finishes as soon as the new home reaches the old one. If the device never took over, restarting the old home's core ends the pause. Taking over twice from the same move is harmless. A device whose core is too old answers `404` to `adopt`; update it first.
+
+Every core sends `{ "type": "homeChanged", "home": "<id>", "generation": 3 }` on its own `/v0/events` when it takes the home, gives it away, or is linked to another home.
+
+### Finding the home
+
+A client that only knew the old home's address, a phone say, asks any core it knows for `GET /v0/health` (no token needed) and connects to `home.address` (the one with the highest `generation`) with its client token. On the home itself, `home` has no `address`. The Mac app asks its own core for `GET /v0/home` and connects to the home with `clientToken` when the home is elsewhere.
+
+### Workspace copies
+
+The home keeps a copy of the workspace on every device: when a device comes online, and about 3 seconds after the workspace changes. Only files that differ (by size and modification time) are sent, and files gone from the home are deleted from the copy. Nothing is deleted while iCloud hasn't downloaded some of the home's files, or if the home has no tasks. The copy goes to `~/.tui-do/workspace`, or to a former home's own folder, which is marked as a copy when the home moves away from it. That way a Mac's iCloud folder stays current while the home is elsewhere, and stops being a copy when the Mac takes the home back. A device that serves a workspace folder of its own refuses copies (`409`), so joining a fleet never overwrites one. Dotfiles aren't copied. A core only takes copies from its own home at its current generation.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/replica` | | `{ files: { "<path>": [size, mtimeMs] }, complete }`: this core's copy (paths like `tasks/my-task.md`) |
+| `POST` | `/v0/replica?home=&generation=` | a batch: a JSON line `{ files: [{ path, size, mtimeMs }], delete: [path] }`, then the files' bytes in that order (deletions are applied first) | `{ changed }`. `409` on the home, from a home that isn't this core's, or into a folder that isn't a copy. |
 
 ## Running a task on another machine
 
-Starting a task on a fleet device takes the project's code along; completing the task brings the work back as a branch. Only git projects can move.
+Starting a task on a fleet device takes the project's code along; completing the task brings the work back as a branch. Only git projects can move. The code comes from the code machine (`codeDevice`); when that's not the home core, the home core asks it for the snapshot and has it land the returned branch.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/projects/{slug}/git` | | `{ isRepo, uncommitted }`: whether the project folder is a git repo and how many files have uncommitted changes |
-| `POST` | `/v0/tasks/{slug}/handoff` | `{ device, includeUncommitted? }` | `{ device, path, branch }`: the task's working folder on that device. The home core snapshots the project's repo (unpushed commits always; uncommitted and untracked changes only with `includeUncommitted`; the checkout, index and branch are left alone), sends only the commits the device lacks as a `git bundle`, and the device checks it out in `~/.tui-do/work/<project>/<task>` on branch `tui-do/<task id>`, with uncommitted work still uncommitted. If the task already has a folder there, it's kept. |
+| `POST` | `/v0/tasks/{slug}/handoff` | `{ device, includeUncommitted? }` | `{ device, path, branch }`: the task's working folder on that device (the home core's own id works too). On the code machine itself that's the project's folder, with an empty `branch`. Otherwise the code machine snapshots the project's repo (unpushed commits always; uncommitted and untracked changes only with `includeUncommitted`; the checkout, index and branch are left alone), sends only the commits the device lacks as a `git bundle`, and the device checks it out in `~/.tui-do/work/<project>/<task>` on branch `tui-do/<task id>`, with uncommitted work still uncommitted. If the task already has a folder there, it's kept. |
 
-Completing the task (in the app, or with `complete_task`) makes the device commit what's left and send the branch back; the home core fetches it into the project as `tui-do/<task id>` (your checkout is never touched). Uncommitted changes that came along and weren't touched there are left out, since they're still in your checkout. The device's folder, branch and the task's refs are removed; its cache of the project keeps only the committed history (`refs/tui-do/known`), so the next handoff sends just what's new. Progress goes out on `/v0/events` as `{ "type": "handoff", "task", "status": "starting" | "started" | "returned" | "failed", "branch", "message" }`.
+Completing the task (in the app, or with `complete_task`) makes the device commit what's left and send the branch back; the code machine fetches it into the project as `tui-do/<task id>` (your checkout is never touched). Uncommitted changes that came along and weren't touched there are left out, since they're still in your checkout. The device's folder, branch and the task's refs are removed; its cache of the project keeps only the committed history (`refs/tui-do/known`), so the next handoff sends just what's new. Progress goes out on `/v0/events` as `{ "type": "handoff", "task", "status": "starting" | "started" | "returned" | "failed", "branch", "message" }`.
 
-Device-side routes used by the home core: `GET /v0/handoff/{project}/commits`, `POST /v0/handoff/{project}/{task}` (bundle body), `POST /v0/handoff/{project}/{task}/collect`.
+Device-side routes used by the home core: `GET /v0/handoff/{project}/commits`, `POST /v0/handoff/{project}/{task}` (bundle body), `POST /v0/handoff/{project}/{task}/collect`; on the code machine, `POST /v0/handoff/{project}/{task}/snapshot` (`{ directory, known, includeUncommitted }`; the bundle as the body, the snapshot in the `x-tui-do-snapshot` header), `POST /v0/handoff/{project}/{task}/land?repo=&branch=` (bundle body) and `GET /v0/git/status?dir=`.
 
 ## Coding agents on a machine
 

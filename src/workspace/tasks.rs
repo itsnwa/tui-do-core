@@ -736,8 +736,12 @@ impl Workspace {
         })
     }
 
+    /// Remove an attachment, given as stored or as another machine's path
+    /// to the same stored file (see `local_attachment`).
     pub fn remove_attachment(&self, slug: &str, file_path: &str) -> Result<TaskDetail> {
-        self.edit_attachments(slug, |list| list.retain(|p| p != file_path))
+        self.edit_attachments(slug, |list| {
+            list.retain(|p| !super::same_attachment(p, file_path));
+        })
     }
 
     fn edit_attachments(

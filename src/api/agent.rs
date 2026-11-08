@@ -44,7 +44,8 @@ async fn options() -> Response {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StartAgent {
-    /// The fleet device to run on; absent (or this core's id) = this machine.
+    /// The fleet device to run on (this core's id included); absent = the
+    /// machine the projects' folders are on.
     #[serde(default)]
     device: Option<String>,
     /// `claude` (the default) or `codex`.
@@ -182,18 +183,19 @@ async fn start(
     };
 
     let own_id = state.config.get().device_id;
-    let device = match req
+    let code = state.code_machine();
+    let target_id = req
         .device
-        .as_deref()
-        .filter(|d| !d.is_empty() && *d != own_id)
-    {
-        Some(id) => match state.fleet.device(id) {
-            Some(device) => Some(device),
-            None => return error(StatusCode::NOT_FOUND, "no such machine"),
-        },
-        None => None,
+        .clone()
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| code.id().to_string());
+    let Some(target) = super::fleet::target(&state, &target_id) else {
+        return error(StatusCode::NOT_FOUND, "no such machine");
     };
-    if device.is_none() && directory.is_empty() {
+    // Another core's sessions are reached over HTTP; this core's directly
+    let device = (target.id != own_id).then(|| target.clone());
+    let in_place = target.id == code.id();
+    if in_place && directory.is_empty() {
         return error(
             StatusCode::BAD_REQUEST,
             "the task's project has no folder to work in",
@@ -211,16 +213,26 @@ async fn start(
 
     // Subscribe before the session exists, so its first output isn't missed
     let events = state.registry.subscribe();
+    let path = if in_place {
+        directory
+    } else {
+        match state
+            .handoffs
+            .start(
+                workspace,
+                &task.slug,
+                &target,
+                &code,
+                req.include_uncommitted,
+            )
+            .await
+        {
+            Ok((path, _branch)) => path,
+            Err(err) => return error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
+        }
+    };
     let (session, path) = match &device {
         Some(device) => {
-            let path = match state
-                .handoffs
-                .start(workspace, &task.slug, device, req.include_uncommitted)
-                .await
-            {
-                Ok((path, _branch)) => path,
-                Err(err) => return error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
-            };
             match spawn_on_device(&state, device, &task.slug, &path, &agent, &req).await {
                 Ok(session) => (session, path),
                 Err(err) => return error(StatusCode::BAD_GATEWAY, &format!("{err:#}")),
@@ -230,7 +242,7 @@ async fn start(
             let spawn = SpawnRequest {
                 id: task.slug.clone(),
                 argv: Vec::new(),
-                cwd: Some(directory.clone()),
+                cwd: Some(path.clone()),
                 env: Default::default(),
                 cols: req.cols,
                 rows: req.rows,
@@ -239,15 +251,15 @@ async fn start(
             };
             let registry = std::sync::Arc::clone(&state.registry);
             match tokio::task::spawn_blocking(move || registry.spawn(spawn)).await {
-                Ok(Ok(info)) => (serde_json::to_value(info).unwrap_or(Value::Null), directory),
+                Ok(Ok(info)) => (serde_json::to_value(info).unwrap_or(Value::Null), path),
                 Ok(Err(err)) => return error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
                 Err(err) => return error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
             }
         }
     };
 
-    // The task remembers where it runs
-    let device_id = device.as_ref().map(|d| d.id.clone());
+    // The task remembers where it runs (none: in place, on the code machine)
+    let device_id = (!in_place).then(|| target.id.clone());
     if task.device != device_id {
         let ws = state.workspace.current();
         let slug = task.slug.clone();
@@ -277,7 +289,7 @@ async fn start(
     tracing::info!(task = %task.slug, device = ?device_id, agent = agent_name(&agent), "agent session started");
     Json(json!({
         "session": session,
-        "device": device_id.unwrap_or(own_id),
+        "device": target.id,
         "path": path,
         "started": true,
     }))

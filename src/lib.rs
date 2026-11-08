@@ -15,6 +15,7 @@ pub mod links;
 pub mod mcp;
 pub mod net;
 pub mod relay;
+pub mod replica;
 pub mod session;
 pub mod update;
 mod utf8;

@@ -65,7 +65,7 @@ async fn forward_call(
 }
 
 /// Run a call in the daemon: against its workspace, off the async workers,
-/// or, on a runner (no workspace), on the home core it was linked to.
+/// or, on a runner (its workspace is a read-only copy), on its home core.
 pub async fn run_call(
     workspace: Arc<SharedWorkspace>,
     sessions: Arc<TaskSessions>,
@@ -73,14 +73,28 @@ pub async fn run_call(
     handoffs: Option<Arc<Handoffs>>,
     call: ForwardedCall,
 ) -> CallOutcome {
-    let Some(ws) = workspace.current() else {
-        if let Some(home) = home {
-            return forward_call(&reqwest::Client::new(), &home.address, &home.token, &call).await;
+    if let Some(home) = home {
+        let mut outcome =
+            forward_call(&reqwest::Client::new(), &home.address, &home.token, &call).await;
+        // Attachments are read from this machine's copy of the workspace
+        if let CallOutcome::Result(value) = &mut outcome {
+            crate::workspace::localize_attachments(value, &workspace.folder());
         }
+        return outcome;
+    }
+    // Held until the call is done, so a move waits for it
+    let _writing = workspace.writing().await;
+    if workspace.is_frozen() {
+        return CallOutcome::Error(
+            "The TUI-DO home is moving to another machine; try again in a moment.".into(),
+        );
+    }
+    let Some(ws) = workspace.current() else {
         return CallOutcome::Error(
             "Workspace not configured. Please select a workspace folder first.".into(),
         );
     };
+    let root = ws.root().to_path_buf();
     let outcome = tokio::task::spawn_blocking(move || {
         tools::call(
             &ws,
@@ -92,7 +106,8 @@ pub async fn run_call(
     })
     .await;
     match outcome {
-        Ok(Ok(value)) => {
+        Ok(Ok(mut value)) => {
+            crate::workspace::localize_attachments(&mut value, &root);
             // A completed task that ran on another machine brings its work back
             let completed = matches!(
                 value["status"].as_str(),

@@ -1,12 +1,16 @@
 //! Running a task on another machine with the project's code.
 //!
-//! Starting a task on a fleet device: the home core snapshots the project's
-//! git repo (unpushed commits, plus uncommitted changes when asked; the
-//! checkout untouched), sends only what the device lacks as a `git bundle`, and the
-//! device checks it out in a worktree of its own (`~/.tui-do/work/<project>/
-//! <task>`) on branch `tui-do/<task id>`. Completing the task brings the work
-//! back: the device commits what's left and bundles the branch, and the home
-//! core fetches it into the project as that branch.
+//! The projects' folders are on one machine, the code machine (the home,
+//! unless the home moved away from it). Starting a task on another fleet
+//! device: the code machine snapshots the project's git repo (unpushed
+//! commits, plus uncommitted changes when asked; the checkout untouched) and
+//! bundles only what the device lacks, and the device checks it out in a
+//! worktree of its own (`~/.tui-do/work/<project>/<task>`) on branch
+//! `tui-do/<task id>`. Completing the task brings the work back: the device
+//! commits what's left and bundles the branch, and the code machine fetches
+//! it into the project as that branch. The home core runs all of it; when
+//! the code machine is another core, it asks that core for the snapshot and
+//! to land the branch.
 
 pub mod git;
 
@@ -36,6 +40,45 @@ pub struct Record {
     /// The task's working folder on the device.
     #[serde(default)]
     pub path: String,
+    /// The machine `repo` is on; empty for the home that wrote the record.
+    #[serde(default)]
+    pub source: String,
+}
+
+/// A snapshot made on the code machine, as it answers the home core.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteSnapshot {
+    pub repo: PathBuf,
+    pub commit: String,
+    pub base: String,
+    pub dirty: bool,
+}
+
+/// What the home core asks the code machine to snapshot.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotRequest {
+    pub directory: String,
+    #[serde(default)]
+    pub known: Vec<String>,
+    #[serde(default)]
+    pub include_uncommitted: bool,
+}
+
+/// Where the code is, for a handoff: this core, or another fleet device.
+pub enum CodeMachine {
+    Here(String),
+    Device(Device),
+}
+
+impl CodeMachine {
+    pub fn id(&self) -> &str {
+        match self {
+            CodeMachine::Here(id) => id,
+            CodeMachine::Device(device) => &device.id,
+        }
+    }
 }
 
 /// The snapshot as passed to a device (query parameters).
@@ -81,8 +124,14 @@ fn valid_branch(branch: &str) -> anyhow::Result<()> {
     }
 }
 
+/// The response header that carries a code machine's `RemoteSnapshot`.
+pub const SNAPSHOT_HEADER: &str = "x-tui-do-snapshot";
+
 pub struct Handoffs {
     fleet: Arc<Fleet>,
+    /// This core as a device (its loopback address and own token), for tasks
+    /// that run on the home itself.
+    own: Device,
     events: broadcast::Sender<Event>,
     /// Home: one record per handed-off task.
     records: PathBuf,
@@ -91,12 +140,18 @@ pub struct Handoffs {
 }
 
 impl Handoffs {
-    pub fn new(fleet: Arc<Fleet>, events: broadcast::Sender<Event>, core_dir: &Path) -> Self {
+    pub fn new(
+        fleet: Arc<Fleet>,
+        own: Device,
+        events: broadcast::Sender<Event>,
+        core_dir: &Path,
+    ) -> Self {
         let work = core_dir
             .parent()
             .map_or_else(|| core_dir.join("work"), |p| p.join("work"));
         Self {
             fleet,
+            own,
             events,
             records: core_dir.join("handoffs"),
             work,
@@ -109,6 +164,36 @@ impl Handoffs {
 
     pub fn record(&self, task: &str) -> Option<Record> {
         serde_json::from_str(&std::fs::read_to_string(self.record_path(task)).ok()?).ok()
+    }
+
+    /// Every record, by task, to hand to a new home.
+    pub fn records(&self) -> Vec<(String, Record)> {
+        let Ok(entries) = std::fs::read_dir(&self.records) else {
+            return Vec::new();
+        };
+        entries
+            .flatten()
+            .filter_map(|e| {
+                let task = e.file_name().to_str()?.strip_suffix(".json")?.to_string();
+                Some((task.clone(), self.record(&task)?))
+            })
+            .collect()
+    }
+
+    /// Replace every record (taking over as home, or giving the role away).
+    pub fn replace_records(&self, records: &[(String, Record)]) -> anyhow::Result<()> {
+        if self.records.exists() {
+            std::fs::remove_dir_all(&self.records)?;
+        }
+        std::fs::create_dir_all(&self.records)?;
+        for (task, record) in records {
+            slug::validate(task)?;
+            std::fs::write(
+                self.record_path(task),
+                serde_json::to_string_pretty(record)? + "\n",
+            )?;
+        }
+        Ok(())
     }
 
     fn emit(&self, task: &str, status: &str, branch: Option<&str>, message: Option<String>) {
@@ -159,6 +244,46 @@ impl Handoffs {
         Ok(worktree)
     }
 
+    /// Code machine: snapshot a project for the home core, and bundle what
+    /// the device it's going to lacks.
+    pub fn snapshot_here(
+        project: &str,
+        task: &str,
+        req: &SnapshotRequest,
+    ) -> anyhow::Result<(RemoteSnapshot, Option<Vec<u8>>)> {
+        slug::validate(project)?;
+        slug::validate(task)?;
+        let handoff_ref = format!("refs/tui-do/handoff/{task}");
+        let snapshot = git::snapshot(
+            &expand_home(&req.directory),
+            &handoff_ref,
+            req.include_uncommitted,
+        )?;
+        let bundle = git::bundle(&snapshot.repo, &handoff_ref, &req.known)?;
+        Ok((
+            RemoteSnapshot {
+                repo: snapshot.repo,
+                commit: snapshot.commit,
+                base: snapshot.base,
+                dirty: snapshot.dirty,
+            },
+            bundle,
+        ))
+    }
+
+    /// Code machine: fetch returned work into the project as `branch`.
+    pub fn land_here(task: &str, repo: &Path, branch: &str, bundle: &[u8]) -> anyhow::Result<()> {
+        slug::validate(task)?;
+        valid_branch(branch)?;
+        git::land(repo, branch, bundle)?;
+        let _ = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["update-ref", "-d", &format!("refs/tui-do/handoff/{task}")])
+            .status();
+        Ok(())
+    }
+
     pub fn collect(
         &self,
         project: &str,
@@ -184,13 +309,16 @@ impl Handoffs {
 
     // --- home side ---
 
-    /// Hand a task's project to `device` and return its working folder there.
-    /// A task that's already there keeps its copy (and the work in it).
+    /// Hand a task's project from the code machine to `device` and return
+    /// its working folder there (and the branch). A task that's already there
+    /// keeps its copy (and the work in it). On the code machine itself the
+    /// task works in the project's folder, with no branch.
     pub async fn start(
         &self,
         workspace: Arc<Workspace>,
         task_slug: &str,
         device: &Device,
+        code: &CodeMachine,
         include_uncommitted: bool,
     ) -> anyhow::Result<(String, String)> {
         let ws = Arc::clone(&workspace);
@@ -211,10 +339,10 @@ impl Handoffs {
             return Ok((record.path, record.branch));
         }
         if project.directory.is_empty() {
-            bail!(
-                "the project {} has no folder on this machine",
-                project.title
-            );
+            bail!("the project {} has no folder", project.title);
+        }
+        if device.id == code.id() {
+            return Ok((project.directory, String::new()));
         }
         let branch = format!(
             "tui-do/{}",
@@ -246,14 +374,22 @@ impl Handoffs {
             .json()
             .await?;
 
-        let dir = expand_home(&project.directory);
-        let handoff_ref = format!("refs/tui-do/handoff/{task_slug}");
-        let (snapshot, bundle) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let snapshot = git::snapshot(&dir, &handoff_ref, include_uncommitted)?;
-            let bundle = git::bundle(&snapshot.repo, &handoff_ref, &known)?;
-            Ok((snapshot, bundle))
-        })
-        .await??;
+        let req = SnapshotRequest {
+            directory: project.directory.clone(),
+            known,
+            include_uncommitted,
+        };
+        let (snapshot, bundle) = match code {
+            CodeMachine::Here(_) => {
+                let (project, task) = (project.slug.clone(), task_slug.to_string());
+                tokio::task::spawn_blocking(move || Self::snapshot_here(&project, &task, &req))
+                    .await??
+            }
+            CodeMachine::Device(source) => {
+                self.snapshot_on(source, &project.slug, task_slug, &req)
+                    .await?
+            }
+        };
 
         let params = SnapshotParams {
             branch: branch.clone(),
@@ -294,6 +430,7 @@ impl Handoffs {
             dirty: snapshot.dirty,
             title: task.task.title,
             path: received.path.clone(),
+            source: code.id().to_string(),
         };
         std::fs::create_dir_all(&self.records)?;
         std::fs::write(
@@ -333,10 +470,19 @@ impl Handoffs {
     }
 
     async fn collect_from_device(&self, task_slug: &str, record: &Record) -> anyhow::Result<bool> {
-        let device = self
-            .fleet
-            .device(&record.device)
-            .context("the machine is no longer in the fleet")?;
+        // Where the work lands: here, unless the project is on another machine
+        let source = match self.fleet.device(&record.source) {
+            Some(source) => Some(source),
+            None if record.source.is_empty() || record.source == self.own.id => None,
+            None => bail!("the machine with the project is no longer in the fleet"),
+        };
+        let device = if record.device == self.own.id {
+            self.own.clone()
+        } else {
+            self.fleet
+                .device(&record.device)
+                .context("the machine is no longer in the fleet")?
+        };
         let params = SnapshotParams {
             branch: record.branch.clone(),
             commit: record.commit.clone(),
@@ -365,19 +511,77 @@ impl Handoffs {
             bail!("{} couldn't hand the work back: {body}", device.name);
         }
         let bundle = res.bytes().await?.to_vec();
-        let repo = record.repo.clone();
-        let branch = record.branch.clone();
-        let handoff_ref = format!("refs/tui-do/handoff/{task_slug}");
-        tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-            git::land(&repo, &branch, &bundle)?;
-            let _ = std::process::Command::new("git")
-                .arg("-C")
-                .arg(&repo)
-                .args(["update-ref", "-d", &handoff_ref])
-                .status();
-            Ok(())
-        })
-        .await??;
+        match source {
+            None => {
+                let (repo, branch, task) = (
+                    record.repo.clone(),
+                    record.branch.clone(),
+                    task_slug.to_string(),
+                );
+                tokio::task::spawn_blocking(move || {
+                    Self::land_here(&task, &repo, &branch, &bundle)
+                })
+                .await??;
+            }
+            Some(source) => {
+                let res = self
+                    .fleet
+                    .client()
+                    .post(format!(
+                        "{}/v0/handoff/{}/{task_slug}/land",
+                        source.address, record.project
+                    ))
+                    .bearer_auth(&source.token)
+                    .query(&[
+                        ("repo", record.repo.to_string_lossy().as_ref()),
+                        ("branch", &record.branch),
+                    ])
+                    .body(bundle)
+                    .timeout(std::time::Duration::from_secs(600))
+                    .send()
+                    .await
+                    .with_context(|| format!("{} isn't reachable", source.name))?;
+                if !res.status().is_success() {
+                    let body = res.text().await.unwrap_or_default();
+                    bail!("{} couldn't take the work back: {body}", source.name);
+                }
+            }
+        }
         Ok(true)
+    }
+
+    /// Ask the code machine for a snapshot and the bundle for the device.
+    async fn snapshot_on(
+        &self,
+        source: &Device,
+        project: &str,
+        task: &str,
+        req: &SnapshotRequest,
+    ) -> anyhow::Result<(RemoteSnapshot, Option<Vec<u8>>)> {
+        let res = self
+            .fleet
+            .client()
+            .post(format!(
+                "{}/v0/handoff/{project}/{task}/snapshot",
+                source.address
+            ))
+            .bearer_auth(&source.token)
+            .json(req)
+            .timeout(std::time::Duration::from_secs(600))
+            .send()
+            .await
+            .with_context(|| format!("{} isn't reachable", source.name))?;
+        if !res.status().is_success() {
+            let body = res.text().await.unwrap_or_default();
+            bail!("{} couldn't snapshot the project: {body}", source.name);
+        }
+        let snapshot: RemoteSnapshot = res
+            .headers()
+            .get(SNAPSHOT_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| serde_json::from_str(v).ok())
+            .context("the snapshot didn't say what it is")?;
+        let bundle = res.bytes().await?.to_vec();
+        Ok((snapshot, (!bundle.is_empty()).then_some(bundle)))
     }
 }

@@ -253,10 +253,13 @@ async fn attachment_file(
     let Some(ws) = state.workspace.current() else {
         return error(StatusCode::CONFLICT, "Workspace not configured.");
     };
+    let root = ws.root().to_path_buf();
     let listed = tokio::task::spawn_blocking(move || ws.get_task(&slug)).await;
     let path = match listed {
         Ok(Ok(task)) => match task.task.attachments.get(index) {
-            Some(path) => crate::session::expand_home(path),
+            Some(path) => {
+                crate::session::expand_home(&crate::workspace::local_attachment(path, &root))
+            }
             None => return error(StatusCode::NOT_FOUND, "no such attachment"),
         },
         Ok(Err(Error::NotFound(msg))) => return error(StatusCode::NOT_FOUND, &msg),

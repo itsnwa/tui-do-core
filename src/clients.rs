@@ -53,8 +53,9 @@ impl From<&Client> for ClientInfo {
     }
 }
 
+/// What `clients.json` holds; it moves to the new home with the home role.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-struct Record {
+pub struct Record {
     #[serde(default)]
     clients: Vec<Client>,
 }
@@ -187,6 +188,37 @@ impl Clients {
             }
         }
         Some(id)
+    }
+
+    /// Every client, token hashes included, to hand to a new home.
+    pub fn record(&self) -> Record {
+        self.lock().clone()
+    }
+
+    /// Replace every client (taking over as home, or giving the role away);
+    /// sockets of clients that are gone close.
+    pub fn replace(&self, next: Record) -> anyhow::Result<()> {
+        let mut record = self.lock();
+        self.save(&next)?;
+        *record = next;
+        drop(record);
+        self.revoked.send_modify(|n| *n += 1);
+        Ok(())
+    }
+
+    /// Revoke the client a token belongs to, if any.
+    pub fn revoke_token(&self, token: &str) -> anyhow::Result<bool> {
+        let presented = hash(token);
+        let id = self
+            .lock()
+            .clients
+            .iter()
+            .find(|c| constant_time_eq(c.token_hash.as_bytes(), presented.as_bytes()))
+            .map(|c| c.id.clone());
+        match id {
+            Some(id) => self.revoke(&id),
+            None => Ok(false),
+        }
     }
 
     pub fn is_active(&self, id: &str) -> bool {

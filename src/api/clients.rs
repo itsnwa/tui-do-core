@@ -17,14 +17,24 @@ pub fn routes() -> axum::Router<AppState> {
         .route("/v0/clients/{id}", delete(revoke))
 }
 
-/// Routes a paired client may not use, also through `/v0/devices/{id}/…`.
+/// Routes a paired client may not use, also through `/v0/devices/{id}/…`:
+/// managing clients, and the home role's plumbing (the home link with its
+/// client token, taking over as home, and workspace copies).
 pub fn owner_only(path: &str) -> bool {
     let path = path.trim_end_matches('/');
-    let rest = match path.strip_prefix("/v0/devices/") {
-        Some(rest) => rest.split_once('/').map_or("", |(_, rest)| rest),
-        None => path.strip_prefix("/v0/").unwrap_or(""),
+    let Some(mut rest) = path.strip_prefix("/v0/") else {
+        return false;
     };
-    rest == "clients" || rest.starts_with("clients/")
+    // However many times the device proxy is nested
+    while let Some(nested) = rest.strip_prefix("devices/") {
+        rest = nested.split_once('/').map_or("", |(_, rest)| rest);
+    }
+    ["clients", "home", "fleet/home", "fleet/adopt", "replica"]
+        .iter()
+        .any(|route| {
+            rest.strip_prefix(route)
+                .is_some_and(|r| r.is_empty() || r.starts_with('/'))
+        })
 }
 
 async fn list(State(state): State<AppState>) -> Response {
@@ -71,5 +81,10 @@ mod tests {
         assert!(!owner_only("/v0/tasks"));
         assert!(!owner_only("/v0/devices/xyz/sessions"));
         assert!(!owner_only("/v0/clientsx"));
+        assert!(owner_only("/v0/fleet/adopt"));
+        assert!(owner_only("/v0/devices/xyz/replica"));
+        assert!(owner_only("/v0/home"));
+        assert!(!owner_only("/v0/fleet/move"));
+        assert!(owner_only("/v0/devices/a/devices/b/devices/c/fleet/adopt"));
     }
 }

@@ -1,5 +1,6 @@
 //! The core's settings, in `config.json` in its directory: which workspace it
-//! serves, which device it is, and whether it's reachable over Tailscale.
+//! serves, which device it is, whether it's reachable over Tailscale, and (on
+//! a runner) where its home core is.
 //! Unknown keys are kept, so newer settings survive an older binary.
 
 use std::path::{Path, PathBuf};
@@ -33,9 +34,30 @@ pub struct CoreConfig {
 /// How a runner reaches its home core: its Tailscale base URL and an
 /// MCP-only token the home core issued for this runner.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HomeLink {
     pub address: String,
     pub token: String,
+    /// The home core's device id and name (absent from cores before 0.2).
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    /// The fleet's generation when the link was made; a link from an older
+    /// home is refused.
+    #[serde(default)]
+    pub generation: u64,
+    /// A paired-client token at the home, for the app on this machine. Only
+    /// a Mac the home moved away from gets one; it survives later moves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_token: Option<String>,
+}
+
+impl CoreConfig {
+    /// Whether this core is the home: it holds the workspace and the fleet.
+    pub fn is_home(&self) -> bool {
+        self.home.is_none()
+    }
 }
 
 pub struct ConfigStore {

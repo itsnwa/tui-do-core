@@ -122,6 +122,12 @@ pub enum Event {
         branch: Option<String>,
         message: Option<String>,
     },
+    /// The home role moved: this core took it, gave it away, or was linked
+    /// to another home (`GET /v0/home` says where it is now).
+    HomeChanged {
+        home: String,
+        generation: u64,
+    },
 }
 
 impl Event {
@@ -132,7 +138,8 @@ impl Event {
             | Event::InstallProgress { .. }
             | Event::DeviceEvent { .. }
             | Event::DeviceStatus { .. }
-            | Event::Handoff { .. } => "",
+            | Event::Handoff { .. }
+            | Event::HomeChanged { .. } => "",
             Event::SessionCreated { session } => &session.id,
             Event::Output { id, .. }
             | Event::SessionExited { id, .. }

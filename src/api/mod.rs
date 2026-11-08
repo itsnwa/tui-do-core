@@ -12,6 +12,7 @@ mod agent;
 mod clients;
 mod fleet;
 mod handoff;
+mod home;
 pub(crate) mod mcp;
 mod update;
 mod workspace;
@@ -35,6 +36,8 @@ use crate::links::TaskSessions;
 use crate::session::{ClientId, Event, Registry, SpawnRequest};
 use crate::workspace::shared::SharedWorkspace;
 
+pub use home::spawn_background;
+
 pub const API_VERSION: u32 = 0;
 
 #[derive(Clone)]
@@ -50,6 +53,24 @@ pub struct AppState {
     pub sessions: Arc<TaskSessions>,
     pub token: Arc<str>,
     pub clients: Arc<Clients>,
+    pub replicas: Arc<crate::replica::Replicas>,
+    /// This core's folder (`~/.tui-do/core`).
+    pub core_dir: Arc<std::path::Path>,
+    /// Held while the home moves away from this core.
+    pub moving: Arc<tokio::sync::Mutex<()>>,
+}
+
+impl AppState {
+    /// The machine the projects' folders are on.
+    pub(crate) fn code_machine(&self) -> crate::handoff::CodeMachine {
+        use crate::handoff::CodeMachine;
+        let own = self.config.get().device_id;
+        let id = self.fleet.code_device(&own);
+        match self.fleet.device(&id) {
+            Some(device) if id != own => CodeMachine::Device(device),
+            _ => CodeMachine::Here(own),
+        }
+    }
 }
 
 pub fn router(state: AppState) -> Router {
@@ -66,9 +87,11 @@ pub fn router(state: AppState) -> Router {
         .merge(agent::routes())
         .merge(clients::routes())
         .merge(fleet::routes())
+        .merge(home::routes())
         .merge(handoff::routes())
         .merge(update::routes())
         .merge(mcp::routes(&state))
+        .route_layer(middleware::from_fn_with_state(state.clone(), guard_writes))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
         .route("/v0/health", get(health))
@@ -104,7 +127,7 @@ async fn require_token(State(state): State<AppState>, req: Request, next: Next) 
         if clients::owner_only(path) {
             return error(
                 StatusCode::FORBIDDEN,
-                "only this machine can manage paired clients",
+                "only the core's own token can use this",
             );
         }
         Caller::Client(client)
@@ -115,6 +138,58 @@ async fn require_token(State(state): State<AppState>, req: Request, next: Next) 
     };
     let mut req = req;
     req.extensions_mut().insert(caller);
+    next.run(req).await
+}
+
+/// Routes that change the workspace (or the home's records of tasks).
+fn writes_workspace(req: &Request) -> bool {
+    if matches!(
+        *req.method(),
+        axum::http::Method::GET | axum::http::Method::HEAD
+    ) {
+        return false;
+    }
+    let path = req.uri().path();
+    [
+        "/v0/tasks",
+        "/v0/projects",
+        "/v0/plans",
+        "/v0/daily",
+        "/v0/weekly",
+        "/v0/workspace",
+    ]
+    .iter()
+    .any(|prefix| {
+        path.strip_prefix(prefix)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+    })
+}
+
+/// A runner's workspace is a read-only copy, and the home takes no writes
+/// while it moves.
+async fn guard_writes(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    if writes_workspace(&req) {
+        // Held until the write is done, so a move waits for it
+        let _writing = state.workspace.writing().await;
+        let config = state.config.get();
+        if let Some(home) = &config.home {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": format!("This machine has a read-only copy of the tasks; changes go to the home, {}.", home.name),
+                    "home": home::home_summary(&state),
+                })),
+            )
+                .into_response();
+        }
+        if state.workspace.is_frozen() {
+            return error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "The home is moving to another machine; try again in a moment.",
+            );
+        }
+        return next.run(req).await;
+    }
     next.run(req).await
 }
 
@@ -133,6 +208,7 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
         "version": env!("CARGO_PKG_VERSION"),
         "apiVersion": API_VERSION,
         "device": { "id": config.device_id, "name": config.device_name },
+        "home": home::home_summary(&state),
     }))
 }
 
