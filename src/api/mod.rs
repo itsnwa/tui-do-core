@@ -123,8 +123,10 @@ async fn require_token(State(state): State<AppState>, req: Request, next: Next) 
         Caller::Owner
     } else if let Some(client) = presented.and_then(|t| state.clients.authenticate(t)) {
         // A paired client can't make or revoke client tokens, here or through
-        // the device proxy (which forwards with the core's own token)
-        if clients::owner_only(path) {
+        // the device proxy (which forwards with the core's own token), except
+        // the app on a Mac the home moved away from, here
+        let manages = clients::manages_clients(path) && state.clients.is_manager(&client);
+        if clients::owner_only(path) && !manages {
             return error(
                 StatusCode::FORBIDDEN,
                 "only the core's own token can use this",

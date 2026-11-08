@@ -20,6 +20,8 @@ use tokio::sync::watch;
 const TOKEN_PREFIX: &str = "tdc_";
 /// How stale a stored "last seen" may get before it's written again.
 const LAST_SEEN_EVERY: Duration = Duration::from_secs(10 * 60);
+/// What the app on a Mac the home moved away from is called.
+const APP_NAME_PREFIX: &str = "TUI-DO on ";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +32,10 @@ struct Client {
     created_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     last_seen_at: Option<String>,
+    /// The app on a Mac the home moved away from: it pairs and revokes
+    /// clients on the Mac's behalf.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    manager: bool,
 }
 
 /// A client as listed: everything but the token hash.
@@ -40,6 +46,7 @@ pub struct ClientInfo {
     pub name: String,
     pub created_at: String,
     pub last_seen_at: Option<String>,
+    pub manager: bool,
 }
 
 impl From<&Client> for ClientInfo {
@@ -49,6 +56,7 @@ impl From<&Client> for ClientInfo {
             name: c.name.clone(),
             created_at: c.created_at.clone(),
             last_seen_at: c.last_seen_at.clone(),
+            manager: c.manager,
         }
     }
 }
@@ -88,12 +96,16 @@ fn stale(last_seen: Option<&str>) -> bool {
 
 impl Clients {
     pub fn load(path: PathBuf) -> anyhow::Result<Self> {
-        let record = match std::fs::read_to_string(&path) {
+        let mut record: Record = match std::fs::read_to_string(&path) {
             Ok(text) => serde_json::from_str(&text)
                 .with_context(|| format!("{} isn't valid", path.display()))?,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Record::default(),
             Err(err) => return Err(err).with_context(|| format!("reading {}", path.display())),
         };
+        // Apps paired by 0.2.0 only have the name to tell them apart
+        for client in &mut record.clients {
+            client.manager |= client.name.starts_with(APP_NAME_PREFIX);
+        }
         Ok(Self {
             path,
             record: Mutex::new(record),
@@ -126,6 +138,15 @@ impl Clients {
 
     /// Make a client and its token. The token is only ever returned here.
     pub fn create(&self, name: &str) -> anyhow::Result<(ClientInfo, String)> {
+        self.add(name, false)
+    }
+
+    /// Make the client for the app on a Mac the home moved away from.
+    pub fn create_app(&self, device_name: &str) -> anyhow::Result<(ClientInfo, String)> {
+        self.add(&format!("{APP_NAME_PREFIX}{device_name}"), true)
+    }
+
+    fn add(&self, name: &str, manager: bool) -> anyhow::Result<(ClientInfo, String)> {
         let name = name.trim();
         if name.is_empty() {
             bail!("the client needs a name");
@@ -142,6 +163,7 @@ impl Clients {
             token_hash: hash(&token),
             created_at: crate::workspace::dates::now_iso(),
             last_seen_at: None,
+            manager,
         };
         let mut record = self.lock();
         let mut next = record.clone();
@@ -221,6 +243,11 @@ impl Clients {
         }
     }
 
+    /// Whether this client may list, pair and revoke clients.
+    pub fn is_manager(&self, id: &str) -> bool {
+        self.lock().clients.iter().any(|c| c.id == id && c.manager)
+    }
+
     pub fn is_active(&self, id: &str) -> bool {
         self.lock().clients.iter().any(|c| c.id == id)
     }
@@ -274,6 +301,31 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tui-do-clients-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("dir");
         Clients::load(dir.join("clients.json")).expect("loads")
+    }
+
+    #[test]
+    fn only_the_macs_app_should_manage_clients() {
+        let clients = clients();
+        let (phone, _) = clients.create("iPhone").expect("creates");
+        let (app, _) = clients.create_app("my-mac").expect("creates");
+        assert_eq!(app.name, "TUI-DO on my-mac");
+        assert!(app.manager);
+        assert!(clients.is_manager(&app.id));
+        assert!(!clients.is_manager(&phone.id));
+        assert!(!clients.is_manager("nobody"));
+    }
+
+    #[test]
+    fn apps_paired_before_the_flag_should_be_managers_after_loading() {
+        let dir = std::env::temp_dir().join(format!("tui-do-clients-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let client = |id: &str, name: &str| serde_json::json!({ "id": id, "name": name, "tokenHash": "x", "createdAt": "now" });
+        let old =
+            serde_json::json!({ "clients": [client("a", "TUI-DO on mac"), client("p", "Phone")] });
+        std::fs::write(dir.join("clients.json"), old.to_string()).expect("write");
+        let clients = Clients::load(dir.join("clients.json")).expect("loads");
+        assert!(clients.is_manager("a"));
+        assert!(!clients.is_manager("p"));
     }
 
     #[test]

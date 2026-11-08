@@ -1,5 +1,6 @@
 //! Paired clients (see `crate::clients`): listing, pairing and revoking.
-//! Only the core's own token can use these routes.
+//! Only the core's own token and the app on a Mac the home moved away from
+//! can use these routes.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -37,6 +38,12 @@ pub fn owner_only(path: &str) -> bool {
         })
 }
 
+/// The routes managing this core's own clients, not through the device proxy.
+pub fn manages_clients(path: &str) -> bool {
+    let path = path.trim_end_matches('/');
+    path == "/v0/clients" || path.starts_with("/v0/clients/")
+}
+
 async fn list(State(state): State<AppState>) -> Response {
     Json(state.clients.list()).into_response()
 }
@@ -70,7 +77,17 @@ async fn revoke(State(state): State<AppState>, Path(id): Path<String>) -> Respon
 
 #[cfg(test)]
 mod tests {
-    use super::owner_only;
+    use super::{manages_clients, owner_only};
+
+    #[test]
+    fn managing_clients_should_not_reach_other_devices_or_the_home_role() {
+        assert!(manages_clients("/v0/clients"));
+        assert!(manages_clients("/v0/clients/abc/"));
+        assert!(!manages_clients("/v0/devices/xyz/clients"));
+        assert!(!manages_clients("/v0/home"));
+        assert!(!manages_clients("/v0/fleet/adopt"));
+        assert!(!manages_clients("/v0/clientsx"));
+    }
 
     #[test]
     fn client_routes_should_be_owner_only_directly_and_through_devices() {

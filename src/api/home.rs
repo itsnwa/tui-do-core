@@ -645,9 +645,7 @@ async fn adopt_inner(state: &AppState, handover: Handover) -> anyhow::Result<Hom
 
     // The app runs on Macs: one the home left keeps reaching it as a client
     let client_token = if old_home.platform.starts_with("macos") {
-        let (client, token) = state
-            .clients
-            .create(&format!("TUI-DO on {}", old_home.name))?;
+        let (client, token) = state.clients.create_app(&old_home.name)?;
         tracing::info!(client = %client.id, "paired the old home's app");
         Some(token)
     } else {

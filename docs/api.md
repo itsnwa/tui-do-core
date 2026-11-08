@@ -235,7 +235,7 @@ Two ways in:
 
 # Paired clients
 
-A client on another device (a phone, say) gets its own token from the home core instead of the core's token, so it can be revoked on its own. A client token opens every route except the ones below and the home role's plumbing (`/v0/home`, `PUT /v0/fleet/home`, `/v0/fleet/adopt`, `/v0/replica`), which only the core's own token can use (also through `/v0/devices/{id}/…`). The core stores a SHA-256 hash of each client token in `clients.json`, never the token.
+A client on another device (a phone, say) gets its own token from the home core instead of the core's token, so it can be revoked on its own. A client token opens every route except the ones below and the home role's plumbing (`/v0/home`, `PUT /v0/fleet/home`, `/v0/fleet/adopt`, `/v0/replica`), which only the core's own token can use (also through `/v0/devices/{id}/…`). The exception is the app on a Mac the home moved away from: its client (`manager: true` in the list) can also use the routes below on the home itself, so the Mac keeps managing phones. The core stores a SHA-256 hash of each client token in `clients.json`, never the token.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
