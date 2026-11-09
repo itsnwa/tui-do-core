@@ -51,11 +51,14 @@ else
 fi
 [ "$expected" = "$actual" ] || fail "the download didn't match its checksum"
 
-say "Installing to ~/.tui-do/bin"
+say "Installing to ~/.tui-do"
 tar -xzf "$tmp/$archive" -C "$tmp"
-mkdir -p "$HOME/.tui-do/bin" "$HOME/.tui-do/core"
+mkdir -p "$HOME/.tui-do/bin" "$HOME/.tui-do/core" "$HOME/.tui-do/versions/$version"
 chmod 700 "$HOME/.tui-do/core"
-install -m 755 "$tmp/tui-do-core-$target/tui-do-core" "$HOME/.tui-do/bin/tui-do-core.new"
+# Each version has its own folder, and bin/tui-do-core links to the current one
+install -m 755 "$tmp/tui-do-core-$target/tui-do-core" "$HOME/.tui-do/versions/$version/tui-do-core.new"
+mv -f "$HOME/.tui-do/versions/$version/tui-do-core.new" "$HOME/.tui-do/versions/$version/tui-do-core"
+ln -sfn "../versions/$version/tui-do-core" "$HOME/.tui-do/bin/tui-do-core.new"
 mv -f "$HOME/.tui-do/bin/tui-do-core.new" "$HOME/.tui-do/bin/tui-do-core"
 
 say "Starting the service"
@@ -65,13 +68,15 @@ if [ "$os" = "Linux" ]; then
   command -v systemctl >/dev/null 2>&1 || fail "systemd isn't available"
   unit_dir="$HOME/.config/systemd/user"
   mkdir -p "$unit_dir"
-  # Through a login shell, so sessions get the user's PATH
+  # Through a login shell, so sessions get the user's PATH. KillMode=process
+  # leaves the holders running sessions alone when the service stops.
   cat > "$unit_dir/tui-do-core.service" <<EOF
 [Unit]
 Description=TUI-DO core
 After=network-online.target
 
 [Service]
+KillMode=process
 ExecStart=$shell -lc 'exec "\$HOME/.tui-do/bin/tui-do-core"'
 Restart=always
 RestartSec=2

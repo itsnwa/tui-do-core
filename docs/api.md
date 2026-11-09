@@ -283,11 +283,11 @@ The home core connects with `ssh` (key-based, no prompts) to `host` (an alias fr
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/update` | | `{ current, latest, canUpdate }`: this core's version, the newest GitHub release as last checked (the core checks when it starts and again when asked after 15 minutes, in the background; `null` until it knows), and whether it can update itself |
+| `GET` | `/v0/update` | | `{ current, latest, canUpdate, rolledBack }`: this core's version, the newest GitHub release as last checked (the core checks when it starts and again when asked after 15 minutes, in the background; `null` until it knows), whether it can update itself, and `{ version, at }` if the last update didn't come up and the core went back (otherwise `null`) |
 | `POST` | `/v0/update` | `{ version? }` (default: the latest) | `{ version }`, then the core restarts |
 | `POST` | `/v0/fleet/devices/{id}/update` | `{ version?, instructions? }` | the device, once it's back on the new version |
 
-A core updates itself by downloading the release for its platform, checking its SHA-256 and putting it in place of its own binary, then exiting; its service (the launchd agent or systemd user service both installs set up) starts the new one. A core that isn't running as that service refuses (`400`). Restarting ends the sessions running on that core.
+A core updates itself by downloading the release for its platform into `~/.tui-do/versions/<version>/`, checking its SHA-256 and that it runs, pointing `~/.tui-do/bin/tui-do-core` at it, then exiting; its service (the launchd agent or systemd user service both installs set up) starts the new one. A core that isn't running as that service refuses (`400`). Sessions keep running through the restart, and clients that were mirroring one should fetch a fresh snapshot when they reconnect, for the output they missed. If the new version doesn't report itself healthy on `/v0/health` for 10 seconds within 45, the machine switches back to the previous version and restarts it. Cores before 0.3 end their sessions when they update, including the update to 0.3.
 
 On the home core, `POST /v0/fleet/devices/{id}/update` has the device update itself and waits until it's back on the new version (up to 90 seconds), then sets up its coding agents again when `instructions` is given. A device whose core is too old to update itself (before 0.1.6) is reinstalled over the ssh host it was installed through, as with `POST /v0/fleet/install`.
 

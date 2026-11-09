@@ -24,7 +24,7 @@ cargo test
 ./target/release/tui-do-core
 ```
 
-On macOS, `scripts/install-dev.sh` builds a release binary, installs it to `~/.tui-do/bin/tui-do-core` and runs it as a launchd agent (`dev.tui-do.core`) that starts at login and restarts if it exits. Reinstalling restarts the core, which ends running sessions. Uninstall steps are at the top of the script. Once it's installed, the core can update itself to new releases.
+On macOS, `scripts/install-dev.sh` builds a release binary, installs it to `~/.tui-do/bin/tui-do-core` and runs it as a launchd agent (`dev.tui-do.core`) that starts at login and restarts if it exits. Reinstalling restarts the core; running sessions keep going. Uninstall steps are at the top of the script. Once it's installed, the core can update itself to new releases.
 
 | Setting | Default |
 | --- | --- |
@@ -43,7 +43,7 @@ Other machines join through the home core, which needs `ssh` access to them (key
 - **Running a task there** sends the project's code along (a git bundle with only the commits the machine lacks, and optionally your uncommitted changes). The agent works in its own folder on branch `tui-do/<task id>`. Completing the task brings that branch back to your repo without touching your checkout, and cleans up on the machine.
 - **Sessions on any machine** show up on the home core, so a client can follow and type into all of them through one connection.
 - **Phones and other clients** pair with the home core and get their own token, which can be revoked on its own. They start agents on any machine (`POST /v0/tasks/{ref}/agent`) and follow sessions through the home core. Two clients on one session share its size: the one typing has it.
-- **Updating:** each core downloads the new release, checks its SHA-256, replaces its own binary and lets its service restart it. The home core can update every machine. Updating a core ends its running sessions.
+- **Updating:** each core downloads the new release, checks its SHA-256 and that it runs, switches to it and lets its service restart it. The home core can update every machine. Running sessions keep going, because each one's program is kept by a small holder process that outlives the core (`src/holder.rs`). If a new version doesn't come up healthy within 45 seconds, the machine goes back to the previous one.
 - **Copies of the workspace:** every machine keeps a read-only copy of the tasks, kept up to date by the home core a few seconds after each change. Agents on any machine still write through the home.
 - **Moving the home** to another machine (say, one that's always on) takes a second, since its copy is already there. That machine takes the machines list, paired phones and running handoffs along with it. The code stays where it is: projects' folders are on the machine the home first moved away from, handoffs start from there, and branches come back there. The Mac app follows the move.
 

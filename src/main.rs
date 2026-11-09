@@ -10,6 +10,8 @@
 //!
 //! `tui-do-core mcp` runs the TUI-DO MCP server on stdio for an agent to
 //! launch; it forwards tool calls to the running core (see `mcp`).
+//! `tui-do-core hold` is what the core starts to keep a session's program
+//! running (see `holder`); sockets for those are in `holders/`.
 
 use tui_do_core::clients::Clients;
 use tui_do_core::config::ConfigStore;
@@ -20,12 +22,13 @@ use tui_do_core::mcp::TuiDoMcp;
 use tui_do_core::relay::Relays;
 use tui_do_core::replica::Replicas;
 use tui_do_core::workspace::shared::SharedWorkspace;
-use tui_do_core::{api, hooks, net, session};
+use tui_do_core::{api, holder, hooks, net, session, update};
 
 use std::io::IsTerminal;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use base64::Engine;
@@ -34,6 +37,8 @@ use rand::RngExt;
 const DEFAULT_ADDR: &str = "127.0.0.1:47821";
 /// launchd starts services with a limit of only 256 open files.
 const OPEN_FILES: u64 = 10_240;
+/// How long requests in progress get to finish when the core stops.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
 fn core_dir() -> anyhow::Result<PathBuf> {
     if let Some(dir) = std::env::var_os("TUI_DO_CORE_DIR") {
@@ -60,8 +65,33 @@ fn load_token(dir: &Path) -> anyhow::Result<String> {
     Ok(token)
 }
 
+fn main() -> anyhow::Result<()> {
+    // These two outlive the core that starts them, and stay out of the runtime
+    let args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
+    match args.first().and_then(|command| command.to_str()) {
+        Some("hold") => {
+            let [_, socket] = &args[..] else {
+                anyhow::bail!("usage: tui-do-core hold <socket>");
+            };
+            holder::run(socket)
+        }
+        Some("watch-update") => {
+            let [_, core_dir, previous, version, health] = &args[..] else {
+                anyhow::bail!("usage: tui-do-core watch-update <dir> <previous> <version> <url>");
+            };
+            update::watch(
+                core_dir,
+                previous,
+                &version.to_string_lossy(),
+                &health.to_string_lossy(),
+            )
+        }
+        _ => run(),
+    }
+}
+
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn run() -> anyhow::Result<()> {
     // Logs go to stderr: in `mcp` mode stdout carries the protocol.
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
@@ -112,8 +142,17 @@ async fn serve() -> anyhow::Result<()> {
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
     let token = load_token(&dir)?;
+    if update::restarts_itself() {
+        if let Err(err) = update::use_versions_folder(&dir, env!("CARGO_PKG_VERSION")) {
+            tracing::warn!(error = %format!("{err:#}"), "couldn't set up the versions folder");
+        }
+        if let Err(err) = update::keep_holders_through_restarts().await {
+            tracing::warn!(error = %format!("{err:#}"), "sessions won't survive a service restart");
+        }
+    }
     let hooks = hooks::Hooks::prepare(&dir.join("claude-hooks"))?;
-    let registry = Arc::new(session::Registry::new(hooks));
+    let exe = std::env::current_exe().context("finding tui-do-core's own path")?;
+    let registry = Arc::new(session::Registry::new(hooks, dir.join("holders"), exe)?);
     let config = Arc::new(ConfigStore::load(dir.join("config.json"))?);
     let default_workspace = dir
         .parent()
@@ -131,8 +170,13 @@ async fn serve() -> anyhow::Result<()> {
     let local = listener.local_addr()?;
     std::fs::write(dir.join("endpoint"), format!("http://{local}"))?;
     tracing::info!(%local, dir = %dir.display(), "tui-do-core listening");
+    // After taking the port, so a second core can't take these from the first
+    let adopted = registry.adopt();
+    if adopted > 0 {
+        tracing::info!(adopted, "picked up running sessions");
+    }
     // Look up the latest release now, so update checks have it
-    let _ = tui_do_core::update::latest_known();
+    let _ = update::latest_known();
 
     let fleet = Arc::new(Fleet::load(dir.join("fleet.json"))?);
     let relays = Arc::new(Relays::new(registry.sender()));
@@ -176,12 +220,19 @@ async fn serve() -> anyhow::Result<()> {
     }
     let app = api::router(state);
     tokio::spawn(net::serve_tailscale(app.clone(), local.port(), config));
+    let stopping = async move {
+        shutdown_signal().await;
+        tracing::info!("shutting down; sessions keep running");
+        let _ = tokio::task::spawn_blocking(move || registry.save_screens()).await;
+        // Open WebSockets never finish by themselves
+        tokio::spawn(async {
+            tokio::time::sleep(SHUTDOWN_GRACE).await;
+            std::process::exit(0);
+        });
+    };
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(stopping)
         .await?;
-
-    tracing::info!("shutting down, ending sessions");
-    registry.kill_all();
     Ok(())
 }
 

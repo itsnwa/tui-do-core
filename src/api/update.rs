@@ -3,7 +3,10 @@
 //! (see `update`). On the home core, devices are updated through
 //! `POST /v0/fleet/devices/{id}/update`.
 
+use std::sync::Arc;
+
 use axum::Json;
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -17,11 +20,12 @@ pub fn routes() -> axum::Router<AppState> {
     axum::Router::new().route("/v0/update", get(status).post(install))
 }
 
-async fn status() -> Response {
+async fn status(State(state): State<AppState>) -> Response {
     Json(json!({
         "current": env!("CARGO_PKG_VERSION"),
         "latest": update::latest_known(),
         "canUpdate": update::target().is_some() && update::restarts_itself(),
+        "rolledBack": update::rolled_back(&state.core_dir),
     }))
     .into_response()
 }
@@ -33,7 +37,7 @@ pub(super) struct UpdateBody {
     pub version: Option<String>,
 }
 
-async fn install(body: Option<Json<UpdateBody>>) -> Response {
+async fn install(State(state): State<AppState>, body: Option<Json<UpdateBody>>) -> Response {
     let version = match body.and_then(|Json(b)| b.version) {
         Some(version) => version,
         None => match update::latest().await {
@@ -41,9 +45,9 @@ async fn install(body: Option<Json<UpdateBody>>) -> Response {
             Err(err) => return error(StatusCode::BAD_GATEWAY, &format!("{err:#}")),
         },
     };
-    match update::install(&version).await {
+    match update::install(&version, &state.core_dir, &state.local_endpoint).await {
         Ok(()) => {
-            update::restart_soon();
+            update::restart_soon(Arc::clone(&state.registry));
             Json(json!({ "version": version })).into_response()
         }
         Err(err) => error(StatusCode::BAD_REQUEST, &format!("{err:#}")),

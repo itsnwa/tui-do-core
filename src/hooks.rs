@@ -63,9 +63,14 @@ impl Hooks {
         })
     }
 
+    /// Where a Claude session's hooks write its state.
+    pub fn state_file(&self, id: &str) -> PathBuf {
+        self.state_dir.join(format!("{id}.state"))
+    }
+
     /// Env for a Claude session, starting from a clean state file.
     pub fn env_for(&self, id: &str) -> (Vec<(String, String)>, PathBuf) {
-        let state_file = self.state_dir.join(format!("{id}.state"));
+        let state_file = self.state_file(id);
         let _ = std::fs::remove_file(&state_file);
         let env = vec![
             (

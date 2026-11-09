@@ -1,6 +1,6 @@
 [package]
 name = "tui-do-core"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 description = "Background service that owns TUI-DO terminal sessions and tasks, and serves them to clients over HTTP + WebSocket"
 license = "MIT OR Apache-2.0"
@@ -14,6 +14,7 @@ base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 futures-util = "0.3.34"
 indexmap = "2.14.2"
+libc = "0.2.191"
 libghostty-vt = "0.2.2"
 notify = "8"
 portable-pty = "0.9.0"

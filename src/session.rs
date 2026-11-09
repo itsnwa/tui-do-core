@@ -1,18 +1,20 @@
 //! Terminal sessions.
 //!
-//! Each session runs a PTY child and mirrors its output into a headless
-//! libghostty terminal, so the core always knows the current screen. A client
-//! attaching from anywhere gets that screen as a VT snapshot, then live output.
+//! Each session's program runs in a holder process (see `holder`), which
+//! outlives the core, so sessions keep running through an update or a crash.
+//! The core mirrors the output into a headless libghostty terminal, so it
+//! always knows the current screen. A client attaching from anywhere gets that
+//! screen as a VT snapshot, then live output.
 //!
 //! libghostty's `Terminal` is `!Send`, so every session has one actor thread
-//! that owns it. Separate threads read the PTY, write to it and wait for the
-//! child; they talk to the actor over a channel. Because only the actor
-//! publishes a session's output, it can take a snapshot and subscribe a client
-//! in one step, with no output lost or duplicated between the two.
+//! that owns it. Separate threads read from the holder and write to it; they
+//! talk to the actor over a channel. Because only the actor publishes a
+//! session's output, it can take a snapshot and subscribe a client in one
+//! step, with no output lost or duplicated between the two.
 
 use std::collections::{BTreeMap, HashMap};
-use std::ffi::OsString;
-use std::io::{Read, Write};
+use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
@@ -21,24 +23,26 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::{Context, anyhow, bail};
 use libghostty_vt::fmt::{Format, Formatter, FormatterOptions};
 use libghostty_vt::{Terminal, TerminalOptions};
-use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, oneshot};
 
+use crate::holder::{self, Connection, Spec};
 use crate::hooks::{self, Hooks};
 use crate::utf8::Utf8Stream;
 
 const MAX_SCROLLBACK_LINES: usize = 10_000;
-const READ_CHUNK: usize = 64 * 1024;
 /// How often the actor wakes without input to check quiet time and hook state.
 const TICK: Duration = Duration::from_millis(250);
 /// No output for this long counts as quiet (agent likely waiting).
 const QUIET_AFTER: Duration = Duration::from_secs(2);
 /// Output this soon after a keystroke is its echo, not the agent working.
 const ECHO_WINDOW: Duration = Duration::from_millis(500);
-/// After the child exits, how long to wait for the last output before closing.
-const EXIT_DRAIN: Duration = Duration::from_millis(300);
 const EVENT_CAPACITY: usize = 4096;
+/// How often a session with new output saves its screen with its holder, for
+/// a new core to start from if this one crashes.
+const SAVE_SCREEN_EVERY: Duration = Duration::from_secs(120);
+/// How long to wait for sessions to save their screens before the core exits.
+const SAVE_SCREENS_WAIT: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -191,21 +195,47 @@ pub type ClientId = u64;
 pub const ANONYMOUS: ClientId = 0;
 
 enum Msg {
-    Output(Vec<u8>),
-    Eof,
+    /// Output, and the position in the program's output after it.
+    Output(Vec<u8>, u64),
     Exited(Option<u32>),
+    /// The holder went away without saying the program exited.
+    HolderGone,
     Input(Vec<u8>, ClientId),
     Resize(u16, u16, ClientId),
     /// The client's connection closed.
     Detach(ClientId),
     Snapshot(oneshot::Sender<String>),
     Attach(oneshot::Sender<(String, broadcast::Receiver<Event>)>),
+    /// Save the screen with the holder; answers once it has been sent.
+    SaveScreen(mpsc::Sender<()>),
+}
+
+/// What goes to a session's holder, in order, on its writer thread.
+enum ToHolder {
+    Input(Vec<u8>),
+    Resize(u16, u16),
+    SaveScreen(u64, String),
+    Kill,
+    Bye,
+    /// Answers once everything before it has been written.
+    Flush(mpsc::Sender<()>),
 }
 
 struct Session {
     info: Arc<Mutex<SessionInfo>>,
     tx: mpsc::Sender<Msg>,
-    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    holder: mpsc::Sender<ToHolder>,
+}
+
+/// What a holder keeps for the core and gives back to a new one. Fields can
+/// only be added: a running holder may have been started by any earlier release.
+#[derive(Serialize, Deserialize)]
+struct SessionMeta {
+    id: String,
+    #[serde(default)]
+    agent: Option<String>,
+    #[serde(default)]
+    labels: BTreeMap<String, String>,
 }
 
 pub struct Registry {
@@ -213,6 +243,10 @@ pub struct Registry {
     events: broadcast::Sender<Event>,
     hooks: Hooks,
     next_client: AtomicU64,
+    /// Where holders listen; each socket is a running session.
+    holders: PathBuf,
+    /// The binary to run as a holder.
+    exe: PathBuf,
 }
 
 /// Lock a mutex, recovering the data if another thread panicked while holding it.
@@ -240,14 +274,84 @@ pub fn expand_home(path: &str) -> PathBuf {
 }
 
 impl Registry {
-    pub fn new(hooks: Hooks) -> Self {
+    /// `holders` is the folder holders listen in; `exe` the binary to run as one.
+    pub fn new(hooks: Hooks, holders: PathBuf, exe: PathBuf) -> anyhow::Result<Self> {
+        std::fs::create_dir_all(&holders)
+            .with_context(|| format!("creating {}", holders.display()))?;
+        std::fs::set_permissions(&holders, std::fs::Permissions::from_mode(0o700))?;
         let (events, _) = broadcast::channel(EVENT_CAPACITY);
-        Self {
+        Ok(Self {
             sessions: Mutex::new(HashMap::new()),
             events,
             hooks,
             next_client: AtomicU64::new(ANONYMOUS + 1),
+            holders,
+            exe,
+        })
+    }
+
+    /// Pick up the sessions whose holders outlived the previous core, and
+    /// return how many. Run before serving, so the first client sees them all.
+    pub fn adopt(&self) -> usize {
+        let Ok(entries) = std::fs::read_dir(&self.holders) else {
+            return 0;
+        };
+        let mut adopted = 0;
+        for path in entries.flatten().map(|entry| entry.path()) {
+            if path.extension().is_none_or(|ext| ext != "sock") {
+                continue;
+            }
+            match holder::connect(&path) {
+                Ok(connection) => match self.adopt_session(connection) {
+                    Ok(()) => adopted += 1,
+                    Err(err) => {
+                        tracing::warn!(error = %format!("{err:#}"), "couldn't pick up a session");
+                    }
+                },
+                // Nothing is listening: its holder has gone
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
+                    ) =>
+                {
+                    let _ = std::fs::remove_file(&path);
+                }
+                Err(err) => {
+                    tracing::warn!(%err, socket = %path.display(), "couldn't reach a holder");
+                }
+            }
         }
+        adopted
+    }
+
+    fn adopt_session(&self, mut connection: Connection) -> anyhow::Result<()> {
+        let meta: SessionMeta = serde_json::from_value(connection.welcome.meta.clone())
+            .context("reading the holder's record")?;
+        let mut sessions = lock(&self.sessions);
+        if sessions.contains_key(&meta.id) {
+            let _ = holder::write_frame(&mut connection.stream, holder::KILL, &[]);
+            bail!("two holders for session {:?}", meta.id);
+        }
+        let state_file =
+            (meta.agent.as_deref() == Some("claude")).then(|| self.hooks.state_file(&meta.id));
+        let info = SessionInfo {
+            id: meta.id.clone(),
+            alive: true,
+            exit_code: None,
+            agent_state: state_file
+                .as_deref()
+                .map(|path| hooks::read_state(path).unwrap_or(AgentState::Idle)),
+            agent: meta.agent,
+            pid: connection.welcome.pid,
+            cols: connection.welcome.cols,
+            rows: connection.welcome.rows,
+            labels: meta.labels,
+        };
+        let session = self.run_session(connection, info, state_file, false)?;
+        tracing::info!(id = %meta.id, "picked up a running session");
+        sessions.insert(meta.id, session);
+        Ok(())
     }
 
     /// An id for a new client connection.
@@ -297,18 +401,8 @@ impl Registry {
             }
         }
 
-        let pair = native_pty_system()
-            .openpty(PtySize {
-                rows: req.rows,
-                cols: req.cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .context("opening a PTY")?;
-
-        let mut cmd = if req.argv.is_empty() {
-            // The user's login shell (portable-pty's default-program builder
-            // can't take arguments, so name the shell explicitly)
+        let argv = if req.argv.is_empty() {
+            // The user's login shell
             let shell = req
                 .env
                 .get("SHELL")
@@ -316,27 +410,16 @@ impl Registry {
                 .or_else(|| std::env::var("SHELL").ok())
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| "/bin/sh".into());
-            let mut cmd = CommandBuilder::new(shell);
-            cmd.arg("-l");
-            cmd
+            vec![shell, "-l".into()]
         } else {
-            CommandBuilder::from_argv(req.argv.iter().map(OsString::from).collect())
+            req.argv
         };
-        if !req.env.is_empty() {
-            cmd.env_clear();
-            for (key, value) in &req.env {
-                cmd.env(key, value);
-            }
-        }
-        if cmd.get_env("TERM").is_none() {
-            cmd.env("TERM", "xterm-256color");
-        }
+        let clear_env = !req.env.is_empty();
+        let mut env: BTreeMap<String, String> = req.env.into_iter().collect();
         let is_claude = req.agent.as_deref() == Some("claude");
         let state_file = if is_claude {
-            let (env, state_file) = self.hooks.env_for(&req.id);
-            for (key, value) in env {
-                cmd.env(key, value);
-            }
+            let (hook_env, state_file) = self.hooks.env_for(&req.id);
+            env.extend(hook_env);
             Some(state_file)
         } else {
             None
@@ -346,51 +429,96 @@ impl Registry {
             .as_deref()
             .filter(|c| !c.is_empty())
             .map(expand_home);
-        if let Some(cwd) = &cwd {
-            cmd.cwd(cwd);
-        }
 
-        let mut child = pair
-            .slave
-            .spawn_command(cmd)
-            .context("starting the session's command")?;
-        drop(pair.slave);
-        let pid = child.process_id();
-        let killer = child.clone_killer();
-        let reader = pair.master.try_clone_reader().context("reading the PTY")?;
-        let writer = pair.master.take_writer().context("writing the PTY")?;
+        let meta = SessionMeta {
+            id: req.id.clone(),
+            agent: req.agent.clone(),
+            labels: req.labels.clone(),
+        };
+        // Named at random, not after the session: ids can be longer than a
+        // socket path is allowed to be
+        let socket = self.holders.join(format!(
+            "{}.sock",
+            &uuid::Uuid::new_v4().simple().to_string()[..16]
+        ));
+        holder::launch(
+            &self.exe,
+            &socket,
+            &Spec {
+                argv,
+                cwd: cwd.clone(),
+                env,
+                clear_env,
+                cols: req.cols,
+                rows: req.rows,
+                meta: serde_json::to_value(&meta)?,
+            },
+        )?;
+        let connection = holder::connect(&socket).context("connecting to the terminal's holder")?;
+        let pid = connection.welcome.pid;
 
         let info = SessionInfo {
             id: req.id.clone(),
             alive: true,
             exit_code: None,
-            agent: req.agent.clone(),
+            agent: req.agent,
             agent_state: is_claude.then_some(AgentState::Idle),
             pid,
             cols: req.cols,
             rows: req.rows,
             labels: req.labels,
         };
-        let shared = Arc::new(Mutex::new(info.clone()));
+        let session = self.run_session(connection, info.clone(), state_file, true)?;
+        sessions.insert(req.id.clone(), session);
+        drop(sessions);
+        tracing::info!(id = %req.id, ?pid, cwd = ?cwd, "session started");
+        let _ = self.events.send(Event::SessionCreated {
+            session: info.clone(),
+        });
+        Ok(info)
+    }
+
+    /// Start the threads of a session whose holder is connected. For a new
+    /// session the output so far is news; for one picked up it's only history
+    /// to rebuild the screen from.
+    fn run_session(
+        &self,
+        connection: Connection,
+        info: SessionInfo,
+        state_file: Option<PathBuf>,
+        new: bool,
+    ) -> anyhow::Result<Session> {
+        let Connection {
+            stream,
+            saved_screen,
+            replay,
+            position,
+            ..
+        } = connection;
+        let id = info.id.clone();
+        let (cols, rows) = (info.cols, info.rows);
+        let shared = Arc::new(Mutex::new(info));
         let (tx, rx) = mpsc::channel();
+        let mut history = Vec::new();
+        if new {
+            if !replay.is_empty() {
+                let _ = tx.send(Msg::Output(replay, position));
+            }
+        } else {
+            history.extend(saved_screen);
+            history.push(replay);
+        }
 
-        spawn_reader(&req.id, reader, tx.clone())?;
-        let writer_tx = spawn_writer(&req.id, writer)?;
-        let waiter_tx = tx.clone();
-        std::thread::Builder::new()
-            .name(format!("wait:{}", req.id))
-            .spawn(move || {
-                let code = child.wait().ok().map(|status| status.exit_code());
-                let _ = waiter_tx.send(Msg::Exited(code));
-            })
-            .context("starting the wait thread")?;
-
+        let reader = stream.try_clone().context("reading from the holder")?;
+        let holder = spawn_holder_writer(&id, stream)?;
         let actor = Actor {
-            id: Arc::from(req.id.as_str()),
+            id: Arc::from(id.as_str()),
             info: Arc::clone(&shared),
             events: self.events.clone(),
-            master: pair.master,
-            writer: writer_tx,
+            holder: holder.clone(),
+            position,
+            unsaved: false,
+            saved_at: Instant::now(),
             state_file,
             hook_seen: false,
             state_mtime: None,
@@ -399,33 +527,23 @@ impl Registry {
             quiet_sent: true,
             utf8: Utf8Stream::default(),
             sizes: Vec::new(),
-            base_size: (req.cols, req.rows),
+            base_size: (cols, rows),
         };
         let (ready_tx, ready_rx) = mpsc::channel();
-        let (cols, rows) = (req.cols, req.rows);
         std::thread::Builder::new()
-            .name(format!("session:{}", req.id))
-            .spawn(move || actor.run(cols, rows, rx, ready_tx))
+            .name(format!("session:{id}"))
+            .spawn(move || actor.run(cols, rows, history, rx, ready_tx))
             .context("starting the session thread")?;
         ready_rx
             .recv()
             .map_err(|_| anyhow!("session thread stopped during startup"))?
             .context("creating the terminal")?;
-
-        sessions.insert(
-            req.id.clone(),
-            Session {
-                info: shared,
-                tx,
-                killer: Mutex::new(killer),
-            },
-        );
-        drop(sessions);
-        tracing::info!(id = %req.id, ?pid, cwd = ?cwd, "session started");
-        let _ = self.events.send(Event::SessionCreated {
-            session: info.clone(),
-        });
-        Ok(info)
+        spawn_holder_reader(&id, reader, tx.clone())?;
+        Ok(Session {
+            info: shared,
+            tx,
+            holder,
+        })
     }
 
     pub fn input(&self, id: &str, data: Vec<u8>) -> bool {
@@ -461,7 +579,7 @@ impl Registry {
             return false;
         };
         if lock(&session.info).alive {
-            let _ = lock(&session.killer).kill();
+            let _ = session.holder.send(ToHolder::Kill);
         }
         tracing::info!(id, "session removed");
         let _ = self
@@ -491,9 +609,27 @@ impl Registry {
         rx.await.ok()
     }
 
+    /// End every session's program. The core doesn't do this when it stops:
+    /// sessions keep running for the next core to pick up.
     pub fn kill_all(&self) {
         for session in lock(&self.sessions).values() {
-            let _ = lock(&session.killer).kill();
+            let _ = session.holder.send(ToHolder::Kill);
+        }
+    }
+
+    /// Save every running session's screen with its holder, for the next core.
+    pub fn save_screens(&self) {
+        let waiting: Vec<_> = lock(&self.sessions)
+            .values()
+            .filter_map(|session| {
+                let (done, finished) = mpsc::channel();
+                session.tx.send(Msg::SaveScreen(done)).ok()?;
+                Some(finished)
+            })
+            .collect();
+        let deadline = Instant::now() + SAVE_SCREENS_WAIT;
+        for finished in waiting {
+            let _ = finished.recv_timeout(deadline.saturating_duration_since(Instant::now()));
         }
     }
 
@@ -504,47 +640,71 @@ impl Registry {
     }
 }
 
-fn spawn_reader(
+fn spawn_holder_reader(
     id: &str,
-    mut reader: Box<dyn Read + Send>,
+    mut stream: UnixStream,
     tx: mpsc::Sender<Msg>,
 ) -> anyhow::Result<()> {
     std::thread::Builder::new()
         .name(format!("read:{id}"))
         .spawn(move || {
-            let mut buf = vec![0u8; READ_CHUNK];
             loop {
-                match reader.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => {
-                        if tx.send(Msg::Output(buf[..n].to_vec())).is_err() {
+                let Ok((kind, payload)) = holder::read_frame(&mut stream) else {
+                    let _ = tx.send(Msg::HolderGone);
+                    return;
+                };
+                match kind {
+                    holder::OUTPUT => {
+                        let Some((at, output)) = holder::split_position(&payload) else {
+                            continue;
+                        };
+                        let end = at + output.len() as u64;
+                        if tx.send(Msg::Output(output.to_vec(), end)).is_err() {
                             return;
                         }
                     }
+                    holder::EXITED => {
+                        let code = serde_json::from_slice::<holder::Exited>(&payload)
+                            .ok()
+                            .and_then(|exited| exited.code);
+                        let _ = tx.send(Msg::Exited(code));
+                    }
+                    _ => {}
                 }
             }
-            let _ = tx.send(Msg::Eof);
         })
         .context("starting the read thread")?;
     Ok(())
 }
 
-/// Writes happen on their own thread: a blocked PTY write must never stall the
+/// Writes happen on their own thread: a blocked write must never stall the
 /// actor, or a child blocked on output would deadlock against it.
-fn spawn_writer(
-    id: &str,
-    mut writer: Box<dyn Write + Send>,
-) -> anyhow::Result<mpsc::Sender<Vec<u8>>> {
-    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+fn spawn_holder_writer(id: &str, mut stream: UnixStream) -> anyhow::Result<mpsc::Sender<ToHolder>> {
+    let (tx, rx) = mpsc::channel::<ToHolder>();
     std::thread::Builder::new()
         .name(format!("write:{id}"))
         .spawn(move || {
-            for data in rx {
-                if writer
-                    .write_all(&data)
-                    .and_then(|()| writer.flush())
-                    .is_err()
-                {
+            for msg in rx {
+                let written = match msg {
+                    ToHolder::Input(data) => holder::write_frame(&mut stream, holder::INPUT, &data),
+                    ToHolder::Resize(cols, rows) => {
+                        let [c1, c2] = cols.to_be_bytes();
+                        let [r1, r2] = rows.to_be_bytes();
+                        holder::write_frame(&mut stream, holder::RESIZE, &[c1, c2, r1, r2])
+                    }
+                    ToHolder::SaveScreen(position, screen) => holder::write_frame(
+                        &mut stream,
+                        holder::SAVE_SCREEN,
+                        &holder::at_position(position, screen.as_bytes()),
+                    ),
+                    ToHolder::Kill => holder::write_frame(&mut stream, holder::KILL, &[]),
+                    ToHolder::Bye => holder::write_frame(&mut stream, holder::BYE, &[]),
+                    ToHolder::Flush(done) => {
+                        let _ = done.send(());
+                        Ok(())
+                    }
+                };
+                if written.is_err() {
                     break;
                 }
             }
@@ -557,8 +717,12 @@ struct Actor {
     id: Arc<str>,
     info: Arc<Mutex<SessionInfo>>,
     events: broadcast::Sender<Event>,
-    master: Box<dyn MasterPty + Send>,
-    writer: mpsc::Sender<Vec<u8>>,
+    holder: mpsc::Sender<ToHolder>,
+    /// The position in the program's output that `term` has reached.
+    position: u64,
+    /// There's output the holder's saved screen doesn't cover.
+    unsaved: bool,
+    saved_at: Instant,
     state_file: Option<PathBuf>,
     /// Hooks reported at least once; stop guessing the state from output.
     hook_seen: bool,
@@ -579,6 +743,7 @@ impl Actor {
         mut self,
         cols: u16,
         rows: u16,
+        history: Vec<Vec<u8>>,
         rx: mpsc::Receiver<Msg>,
         ready: mpsc::Sender<Result<(), libghostty_vt::Error>>,
     ) {
@@ -593,41 +758,46 @@ impl Actor {
                 return;
             }
         };
+        for bytes in history {
+            term.vt_write(&bytes);
+        }
         let _ = ready.send(Ok(()));
 
-        // Set once the child exits; the session closes when the PTY drains or
-        // EXIT_DRAIN passes (background jobs can keep the PTY open forever).
-        let mut exited: Option<(Instant, Option<u32>)> = None;
-        let mut eof = false;
+        // Set once the holder says the program has exited, or goes away
+        let mut ended: Option<Option<u32>> = None;
         loop {
             match rx.recv_timeout(TICK) {
-                Ok(Msg::Output(first)) => {
+                Ok(Msg::Output(first, mut position)) => {
                     let mut bytes = first;
                     // Coalesce whatever else is already queued into one event.
                     let mut deferred = None;
                     while let Ok(msg) = rx.try_recv() {
                         match msg {
-                            Msg::Output(more) => bytes.extend_from_slice(&more),
+                            Msg::Output(more, end) => {
+                                bytes.extend_from_slice(&more);
+                                position = end;
+                            }
                             other => {
                                 deferred = Some(other);
                                 break;
                             }
                         }
                     }
-                    self.on_output(&mut term, &bytes);
+                    self.on_output(&mut term, &bytes, position);
                     if let Some(msg) = deferred {
-                        self.handle(&mut term, msg, &mut exited, &mut eof);
+                        self.handle(&mut term, msg, &mut ended);
                     }
                 }
-                Ok(msg) => self.handle(&mut term, msg, &mut exited, &mut eof),
+                Ok(msg) => self.handle(&mut term, msg, &mut ended),
                 Err(mpsc::RecvTimeoutError::Timeout) => self.tick(),
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
-            if let Some((at, code)) = exited
-                && (eof || at.elapsed() >= EXIT_DRAIN)
-            {
+            if let Some(code) = ended {
                 self.finish(code);
                 break;
+            }
+            if self.unsaved && self.saved_at.elapsed() >= SAVE_SCREEN_EVERY {
+                self.save_screen(&term);
             }
         }
         // Keep answering snapshot requests for the dead session until it's removed.
@@ -644,17 +814,19 @@ impl Actor {
         }
     }
 
-    fn handle(
-        &mut self,
-        term: &mut Terminal,
-        msg: Msg,
-        exited: &mut Option<(Instant, Option<u32>)>,
-        eof: &mut bool,
-    ) {
+    fn handle(&mut self, term: &mut Terminal, msg: Msg, ended: &mut Option<Option<u32>>) {
         match msg {
-            Msg::Output(bytes) => self.on_output(term, &bytes),
-            Msg::Eof => *eof = true,
-            Msg::Exited(code) => *exited = Some((Instant::now(), code)),
+            Msg::Output(bytes, position) => self.on_output(term, &bytes, position),
+            Msg::Exited(code) => *ended = Some(code),
+            Msg::HolderGone => {
+                // Also how a removed session's holder ends, so not a warning
+                tracing::info!(id = %self.id, "the session's holder went away");
+                *ended = Some(None);
+            }
+            Msg::SaveScreen(done) => {
+                self.save_screen(term);
+                let _ = self.holder.send(ToHolder::Flush(done));
+            }
             Msg::Input(data, client) => {
                 // The client typing gets its size back before its keys arrive
                 // (not for its terminal's answers to queries)
@@ -666,7 +838,7 @@ impl Actor {
                     self.apply_size(term, size.1, size.2);
                 }
                 self.last_input = Instant::now();
-                let _ = self.writer.send(data);
+                let _ = self.holder.send(ToHolder::Input(data));
             }
             Msg::Resize(cols, rows, client) => {
                 if client == ANONYMOUS {
@@ -702,12 +874,7 @@ impl Actor {
                 return;
             }
         }
-        let _ = self.master.resize(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        });
+        let _ = self.holder.send(ToHolder::Resize(cols, rows));
         if let Err(err) = term.resize(cols, rows, 0, 0) {
             tracing::warn!(id = %self.id, ?err, "terminal resize failed");
         }
@@ -722,8 +889,19 @@ impl Actor {
         });
     }
 
-    fn on_output(&mut self, term: &mut Terminal, bytes: &[u8]) {
+    /// Give the holder the screen as it is now, for the next core to start from.
+    fn save_screen(&mut self, term: &Terminal) {
+        let _ = self
+            .holder
+            .send(ToHolder::SaveScreen(self.position, vt_snapshot(term)));
+        self.saved_at = Instant::now();
+        self.unsaved = false;
+    }
+
+    fn on_output(&mut self, term: &mut Terminal, bytes: &[u8], position: u64) {
         term.vt_write(bytes);
+        self.position = position;
+        self.unsaved = true;
         self.last_output = Instant::now();
         self.quiet_sent = false;
         if self.guessing_state() && self.last_input.elapsed() > ECHO_WINDOW {
@@ -797,6 +975,7 @@ impl Actor {
         if let Some(path) = &self.state_file {
             let _ = std::fs::remove_file(path);
         }
+        let _ = self.holder.send(ToHolder::Bye);
         tracing::info!(id = %self.id, ?code, "session exited");
         let _ = self.events.send(Event::SessionExited {
             id: Arc::clone(&self.id),
@@ -895,90 +1074,35 @@ mod tests {
         assert!(feed(lines.as_bytes()).contains("line0"));
     }
 
-    fn registry() -> Registry {
-        let dir = std::env::temp_dir().join(format!("tui-do-core-test-{}", uuid::Uuid::new_v4()));
-        Registry::new(Hooks::prepare(&dir).expect("hooks"))
-    }
-
-    fn spawn_request(id: &str, argv: &[&str]) -> SpawnRequest {
-        SpawnRequest {
-            id: id.into(),
-            argv: argv.iter().map(|s| (*s).to_string()).collect(),
-            cwd: None,
-            env: HashMap::new(),
-            cols: 80,
-            rows: 24,
-            agent: None,
-            labels: BTreeMap::new(),
-        }
+    /// A new core rebuilds its mirror from a snapshot, so a snapshot of the
+    /// rebuilt terminal has to match the original.
+    fn assert_snapshot_replays(text: &[u8]) {
+        let first = feed(text);
+        let second = feed(first.as_bytes());
+        assert_eq!(first, second);
     }
 
     #[test]
-    fn spawn_without_argv_should_start_a_login_shell() {
-        let registry = registry();
-        let info = registry.spawn(spawn_request("shell", &[])).expect("spawns");
-        assert!(info.alive);
-        registry.kill_all();
+    fn snapshot_should_replay_the_screen_and_scrollback() {
+        let lines: String = (0..20)
+            .map(|i| format!("\x1b[3{}mline{i}\r\n", i % 8))
+            .collect();
+        assert_snapshot_replays(format!("{lines}\x1b[0mprompt$ ").as_bytes());
     }
 
-    #[tokio::test]
-    async fn spawned_command_output_should_reach_the_snapshot() {
-        let registry = registry();
-        registry
-            .spawn(spawn_request(
-                "echo",
-                &["/bin/sh", "-c", "echo snapshot-check; sleep 5"],
-            ))
-            .expect("spawns");
-        let mut found = false;
-        for _ in 0..50 {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            if registry
-                .snapshot("echo")
-                .await
-                .is_some_and(|s| s.data.contains("snapshot-check"))
-            {
-                found = true;
-                break;
-            }
-        }
-        registry.kill_all();
-        assert!(found);
+    #[test]
+    fn snapshot_should_replay_modes() {
+        assert_snapshot_replays(b"\x1b[?2004h\x1b[?1000h\x1b[?1006h\x1b[?1004h\x1b[>1uhello");
     }
 
-    #[tokio::test]
-    async fn size_should_follow_the_client_in_use() {
-        let registry = registry();
-        registry
-            .spawn(spawn_request("sizes", &["/bin/sh", "-c", "sleep 5"]))
-            .expect("spawns");
-        let size = |registry: &Registry| {
-            let info = registry.info("sizes").expect("session");
-            (info.cols, info.rows)
-        };
-        let (mac, phone) = (registry.connect(), registry.connect());
-        registry.resize_from("sizes", mac, 120, 40);
-        registry.resize_from("sizes", phone, 50, 30);
-        // A snapshot round-trips through the actor, so earlier messages are done
-        registry.snapshot("sizes").await.expect("snapshot");
-        assert_eq!(size(&registry), (50, 30));
-
-        // The Mac types: it takes its size back
-        registry.input_from("sizes", mac, b"x".to_vec());
-        registry.snapshot("sizes").await.expect("snapshot");
-        assert_eq!(size(&registry), (120, 40));
-
-        // The phone types, then leaves: back to the Mac's size
-        registry.input_from("sizes", phone, b"x".to_vec());
-        registry.detach("sizes", phone);
-        registry.snapshot("sizes").await.expect("snapshot");
-        assert_eq!(size(&registry), (120, 40));
-
-        // Once every client that sized it has gone, it's back to its own size
-        registry.detach("sizes", mac);
-        registry.snapshot("sizes").await.expect("snapshot");
-        assert_eq!(size(&registry), (80, 24));
-        registry.kill_all();
+    #[test]
+    fn snapshot_should_replay_the_alternate_screen() {
+        assert_snapshot_replays(
+            b"main screen\r\n\x1b[?1049h\x1b[2J\x1b[Halt screen\x1b[3;5Hcursor",
+        );
+        let snapshot = feed(b"main\x1b[?1049h\x1b[2J\x1b[Halt");
+        assert!(snapshot.contains("alt"));
+        assert!(snapshot.contains("\x1b[?1049h"), "{snapshot:?}");
     }
 
     #[test]

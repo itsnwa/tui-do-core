@@ -193,6 +193,15 @@ async fn update_device(
         if running.as_deref() == Some(version.as_str()) {
             break true;
         }
+        if let Some(current) = rolled_back_from(&state, &device, &version).await {
+            return error(
+                StatusCode::BAD_GATEWAY,
+                &format!(
+                    "{version} didn't start on {}, so it went back to {current}",
+                    device.name
+                ),
+            );
+        }
         if std::time::Instant::now() > deadline {
             break false;
         }
@@ -232,6 +241,25 @@ async fn remove_device(State(state): State<AppState>, Path(id): Path<String>) ->
         Ok(false) => error(StatusCode::NOT_FOUND, "no such device"),
         Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{err:#}")),
     }
+}
+
+/// The version a device is back on, if it gave up on `version` and rolled back.
+async fn rolled_back_from(state: &AppState, device: &Device, version: &str) -> Option<String> {
+    let status: serde_json::Value = state
+        .fleet
+        .client()
+        .get(format!("{}/v0/update", device.address))
+        .bearer_auth(&device.token)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    (status["rolledBack"]["version"] == version)
+        .then(|| status["current"].as_str().map(str::to_string))
+        .flatten()
 }
 
 /// A device joined (or was updated): relay its events, and tell it how to

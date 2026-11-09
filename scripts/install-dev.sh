@@ -1,12 +1,13 @@
 #!/bin/sh
-# Build the core in release mode, install it to ~/.tui-do/bin and (re)start it
-# as a launchd agent, so it runs in the background and starts at login.
+# Build the core in release mode, install it to ~/.tui-do and (re)start it as
+# a launchd agent, so it runs in the background and starts at login.
 #
-# Restarting the agent ends any running sessions.
+# Running sessions keep going: the new core picks them up from their holders.
 #
-# Uninstall:
+# Uninstall (sessions outlive the agent, so end them too):
 #   launchctl bootout "gui/$(id -u)/dev.tui-do.core"
-#   rm ~/Library/LaunchAgents/dev.tui-do.core.plist ~/.tui-do/bin/tui-do-core
+#   pkill -f 'tui-do-core hold'
+#   rm -r ~/Library/LaunchAgents/dev.tui-do.core.plist ~/.tui-do/bin ~/.tui-do/versions
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -14,8 +15,13 @@ cargo build --release
 
 bin_dir="$HOME/.tui-do/bin"
 core_dir="$HOME/.tui-do/core"
-mkdir -p "$bin_dir" "$core_dir"
-install -m 755 target/release/tui-do-core "$bin_dir/tui-do-core"
+version_dir="$HOME/.tui-do/versions/dev"
+mkdir -p "$bin_dir" "$core_dir" "$version_dir"
+# Renamed into place, so holders running the last build are left alone
+install -m 755 target/release/tui-do-core "$version_dir/tui-do-core.new"
+mv -f "$version_dir/tui-do-core.new" "$version_dir/tui-do-core"
+ln -sfn ../versions/dev/tui-do-core "$bin_dir/tui-do-core.new"
+mv -f "$bin_dir/tui-do-core.new" "$bin_dir/tui-do-core"
 
 label="dev.tui-do.core"
 plist="$HOME/Library/LaunchAgents/$label.plist"
