@@ -97,8 +97,8 @@ fn spawn_without_argv_should_start_a_login_shell() {
     registry.kill_all();
 }
 
-#[test]
-fn spawn_should_report_a_program_that_cannot_start() {
+#[tokio::test]
+async fn spawn_should_report_a_program_that_cannot_start() {
     let dir = TestDir::new();
     let registry = dir.registry();
     assert!(
@@ -106,7 +106,8 @@ fn spawn_should_report_a_program_that_cannot_start() {
             .spawn(request("missing", &["/no/such/program"]))
             .is_err()
     );
-    assert_eq!(dir.sockets(), 0);
+    // The holder reports the failure first, then removes its socket
+    assert!(eventually(async || dir.sockets() == 0).await);
 }
 
 #[test]
