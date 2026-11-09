@@ -19,7 +19,7 @@ use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde::{Deserialize, Serialize};
 
 use crate::config::{ConfigStore, HomeLink};
-use crate::handoff::Handoffs;
+use crate::handoff::{Handoffs, completed_task};
 use crate::links::{SessionLink, TaskSessions};
 use crate::workspace::shared::SharedWorkspace;
 
@@ -95,6 +95,8 @@ pub async fn run_call(
         );
     };
     let root = ws.root().to_path_buf();
+    let updates_to_completed = call.name == "update_task"
+        && call.arguments.get("state").and_then(|s| s.as_str()) == Some("completed");
     let outcome = tokio::task::spawn_blocking(move || {
         tools::call(
             &ws,
@@ -109,16 +111,13 @@ pub async fn run_call(
         Ok(Ok(mut value)) => {
             crate::workspace::localize_attachments(&mut value, &root);
             // A completed task that ran on another machine brings its work back
-            let completed = matches!(
-                value["status"].as_str(),
-                Some("completed" | "recurring_advanced")
-            );
-            if let (true, Some(handoffs), Some(task)) =
-                (completed, handoffs, value["task"]["slug"].as_str())
-                && handoffs.record(task).is_some()
-            {
-                let task = task.to_string();
-                tokio::spawn(async move { handoffs.bring_back(&task).await });
+            let completed = if updates_to_completed {
+                value["slug"].as_str()
+            } else {
+                completed_task(&value)
+            };
+            if let (Some(handoffs), Some(task)) = (handoffs, completed) {
+                handoffs.task_completed(task);
             }
             CallOutcome::Result(value)
         }

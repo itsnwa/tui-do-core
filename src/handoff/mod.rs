@@ -124,6 +124,15 @@ fn valid_branch(branch: &str) -> anyhow::Result<()> {
     }
 }
 
+/// The task that a `complete_task` answer completed; `None` if it refused.
+pub fn completed_task(answer: &serde_json::Value) -> Option<&str> {
+    let completed = matches!(
+        answer["status"].as_str(),
+        Some("completed" | "recurring_advanced")
+    );
+    answer["task"]["slug"].as_str().filter(|_| completed)
+}
+
 /// The response header that carries a code machine's `RemoteSnapshot`.
 pub const SNAPSHOT_HEADER: &str = "x-tui-do-snapshot";
 
@@ -441,8 +450,18 @@ impl Handoffs {
         Ok((received.path, branch))
     }
 
+    /// A task was completed: if it ran on another machine, bring its work
+    /// back, in the background.
+    pub fn task_completed(self: &Arc<Self>, task_slug: &str) {
+        if self.record(task_slug).is_none() {
+            return;
+        }
+        let (handoffs, task) = (Arc::clone(self), task_slug.to_string());
+        tokio::spawn(async move { handoffs.bring_back(&task).await });
+    }
+
     /// The task was completed: bring its work back from the device it ran on.
-    pub async fn bring_back(&self, task_slug: &str) {
+    async fn bring_back(&self, task_slug: &str) {
         let Some(record) = self.record(task_slug) else {
             return;
         };

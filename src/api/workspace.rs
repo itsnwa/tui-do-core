@@ -156,9 +156,8 @@ async fn update_task(
     let task = slug.clone();
     let response = run(&state, move |ws| ws.update_task(&slug, req)).await;
     // A task that ran on another machine brings its work back when it's done
-    if completing && response.status().is_success() && state.handoffs.record(&task).is_some() {
-        let handoffs = std::sync::Arc::clone(&state.handoffs);
-        tokio::spawn(async move { handoffs.bring_back(&task).await });
+    if completing && response.status().is_success() {
+        state.handoffs.task_completed(&task);
     }
     response
 }
@@ -316,8 +315,14 @@ async fn complete_task(
     body: Option<Json<CompleteBody>>,
 ) -> Response {
     let body = body.map(|Json(b)| b).unwrap_or_default();
+    let handoffs = Arc::clone(&state.handoffs);
     run(&state, move |ws| {
-        ws.complete_task(&reference, body.summary.as_deref())
+        let answer = ws.complete_task(&reference, body.summary.as_deref())?;
+        // A task that ran on another machine brings its work back when it's done
+        if let Some(task) = crate::handoff::completed_task(&answer) {
+            handoffs.task_completed(task);
+        }
+        Ok(answer)
     })
     .await
 }
