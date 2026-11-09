@@ -17,6 +17,7 @@ use tokio::sync::broadcast::error::RecvError;
 
 use super::{AppState, error};
 use crate::fleet::Device;
+use crate::links::SessionLink;
 use crate::session::{Event, SpawnRequest};
 use crate::workspace::Error;
 use crate::workspace::tasks::UpdateTask;
@@ -31,14 +32,54 @@ const CODEX_MACHINE_TOOLS: &str = concat!(
     r#" -c 'mcp_servers.tui-do.args=["-c", "exec \"$HOME/.tui-do/bin/tui-do-core\" mcp"]'"#,
 );
 
+/// Reports each finished turn to `tui-do-core codex-notify`, which Codex runs
+/// with the turn's details as the last argument. `$TUI_DO_CORE_EXE` comes from
+/// the session.
+const CODEX_NOTIFY: &str =
+    r#" -c 'notify=["sh","-c","exec \"$TUI_DO_CORE_EXE\" codex-notify \"$1\"","sh"]'"#;
+
 pub fn routes() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/v0/agents", get(options))
         .route("/v0/tasks/{reference}/agent", post(start))
+        .route("/v0/tasks/{slug}/codex-session", get(codex_session))
 }
 
 async fn options() -> Response {
     Json(crate::agent_models::options().await).into_response()
+}
+
+/// The Codex session this machine has for the task, if it can still be resumed.
+fn local_codex_link(state: &AppState, slug: &str) -> Option<SessionLink> {
+    let link = state.codex_sessions.get(slug)?;
+    std::path::Path::new(&link.cwd).is_dir().then_some(link)
+}
+
+async fn codex_session(State(state): State<AppState>, Path(slug): Path<String>) -> Response {
+    match local_codex_link(&state, &slug) {
+        Some(link) => Json(link).into_response(),
+        None => error(
+            StatusCode::NOT_FOUND,
+            "no Codex session linked to this task on this machine",
+        ),
+    }
+}
+
+/// The task's Codex session on the machine it would run on.
+async fn codex_link(state: &AppState, device: Option<&Device>, slug: &str) -> Option<SessionLink> {
+    let Some(device) = device else {
+        return local_codex_link(state, slug);
+    };
+    let res = state
+        .fleet
+        .client()
+        .get(format!("{}/v0/tasks/{slug}/codex-session", device.address))
+        .bearer_auth(&device.token)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .ok()?;
+    res.error_for_status().ok()?.json().await.ok()
 }
 
 #[derive(Deserialize)]
@@ -65,6 +106,10 @@ struct StartAgent {
     /// Take the project's uncommitted changes along to another machine.
     #[serde(default)]
     include_uncommitted: bool,
+    /// Codex only: continue the task's session on that machine, with its own
+    /// settings. Without one, a new session starts.
+    #[serde(default)]
+    resume: bool,
     /// Claude only: the name for a new git worktree (`--worktree`).
     #[serde(default)]
     worktree: Option<String>,
@@ -100,7 +145,14 @@ fn valid_word(value: &str) -> bool {
 }
 
 /// The command typed into the session's shell, as the Mac app builds it.
-fn command(agent: &Agent, req: &StartAgent, slug: &str, task_id: &str, remote: bool) -> String {
+fn command(
+    agent: &Agent,
+    req: &StartAgent,
+    slug: &str,
+    task_id: &str,
+    remote: bool,
+    resume: Option<&SessionLink>,
+) -> String {
     let model = req
         .model
         .as_deref()
@@ -135,6 +187,14 @@ fn command(agent: &Agent, req: &StartAgent, slug: &str, task_id: &str, remote: b
             let mut cmd = String::from("codex");
             if remote {
                 cmd += CODEX_MACHINE_TOOLS;
+            }
+            cmd += CODEX_NOTIFY;
+            if let Some(link) = resume {
+                return format!(
+                    "cd {} && {cmd} resume {}",
+                    shell_quote(&link.cwd),
+                    shell_quote(&link.session_id)
+                );
             }
             if let Some(model) = model {
                 cmd += &format!(" --model {}", shell_quote(model));
@@ -291,7 +351,19 @@ async fn start(
         .await;
     }
 
-    let command = command(&agent, &req, &task.slug, &task.id, device.is_some());
+    let resume = if req.resume && agent == Agent::Codex {
+        codex_link(&state, device.as_ref(), &task.slug).await
+    } else {
+        None
+    };
+    let command = command(
+        &agent,
+        &req,
+        &task.slug,
+        &task.id,
+        device.is_some(),
+        resume.as_ref(),
+    );
     tokio::spawn(type_when_ready(
         state.clone(),
         device.clone(),
@@ -442,6 +514,7 @@ mod tests {
             permission_mode: mode.map(str::to_string),
             yolo,
             include_uncommitted: false,
+            resume: false,
             worktree: None,
             worktree_path: None,
             cols: 80,
@@ -454,7 +527,7 @@ mod tests {
         let mut req = request(None, None, None, false);
         req.worktree = Some("my-task".into());
         assert_eq!(
-            command(&Agent::Claude, &req, "t", "26-001", false),
+            command(&Agent::Claude, &req, "t", "26-001", false, None),
             "claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" --worktree 'my-task' \
              -n \"t\" \"Start working on task 26-001\""
         );
@@ -466,7 +539,7 @@ mod tests {
         req.worktree = Some("my-task".into());
         req.worktree_path = Some("/code/it's/.claude/worktrees/my-task".into());
         assert_eq!(
-            command(&Agent::Claude, &req, "t", "26-001", false),
+            command(&Agent::Claude, &req, "t", "26-001", false, None),
             "cd '/code/it'\\''s/.claude/worktrees/my-task' && \
              claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" \
              -n \"t\" \"Start working on task 26-001\""
@@ -479,8 +552,8 @@ mod tests {
         req.worktree = Some("my-task".into());
         req.worktree_path = Some("/somewhere".into());
         assert_eq!(
-            command(&Agent::Codex, &req, "t", "26-001", false),
-            "codex --model 'gpt-6' \"Start working on task 26-001\""
+            command(&Agent::Codex, &req, "t", "26-001", false, None),
+            format!("codex{CODEX_NOTIFY} --model 'gpt-6' \"Start working on task 26-001\"")
         );
     }
 
@@ -493,7 +566,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            command(&Agent::Claude, &req, "my-task", "26-001", false),
+            command(&Agent::Claude, &req, "my-task", "26-001", false, None),
             "claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" --permission-mode plan \
              --model 'claude-fable-5-1[1m]' --effort high --dangerously-skip-permissions \
              -n \"my-task\" \"Start working on task 26-001\""
@@ -504,7 +577,7 @@ mod tests {
     fn default_model_should_add_no_flag() {
         let req = request(Some("default"), None, None, false);
         assert_eq!(
-            command(&Agent::Claude, &req, "t", "26-001", false),
+            command(&Agent::Claude, &req, "t", "26-001", false, None),
             "claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" -n \"t\" \"Start working on task 26-001\""
         );
     }
@@ -512,7 +585,7 @@ mod tests {
     #[test]
     fn codex_on_a_machine_should_get_the_tools_and_effort() {
         let req = request(Some("gpt-6"), Some("high"), None, false);
-        let cmd = command(&Agent::Codex, &req, "t", "26-001", true);
+        let cmd = command(&Agent::Codex, &req, "t", "26-001", true, None);
         assert!(cmd.starts_with("codex -c 'mcp_servers.tui-do.command=\"sh\"'"));
         assert!(cmd.ends_with(
             " --model 'gpt-6' -c 'model_reasoning_effort=\"high\"' \"Start working on task 26-001\""
@@ -520,10 +593,27 @@ mod tests {
     }
 
     #[test]
+    fn resuming_codex_should_continue_the_session_in_its_folder() {
+        let req = request(Some("gpt-6"), Some("high"), None, true);
+        let link = SessionLink {
+            session_id: "01a1c173-979a-70e0-bbe0-b83e52032d3f".into(),
+            cwd: "/code/it's".into(),
+            linked_at: None,
+        };
+        assert_eq!(
+            command(&Agent::Codex, &req, "t", "26-001", false, Some(&link)),
+            format!(
+                "cd '/code/it'\\''s' && codex{CODEX_NOTIFY} \
+                 resume '01a1c173-979a-70e0-bbe0-b83e52032d3f'"
+            )
+        );
+    }
+
+    #[test]
     fn odd_effort_and_mode_values_should_be_dropped() {
         let req = request(None, Some("high; rm -rf ~"), Some("$(x)"), false);
         assert_eq!(
-            command(&Agent::Claude, &req, "t", "26-001", false),
+            command(&Agent::Claude, &req, "t", "26-001", false, None),
             "claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" -n \"t\" \"Start working on task 26-001\""
         );
     }

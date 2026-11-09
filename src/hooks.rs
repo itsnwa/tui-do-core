@@ -14,6 +14,10 @@ use crate::session::AgentState;
 
 pub const SETTINGS_ENV: &str = "TUI_DO_CLAUDE_SETTINGS";
 pub const STATE_FILE_ENV: &str = "TUI_DO_CLAUDE_STATE_FILE";
+/// The session's id, for what the agent runs from inside it.
+pub const SESSION_ENV: &str = "TUI_DO_SESSION";
+/// This core's executable, which Codex's `notify` command runs.
+pub const CORE_EXE_ENV: &str = "TUI_DO_CORE_EXE";
 
 pub struct Hooks {
     settings_path: PathBuf,
@@ -63,13 +67,13 @@ impl Hooks {
         })
     }
 
-    /// Where a Claude session's hooks write its state.
+    /// Where an agent session's state is reported.
     pub fn state_file(&self, id: &str) -> PathBuf {
         self.state_dir.join(format!("{id}.state"))
     }
 
-    /// Env for a Claude session, starting from a clean state file.
-    pub fn env_for(&self, id: &str) -> (Vec<(String, String)>, PathBuf) {
+    /// Env for an agent session, starting from a clean state file.
+    pub fn env_for(&self, id: &str, exe: &Path) -> (Vec<(String, String)>, PathBuf) {
         let state_file = self.state_file(id);
         let _ = std::fs::remove_file(&state_file);
         let env = vec![
@@ -78,9 +82,16 @@ impl Hooks {
                 self.settings_path.display().to_string(),
             ),
             (STATE_FILE_ENV.to_string(), state_file.display().to_string()),
+            (SESSION_ENV.to_string(), id.to_string()),
+            (CORE_EXE_ENV.to_string(), exe.display().to_string()),
         ];
         (env, state_file)
     }
+}
+
+/// Whether sessions of this agent report their state to a state file.
+pub fn reports_state(agent: Option<&str>) -> bool {
+    matches!(agent, Some("claude" | "codex"))
 }
 
 pub fn read_state(path: &Path) -> Option<AgentState> {
