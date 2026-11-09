@@ -250,12 +250,13 @@ The TUI-DO Mac app pairs a phone with a QR code holding a link: `tuido://pair?ad
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/agents` | | `{ claude, codex }`: what the agents installed on this machine offer, `null` for one that isn't installed. `claude`: `{ models: [{ value, label, description, effortLevels, supportsAutoMode }], permissionModes }` (the models `/model` lists, and the `--permission-mode` choices). `codex`: `{ models: [{ slug, label, efforts }] }`. Cached for 30 minutes. Ask a fleet device through `/v0/devices/{id}/agents`. |
-| `POST` | `/v0/tasks/{ref}/agent` | `{ device?, agent?, model?, effort?, permissionMode?, yolo?, includeUncommitted?, cols?, rows? }` | `{ session, device, path, started }` |
+| `POST` | `/v0/tasks/{ref}/agent` | `{ device?, agent?, model?, effort?, permissionMode?, yolo?, includeUncommitted?, worktree?, worktreePath?, cols?, rows? }` | `{ session, device, path, started }` |
 
 `POST /v0/tasks/{ref}/agent` starts a coding agent on a task the way the Mac app does, so a client only picks the options:
 
 - `device`: the machine to run on: a fleet device or the home core's own id (absent: the code machine). On the code machine the task works in the project's folder; on any other machine the task's code is handed over first, as with [`/handoff`](#running-a-task-on-another-machine) (`includeUncommitted` takes uncommitted changes along), and the task's `device` is set.
 - `agent`: `claude` (default) or `codex`. `model` is Claude's `--model` value (`default` adds no flag) or a Codex model slug; `effort` is an effort level from `/v0/agents`; `permissionMode` is Claude's; `yolo` skips permission prompts (and Codex's sandbox).
+- `worktree` (Claude only): a name for a new git worktree (`--worktree`). `worktreePath`: a worktree that already exists, which Claude starts in instead. Cores before 0.3.3 ignore both.
 - The session is the task's slug, a login shell in the project's folder (or the task's folder on the machine) with `agent` set. Once the shell prints its first output (or after 5 s), the core types the agent's command with the prompt `Start working on task <id>`.
 - If the task's session is already running there, it's returned as it is with `started: false`.
 

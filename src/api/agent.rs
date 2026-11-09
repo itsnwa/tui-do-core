@@ -65,6 +65,12 @@ struct StartAgent {
     /// Take the project's uncommitted changes along to another machine.
     #[serde(default)]
     include_uncommitted: bool,
+    /// Claude only: the name for a new git worktree (`--worktree`).
+    #[serde(default)]
+    worktree: Option<String>,
+    /// Claude only: a worktree that already exists, to work in instead.
+    #[serde(default)]
+    worktree_path: Option<String>,
     #[serde(default = "default_cols")]
     cols: u16,
     #[serde(default = "default_rows")]
@@ -116,7 +122,14 @@ fn command(agent: &Agent, req: &StartAgent, slug: &str, task_id: &str, remote: b
             if req.yolo {
                 cmd += " --dangerously-skip-permissions";
             }
-            format!("{cmd} -n \"{slug}\" {prompt}")
+            let existing = req.worktree_path.as_deref().filter(|p| !p.is_empty());
+            if let (None, Some(name)) =
+                (existing, req.worktree.as_deref().filter(|n| !n.is_empty()))
+            {
+                cmd += &format!(" --worktree {}", shell_quote(name));
+            }
+            let enter = existing.map_or(String::new(), |p| format!("cd {} && ", shell_quote(p)));
+            format!("{enter}{cmd} -n \"{slug}\" {prompt}")
         }
         Agent::Codex => {
             let mut cmd = String::from("codex");
@@ -429,9 +442,46 @@ mod tests {
             permission_mode: mode.map(str::to_string),
             yolo,
             include_uncommitted: false,
+            worktree: None,
+            worktree_path: None,
             cols: 80,
             rows: 24,
         }
+    }
+
+    #[test]
+    fn a_new_worktree_should_be_named_with_the_flag() {
+        let mut req = request(None, None, None, false);
+        req.worktree = Some("my-task".into());
+        assert_eq!(
+            command(&Agent::Claude, &req, "t", "26-001", false),
+            "claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" --worktree 'my-task' \
+             -n \"t\" \"Start working on task 26-001\""
+        );
+    }
+
+    #[test]
+    fn an_existing_worktree_should_be_entered_instead_of_made() {
+        let mut req = request(None, None, None, false);
+        req.worktree = Some("my-task".into());
+        req.worktree_path = Some("/code/it's/.claude/worktrees/my-task".into());
+        assert_eq!(
+            command(&Agent::Claude, &req, "t", "26-001", false),
+            "cd '/code/it'\\''s/.claude/worktrees/my-task' && \
+             claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" \
+             -n \"t\" \"Start working on task 26-001\""
+        );
+    }
+
+    #[test]
+    fn codex_should_ignore_worktrees() {
+        let mut req = request(Some("gpt-6"), None, None, false);
+        req.worktree = Some("my-task".into());
+        req.worktree_path = Some("/somewhere".into());
+        assert_eq!(
+            command(&Agent::Codex, &req, "t", "26-001", false),
+            "codex --model 'gpt-6' \"Start working on task 26-001\""
+        );
     }
 
     #[test]
