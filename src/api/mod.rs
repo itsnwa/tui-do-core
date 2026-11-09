@@ -6,7 +6,8 @@
 //!
 //! WebSocket messages are JSON text. A `snapshot` message always means "reset
 //! the terminal, then write this": it's sent on attach and again whenever a
-//! client fell too far behind to receive every output event.
+//! client fell too far behind to receive every output event. A client that
+//! attaches with `?paced=1` acknowledges what it gets (see `pace`).
 
 mod agent;
 mod clients;
@@ -17,7 +18,9 @@ pub(crate) mod mcp;
 mod update;
 mod workspace;
 
+use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Extension, Path, Query, Request, State};
@@ -33,6 +36,7 @@ use tokio::sync::broadcast::error::RecvError;
 use crate::clients::{Caller, Clients, Revocation};
 use crate::config::ConfigStore;
 use crate::links::TaskSessions;
+use crate::pace::{self, Pacer};
 use crate::session::{ClientId, Event, Registry, SpawnRequest};
 use crate::workspace::shared::SharedWorkspace;
 
@@ -354,6 +358,8 @@ enum ClientMessage {
     /// Send the screen again (e.g. after another client changed the size,
     /// so the client's emulator matches the core's exactly).
     Snapshot,
+    /// A paced client has the oldest `output` or `snapshot` not yet acknowledged.
+    Ack,
 }
 
 async fn send_json(socket: &mut WebSocket, value: &impl serde::Serialize) -> bool {
@@ -368,12 +374,14 @@ async fn send_json(socket: &mut WebSocket, value: &impl serde::Serialize) -> boo
 struct AttachQuery {
     cols: Option<u16>,
     rows: Option<u16>,
+    /// The client acknowledges what it gets, so its output can be paced.
+    paced: Option<String>,
 }
 
 async fn attach(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Query(size): Query<AttachQuery>,
+    Query(query): Query<AttachQuery>,
     caller: Option<Extension<Caller>>,
     ws: WebSocketUpgrade,
 ) -> Response {
@@ -381,17 +389,24 @@ async fn attach(
         return not_found();
     }
     let revocation = Revocation::new(&state.clients, caller.as_deref());
-    let size = size.cols.zip(size.rows);
-    ws.on_upgrade(move |socket| attach_loop(socket, state.registry, id, size, revocation))
+    let size = query.cols.zip(query.rows);
+    let paced = matches!(query.paced.as_deref(), Some("1" | "true"));
+    ws.on_upgrade(move |socket| attach_loop(socket, state.registry, id, size, paced, revocation))
 }
 
 async fn send_snapshot(
     socket: &mut WebSocket,
     registry: &Registry,
     id: &str,
+    pacer: Option<&mut Pacer>,
 ) -> Option<tokio::sync::broadcast::Receiver<Event>> {
     let (data, rx) = registry.attach(id).await?;
     let session = registry.info(id)?;
+    if let Some(pacer) = pacer {
+        // The snapshot has everything that was waiting
+        pacer.clear();
+        pacer.sent(data.len());
+    }
     send_json(
         socket,
         &json!({ "type": "snapshot", "data": data, "session": session }),
@@ -400,18 +415,53 @@ async fn send_snapshot(
     .then_some(rx)
 }
 
+/// Carry out what the pacer decided. False once the connection is done.
+async fn send_paced(
+    socket: &mut WebSocket,
+    registry: &Registry,
+    id: &str,
+    pacer: &mut Pacer,
+    rx: &mut tokio::sync::broadcast::Receiver<Event>,
+    next: pace::Next,
+) -> bool {
+    let data = match next {
+        pace::Next::Wait => return true,
+        pace::Next::Send(data) => data,
+        pace::Next::Repaint => {
+            let Some((screen, fresh)) = registry.repaint(id).await else {
+                return false;
+            };
+            let mut stale = std::mem::replace(rx, fresh);
+            // That output is on the screen; anything else still has to arrive
+            while let Ok(event) = stale.try_recv() {
+                if event.session_id() == id
+                    && !matches!(event, Event::Output { .. })
+                    && !send_json(socket, &event).await
+                {
+                    return false;
+                }
+            }
+            pacer.sent(screen.len());
+            screen
+        }
+    };
+    send_json(socket, &json!({ "type": "output", "id": id, "data": data })).await
+}
+
 async fn attach_loop(
     mut socket: WebSocket,
     registry: Arc<Registry>,
     id: String,
     size: Option<(u16, u16)>,
+    paced: bool,
     mut revocation: Revocation,
 ) {
     let client = registry.connect();
     if let Some((cols, rows)) = size {
         registry.resize_from(&id, client, cols, rows);
     }
-    let Some(mut rx) = send_snapshot(&mut socket, &registry, &id).await else {
+    let mut pacer = paced.then(Pacer::default);
+    let Some(mut rx) = send_snapshot(&mut socket, &registry, &id, pacer.as_mut()).await else {
         registry.detach(&id, client);
         return;
     };
@@ -420,14 +470,29 @@ async fn attach_loop(
             () = revocation.revoked() => break,
             event = rx.recv() => match event {
                 Ok(event) if event.session_id() == id => {
-                    let removed = matches!(event, Event::SessionRemoved { .. });
-                    if !send_json(&mut socket, &event).await || removed {
-                        break;
+                    if let (Some(pacer), Event::Output { data, .. }) = (&mut pacer, &event) {
+                        pacer.push(data, Instant::now());
+                    } else {
+                        // These only make sense after the output before them
+                        let ordered = matches!(
+                            event,
+                            Event::SessionResized { .. } | Event::SessionExited { .. } | Event::SessionRemoved { .. }
+                        );
+                        if let Some(pacer) = pacer.as_mut().filter(|_| ordered) {
+                            let next = pacer.flush();
+                            if !send_paced(&mut socket, &registry, &id, pacer, &mut rx, next).await {
+                                break;
+                            }
+                        }
+                        let removed = matches!(event, Event::SessionRemoved { .. });
+                        if !send_json(&mut socket, &event).await || removed {
+                            break;
+                        }
                     }
                 }
                 Ok(_) => {}
                 Err(RecvError::Lagged(_)) => {
-                    match send_snapshot(&mut socket, &registry, &id).await {
+                    match send_snapshot(&mut socket, &registry, &id, pacer.as_mut()).await {
                         Some(fresh) => rx = fresh,
                         None => break,
                     }
@@ -438,15 +503,34 @@ async fn attach_loop(
                 Some(Ok(Message::Text(text))) => match serde_json::from_str::<ClientMessage>(&text) {
                     Ok(ClientMessage::Input { data }) => { registry.input_from(&id, client, data.into_bytes()); }
                     Ok(ClientMessage::Resize { cols, rows }) => { registry.resize_from(&id, client, cols, rows); }
-                    Ok(ClientMessage::Snapshot) => match send_snapshot(&mut socket, &registry, &id).await {
+                    Ok(ClientMessage::Snapshot) => match send_snapshot(&mut socket, &registry, &id, pacer.as_mut()).await {
                         Some(fresh) => rx = fresh,
                         None => break,
                     },
+                    Ok(ClientMessage::Ack) => {
+                        if let Some(pacer) = &mut pacer {
+                            pacer.ack();
+                        }
+                    }
                     Err(err) => tracing::debug!(%err, "ignoring client message"),
                 },
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                 Some(Ok(_)) => {}
             },
+        }
+        if let Some(pacer) = &mut pacer {
+            let mut open = true;
+            while open {
+                match pacer.next(Instant::now()) {
+                    pace::Next::Wait => break,
+                    next => {
+                        open = send_paced(&mut socket, &registry, &id, pacer, &mut rx, next).await
+                    }
+                }
+            }
+            if !open {
+                break;
+            }
         }
     }
     registry.detach(&id, client);
@@ -475,9 +559,18 @@ enum EventsClientMessage {
 
 #[derive(Deserialize)]
 struct EventsQuery {
-    /// Include every session's output (for clients mirroring all sessions).
+    /// `1` includes every session's output (for clients mirroring all
+    /// sessions), `first` only the first output of each.
     #[serde(default)]
     output: Option<String>,
+}
+
+/// Which `output` events a connection to `/v0/events` gets.
+#[derive(Clone, Copy, PartialEq)]
+enum OutputEvents {
+    None,
+    First,
+    All,
 }
 
 async fn events(
@@ -486,15 +579,19 @@ async fn events(
     caller: Option<Extension<Caller>>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let with_output = matches!(query.output.as_deref(), Some("1" | "true"));
+    let output = match query.output.as_deref() {
+        Some("1" | "true") => OutputEvents::All,
+        Some("first") => OutputEvents::First,
+        _ => OutputEvents::None,
+    };
     let revocation = Revocation::new(&state.clients, caller.as_deref());
-    ws.on_upgrade(move |socket| events_loop(socket, state, with_output, revocation))
+    ws.on_upgrade(move |socket| events_loop(socket, state, output, revocation))
 }
 
 async fn events_loop(
     mut socket: WebSocket,
     state: AppState,
-    with_output: bool,
+    output: OutputEvents,
     mut revocation: Revocation,
 ) {
     let registry = Arc::clone(&state.registry);
@@ -502,7 +599,9 @@ async fn events_loop(
     let own_id = state.config.get().device_id;
     let client: ClientId = registry.connect();
     // This core's sessions this connection sized, to hand their size back on close
-    let mut sized = std::collections::HashSet::new();
+    let mut sized = HashSet::new();
+    // Sessions whose first output this connection has had
+    let mut started: HashSet<Arc<str>> = HashSet::new();
     let mut rx = registry.subscribe();
     // Clients sync from this list, then apply events in order.
     if !send_json(
@@ -517,9 +616,13 @@ async fn events_loop(
         tokio::select! {
             () = revocation.revoked() => break,
             event = rx.recv() => match event {
-                Ok(Event::Output { .. }) if !with_output => {}
-                Ok(Event::DeviceEvent { ref event, .. }) if !with_output && event["type"] == "output" => {}
+                Ok(Event::Output { .. }) if output == OutputEvents::None => {}
+                Ok(Event::Output { ref id, .. }) if output == OutputEvents::First && !started.insert(Arc::clone(id)) => {}
+                Ok(Event::DeviceEvent { ref event, .. }) if output != OutputEvents::All && event["type"] == "output" => {}
                 Ok(event) => {
+                    if let Event::SessionRemoved { id } = &event {
+                        started.remove(id);
+                    }
                     if !send_json(&mut socket, &event).await {
                         break;
                     }

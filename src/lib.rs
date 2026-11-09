@@ -15,6 +15,7 @@ pub mod install;
 pub mod links;
 pub mod mcp;
 pub mod net;
+pub mod pace;
 pub mod relay;
 pub mod replica;
 pub mod session;

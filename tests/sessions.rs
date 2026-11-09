@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::Message;
 use tui_do_core::hooks::Hooks;
 use tui_do_core::session::{Registry, SpawnRequest};
 
@@ -561,4 +563,142 @@ async fn a_stale_socket_should_be_cleaned_up_on_start() {
     let core = Core::start(&dir).await;
     assert!(!stale.exists());
     assert_eq!(core.sockets(), 0);
+}
+
+type Socket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+impl Core {
+    async fn socket(&self, path: &str) -> Socket {
+        let url = format!(
+            "{}{path}token={}",
+            self.endpoint.replacen("http", "ws", 1),
+            self.token
+        );
+        tokio_tungstenite::connect_async(url.as_str())
+            .await
+            .expect("connects")
+            .0
+    }
+}
+
+/// The next JSON message, or `None` if nothing arrives in time.
+async fn message(socket: &mut Socket, wait: Duration) -> Option<serde_json::Value> {
+    loop {
+        match tokio::time::timeout(wait, socket.next()).await {
+            Ok(Some(Ok(Message::Text(text)))) => return serde_json::from_str(text.as_str()).ok(),
+            Ok(Some(Ok(_))) => {}
+            _ => return None,
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_paced_viewer_should_only_get_what_it_acknowledges_then_catch_up() {
+    const LINES: usize = 40_000;
+    let dir = TestDir::new();
+    let core = Core::start(&dir).await;
+    core.spawn(
+        "paced",
+        &format!(
+            "i=0; while [ $i -lt {LINES} ]; do \
+             echo line-$i-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; i=$((i+1)); done; \
+             echo finished; sleep 60"
+        ),
+    )
+    .await;
+    let mut viewer = core.socket("/v0/sessions/paced/attach?paced=1&").await;
+    let first = message(&mut viewer, Duration::from_secs(10))
+        .await
+        .expect("a snapshot");
+    assert_eq!(first["type"], "snapshot");
+
+    // Without acknowledgements the output stops at the window
+    let mut unacknowledged = 0;
+    let mut frames = 1;
+    while let Some(event) = message(&mut viewer, Duration::from_millis(1500)).await {
+        if event["type"] == "output" {
+            unacknowledged += event["data"].as_str().expect("data").len();
+            frames += 1;
+        }
+    }
+    assert!(
+        unacknowledged <= 80 * 1024,
+        "{unacknowledged} bytes went out unacknowledged"
+    );
+
+    // By now it's behind, so it gets the screen instead of everything it missed
+    let mut received = unacknowledged;
+    let ack = || Message::text(r#"{"type":"ack"}"#);
+    for _ in 0..frames {
+        viewer.send(ack()).await.expect("sends");
+    }
+    let finished = tokio::time::timeout(Duration::from_secs(60), async {
+        loop {
+            let event = message(&mut viewer, Duration::from_secs(30))
+                .await
+                .expect("output keeps coming");
+            if event["type"] != "output" {
+                continue;
+            }
+            let data = event["data"].as_str().unwrap_or_default();
+            received += data.len();
+            viewer.send(ack()).await.expect("sends");
+            if data.contains("finished") {
+                return;
+            }
+        }
+    })
+    .await;
+    assert!(finished.is_ok(), "the viewer never caught up");
+    let produced = LINES * 50;
+    assert!(
+        received < produced,
+        "{received} of {produced} bytes: nothing was skipped"
+    );
+}
+
+#[tokio::test]
+async fn an_unpaced_viewer_should_still_get_every_line() {
+    let dir = TestDir::new();
+    let core = Core::start(&dir).await;
+    let mut viewer = {
+        core.spawn("plain", "sleep 1; i=0; while [ $i -lt 500 ]; do echo line-$i; i=$((i+1)); done; echo finished; sleep 60").await;
+        core.socket("/v0/sessions/plain/attach?").await
+    };
+    let mut all = String::new();
+    while !all.contains("finished") {
+        let event = message(&mut viewer, Duration::from_secs(20))
+            .await
+            .expect("output keeps coming");
+        all.push_str(event["data"].as_str().unwrap_or_default());
+    }
+    assert!(all.contains("line-0") && all.contains("line-499"));
+}
+
+#[tokio::test]
+async fn output_first_should_send_only_a_session_s_first_output() {
+    let dir = TestDir::new();
+    let core = Core::start(&dir).await;
+    let mut events = core.socket("/v0/events?output=first&").await;
+    assert_eq!(
+        message(&mut events, Duration::from_secs(10))
+            .await
+            .expect("the session list")["type"],
+        "sessions"
+    );
+    core.spawn(
+        "first",
+        "echo one; sleep 0.5; echo two; sleep 0.5; echo three",
+    )
+    .await;
+    let mut outputs = 0;
+    while let Some(event) = message(&mut events, Duration::from_secs(10)).await {
+        match event["type"].as_str() {
+            Some("output") => outputs += 1,
+            Some("sessionExited") => break,
+            _ => {}
+        }
+    }
+    assert_eq!(outputs, 1);
 }

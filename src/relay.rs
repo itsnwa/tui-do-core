@@ -70,8 +70,10 @@ async fn relay(
     events: broadcast::Sender<Event>,
     mut outgoing: mpsc::UnboundedReceiver<String>,
 ) {
+    // Clients attach to the sessions they show; the home only needs to know
+    // when a device's shell has started printing
     let url = format!(
-        "{}/v0/events?output=1&token={}",
+        "{}/v0/events?output=first&token={}",
         device.address.replacen("http", "ws", 1),
         device.token
     );
