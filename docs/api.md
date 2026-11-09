@@ -182,15 +182,15 @@ These take a short ID or slug and answer like the TUI-DO MCP tools (business err
 
 ## Projects
 
-`{ slug, title, muted, created, directory }`. `directory` is on the code machine (`codeDevice` in [`/v0/fleet`](#fleet); the home core unless the home moved away from it). A task runs on another machine with a copy of it (see [Running a task on another machine](#running-a-task-on-another-machine)).
+`{ slug, title, muted, archived, created, directory }`. `directory` is on the code machine (`codeDevice` in [`/v0/fleet`](#fleet); the home core unless the home moved away from it). A task runs on another machine with a copy of it (see [Running a task on another machine](#running-a-task-on-another-machine)).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/projects` | | `[Project]` |
 | `POST` | `/v0/projects` | `{ title, directory? }` | Project |
 | `GET` | `/v0/projects/{slug}` | | Project + `content` |
-| `PATCH` | `/v0/projects/{slug}` | any of `{ title, muted, directory }` | Project. A new title renames the project and moves its tasks to the new slug. |
-| `DELETE` | `/v0/projects/{slug}` | | `{ deleted }` |
+| `PATCH` | `/v0/projects/{slug}` | any of `{ title, muted, archived, directory }` | Project. A new title renames the project and moves its tasks to the new slug. |
+| `DELETE` | `/v0/projects/{slug}` | | `{ deleted }`. Also deletes the project's tasks, with their plans and attachments. |
 
 ## Plans
 

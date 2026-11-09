@@ -793,6 +793,11 @@ impl Workspace {
     /// needed to undo it.
     pub fn delete_task(&self, slug: &str) -> Result<DeletedTask> {
         let _guard = self.writing();
+        self.remove_task(slug)
+    }
+
+    /// [`Workspace::delete_task`], for a caller already holding the write lock.
+    pub(super) fn remove_task(&self, slug: &str) -> Result<DeletedTask> {
         let doc = self.task_doc(slug)?;
         let task = detail(slug, &doc, true);
         let mut plan_snapshot = None;

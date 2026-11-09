@@ -8,13 +8,14 @@ use super::tasks::text_or;
 use super::{Error, Result, Workspace, dates, slug};
 use crate::format::{Map, Value};
 
-const PROJECT_KEYS: [&str; 4] = ["title", "muted", "created", "directory"];
+const PROJECT_KEYS: [&str; 5] = ["title", "muted", "archived", "created", "directory"];
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Project {
     pub slug: String,
     pub title: String,
     pub muted: bool,
+    pub archived: bool,
     pub created: String,
     pub directory: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -33,6 +34,7 @@ pub struct CreateProject {
 pub struct UpdateProject {
     pub title: Option<String>,
     pub muted: Option<bool>,
+    pub archived: Option<bool>,
     pub directory: Option<String>,
 }
 
@@ -41,6 +43,7 @@ fn summarize(slug: &str, data: &Map, content: Option<String>) -> Project {
         slug: slug.to_string(),
         title: text_or(data.get("title"), slug),
         muted: matches!(data.get("muted"), Some(Value::Bool(true))),
+        archived: matches!(data.get("archived"), Some(Value::Bool(true))),
         created: text_or(data.get("created"), ""),
         directory: text_or(data.get("directory"), ""),
         content,
@@ -107,6 +110,10 @@ impl Workspace {
             .muted
             .unwrap_or(matches!(data.get("muted"), Some(Value::Bool(true))));
         data.insert("muted".into(), muted.into());
+        let archived = req
+            .archived
+            .unwrap_or(matches!(data.get("archived"), Some(Value::Bool(true))));
+        data.insert("archived".into(), archived.into());
         let directory = req
             .directory
             .unwrap_or_else(|| text_or(data.get("directory"), ""));
@@ -139,13 +146,130 @@ impl Workspace {
         Ok(summarize(&new_slug, &data, None))
     }
 
+    /// Delete a project with its tasks, and their plans and attachments.
     pub fn delete_project(&self, slug: &str) -> Result<()> {
         slug::validate(slug)?;
         let _guard = self.writing();
-        if self.store.remove(Dir::Projects, slug)? {
-            Ok(())
-        } else {
-            Err(Error::NotFound(format!("Project not found: {slug}")))
+        if !self.store.exists(Dir::Projects, slug) {
+            return Err(Error::NotFound(format!("Project not found: {slug}")));
         }
+        // The tasks go before the project file, so an interrupted delete can
+        // be run again to finish the job.
+        for entry in self.store.list(Dir::Tasks)? {
+            if entry.doc.data.get("project").and_then(Value::as_str) == Some(slug) {
+                self.remove_task(&entry.slug)?;
+            }
+        }
+        self.store.remove(Dir::Projects, slug)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::tasks::{CreateTask, TaskFilter};
+    use super::*;
+
+    fn workspace() -> Workspace {
+        let root = std::env::temp_dir().join(format!("tui-do-projects-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("dir");
+        Workspace::open(root).expect("workspace")
+    }
+
+    fn project(ws: &Workspace, title: &str) -> Project {
+        ws.create_project(CreateProject {
+            title: title.into(),
+            directory: None,
+        })
+        .expect("project")
+    }
+
+    /// A task in the project, with a plan and a stored attachment. Returns its slug.
+    fn add_task(ws: &Workspace, title: &str, project: &str) -> String {
+        let task = ws
+            .create_task(CreateTask {
+                title: title.into(),
+                project: Some(project.into()),
+                ..CreateTask::default()
+            })
+            .expect("task")
+            .task;
+        ws.write_task_plan(&task.id, "The plan").expect("plan");
+        let attachments = ws.attachments_dir(&task.slug);
+        std::fs::create_dir_all(&attachments).expect("dir");
+        std::fs::write(attachments.join("shot.png"), "png").expect("write");
+        task.slug
+    }
+
+    fn set_archived(ws: &Workspace, slug: &str, archived: bool) -> Project {
+        ws.update_project(
+            slug,
+            UpdateProject {
+                archived: Some(archived),
+                ..UpdateProject::default()
+            },
+        )
+        .expect("update")
+    }
+
+    #[test]
+    fn archiving_should_be_reversible_and_keep_tasks() {
+        let ws = workspace();
+        let p = project(&ws, "Old thing");
+        add_task(&ws, "Keep me", &p.slug);
+        assert!(!p.archived);
+
+        assert!(set_archived(&ws, &p.slug, true).archived);
+        assert!(ws.get_project(&p.slug).expect("get").archived);
+        assert_eq!(
+            ws.list_tasks(&TaskFilter::default()).expect("tasks")[0].project,
+            p.slug
+        );
+
+        assert!(!set_archived(&ws, &p.slug, false).archived);
+    }
+
+    #[test]
+    fn updating_other_fields_should_leave_a_project_archived() {
+        let ws = workspace();
+        let p = project(&ws, "Old thing");
+        set_archived(&ws, &p.slug, true);
+        let updated = ws
+            .update_project(
+                &p.slug,
+                UpdateProject {
+                    muted: Some(true),
+                    ..UpdateProject::default()
+                },
+            )
+            .expect("update");
+        assert!(updated.archived && updated.muted);
+    }
+
+    #[test]
+    fn deleting_should_remove_only_its_own_tasks_plans_and_attachments() {
+        let ws = workspace();
+        let gone = project(&ws, "Gone");
+        let other = project(&ws, "Other");
+        let removed = add_task(&ws, "Removed", &gone.slug);
+        let kept = add_task(&ws, "Kept", &other.slug);
+        assert_eq!(ws.list_plans().expect("plans").len(), 2);
+
+        ws.delete_project(&gone.slug).expect("delete");
+
+        assert!(ws.get_project(&gone.slug).is_err());
+        assert!(ws.get_project(&other.slug).is_ok());
+        let tasks = ws.list_tasks(&TaskFilter::default()).expect("tasks");
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].slug, kept);
+        assert_eq!(ws.list_plans().expect("plans").len(), 1);
+        assert!(!ws.attachments_dir(&removed).exists());
+        assert!(ws.attachments_dir(&kept).join("shot.png").exists());
+    }
+
+    #[test]
+    fn deleting_a_missing_project_should_be_not_found() {
+        let ws = workspace();
+        assert!(matches!(ws.delete_project("nope"), Err(Error::NotFound(_))));
     }
 }
