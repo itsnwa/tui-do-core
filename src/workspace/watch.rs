@@ -9,11 +9,19 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::event::{AccessKind, AccessMode};
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
 use super::store::Dir;
 
 const WINDOW: Duration = Duration::from_millis(150);
+
+/// Whether an event means something changed. On Linux, opening a file to read
+/// it is reported too: counted as a change, each client's refetch after a
+/// change would report another one, forever.
+fn is_change(kind: EventKind) -> bool {
+    !matches!(kind, EventKind::Access(access) if access != AccessKind::Close(AccessMode::Write))
+}
 
 fn area_of(root: &Path, path: &Path) -> Option<&'static str> {
     let first = path.strip_prefix(root).ok()?.components().next()?;
@@ -31,6 +39,7 @@ pub fn watch(
     let event_root = root.clone();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let areas = match res {
+            Ok(event) if !is_change(event.kind) => return,
             Ok(event) if event.paths.is_empty() => Dir::ALL.iter().map(|d| d.name()).collect(),
             Ok(event) => event
                 .paths
@@ -66,4 +75,35 @@ pub fn watch(
         })
         .map_err(|e| notify::Error::generic(&e.to_string()))?;
     Ok(watcher)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind};
+
+    #[test]
+    fn reading_a_file_is_not_a_change() {
+        for access in [
+            AccessKind::Open(AccessMode::Any),
+            AccessKind::Read,
+            AccessKind::Close(AccessMode::Read),
+        ] {
+            assert!(!is_change(EventKind::Access(access)), "{access:?}");
+        }
+    }
+
+    #[test]
+    fn writing_creating_and_removing_are_changes() {
+        for kind in [
+            EventKind::Access(AccessKind::Close(AccessMode::Write)),
+            EventKind::Create(CreateKind::File),
+            EventKind::Modify(ModifyKind::Data(DataChange::Any)),
+            EventKind::Remove(RemoveKind::File),
+            EventKind::Any,
+            EventKind::Other,
+        ] {
+            assert!(is_change(kind), "{kind:?}");
+        }
+    }
 }
