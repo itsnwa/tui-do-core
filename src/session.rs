@@ -22,6 +22,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, anyhow, bail};
 use libghostty_vt::fmt::{Format, Formatter, FormatterOptions};
+use libghostty_vt::selection::Selection;
+use libghostty_vt::terminal::{Point, PointCoordinate};
 use libghostty_vt::{Terminal, TerminalOptions};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, oneshot};
@@ -206,6 +208,7 @@ enum Msg {
     Detach(ClientId),
     Snapshot(oneshot::Sender<String>),
     Attach(oneshot::Sender<(String, broadcast::Receiver<Event>)>),
+    Repaint(oneshot::Sender<(String, broadcast::Receiver<Event>)>),
     /// Save the screen with the holder; answers once it has been sent.
     SaveScreen(mpsc::Sender<()>),
 }
@@ -609,6 +612,16 @@ impl Registry {
         rx.await.ok()
     }
 
+    /// Like `attach`, for a viewer that fell behind: output that brings its
+    /// terminal to the current screen, keeping its scrollback.
+    pub async fn repaint(&self, id: &str) -> Option<(String, broadcast::Receiver<Event>)> {
+        let (reply, rx) = oneshot::channel();
+        if !self.send(id, Msg::Repaint(reply)) {
+            return None;
+        }
+        rx.await.ok()
+    }
+
     /// End every session's program. The core doesn't do this when it stops:
     /// sessions keep running for the next core to pick up.
     pub fn kill_all(&self) {
@@ -809,6 +822,9 @@ impl Actor {
                 Msg::Attach(reply) => {
                     let _ = reply.send((vt_snapshot(&term), self.events.subscribe()));
                 }
+                Msg::Repaint(reply) => {
+                    let _ = reply.send((vt_repaint(&term), self.events.subscribe()));
+                }
                 _ => {}
             }
         }
@@ -863,6 +879,9 @@ impl Actor {
             Msg::Attach(reply) => {
                 // Subscribe before replying: every later event follows the snapshot.
                 let _ = reply.send((vt_snapshot(term), self.events.subscribe()));
+            }
+            Msg::Repaint(reply) => {
+                let _ = reply.send((vt_repaint(term), self.events.subscribe()));
             }
         }
     }
@@ -1028,7 +1047,32 @@ fn is_typing(data: &[u8]) -> bool {
 /// theme, and tabstops because libghostty emits them after the cursor position
 /// (setting them moves the cursor); clients start with the standard 8-column stops.
 fn vt_snapshot(term: &Terminal) -> String {
-    let opts = FormatterOptions::new()
+    vt_format(term, None)
+}
+
+/// Takes a terminal that missed some output back to a known state without
+/// touching its scrollback: leave the alternate screen, soft reset, clear.
+const REPAINT_RESET: &str = "\x1b[?1049l\x1b[!p\x1b[H\x1b[2J";
+
+/// The current screen as output for a terminal that missed some: only what's
+/// visible, because a snapshot's scrollback can be megabytes.
+fn vt_repaint(term: &Terminal) -> String {
+    let screen = (|| {
+        let corner = |x, y| term.grid_ref(Point::Active(PointCoordinate { x, y }));
+        let end = corner(term.cols()? - 1, u32::from(term.rows()?) - 1)?;
+        Ok::<_, libghostty_vt::Error>(Selection::new(corner(0, 0)?, end, false))
+    })();
+    match screen {
+        Ok(selection) => format!("{REPAINT_RESET}{}", vt_format(term, Some(&selection))),
+        Err(err) => {
+            tracing::warn!(?err, "finding the screen for a repaint failed");
+            format!("{REPAINT_RESET}{}", vt_snapshot(term))
+        }
+    }
+}
+
+fn vt_format(term: &Terminal, selection: Option<&Selection<'_>>) -> String {
+    let mut opts = FormatterOptions::new()
         .with_format(Format::Vt)
         .with_modes(true)
         .with_scrolling_region(true)
@@ -1039,6 +1083,9 @@ fn vt_snapshot(term: &Terminal) -> String {
         .with_kitty_keyboard(true)
         .with_charsets(true)
         .with_pwd(true);
+    if let Some(selection) = selection {
+        opts = opts.with_selection(selection);
+    }
     match Formatter::new(term, opts).and_then(|mut f| f.format_alloc(None).map(|b| b.to_vec())) {
         Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         Err(err) => {
@@ -1061,6 +1108,55 @@ mod tests {
         .expect("terminal");
         term.vt_write(text);
         vt_snapshot(&term)
+    }
+
+    fn terminal(text: &[u8]) -> Terminal<'static, 'static> {
+        let mut term = Terminal::new(TerminalOptions {
+            cols: 40,
+            rows: 5,
+            max_scrollback: 100,
+        })
+        .expect("terminal");
+        term.vt_write(text);
+        term
+    }
+
+    /// A viewer that missed output ends up with the same screen after a repaint.
+    fn assert_repaint_matches(viewer_had: &[u8], actual: &[u8]) {
+        let session = terminal(actual);
+        let mut viewer = terminal(viewer_had);
+        viewer.vt_write(vt_repaint(&session).as_bytes());
+        assert_eq!(vt_repaint(&viewer), vt_repaint(&session));
+    }
+
+    #[test]
+    fn repaint_should_bring_a_viewer_to_the_current_screen() {
+        let lines: String = (0..20).map(|i| format!("line{i}\r\n")).collect();
+        assert_repaint_matches(b"older text", lines.as_bytes());
+        assert_repaint_matches(b"\x1b[1mbold left on", b"\x1b[31mred\x1b[0m plain");
+    }
+
+    #[test]
+    fn repaint_should_follow_the_alternate_screen_both_ways() {
+        assert_repaint_matches(b"before", b"before\x1b[?1049hin the app");
+        assert_repaint_matches(b"before\x1b[?1049hin the app", b"back on the shell");
+    }
+
+    #[test]
+    fn repaint_should_leave_out_the_scrollback() {
+        let lines: String = (0..20).map(|i| format!("line{i}\r\n")).collect();
+        let term = terminal(lines.as_bytes());
+        let repaint = vt_repaint(&term);
+        assert!(repaint.contains("line19"));
+        assert!(!repaint.contains("line0"));
+    }
+
+    #[test]
+    fn repaint_should_keep_the_viewer_s_scrollback() {
+        let lines: String = (0..20).map(|i| format!("line{i}\r\n")).collect();
+        let mut viewer = terminal(lines.as_bytes());
+        viewer.vt_write(vt_repaint(&terminal(b"now")).as_bytes());
+        assert!(vt_snapshot(&viewer).contains("line0"));
     }
 
     #[test]

@@ -87,9 +87,11 @@ Client → server:
 
 `snapshot` asks for the screen again (answered with a `snapshot` message, in order with the events), for a client that wants its emulator to match the core's exactly, say after another client changed the size.
 
+With `?paced=1`, the client answers every `output` and `snapshot` message with `{ "type": "ack" }`, and the server keeps at most 64 KB unacknowledged, joining what waits into larger messages. When output has waited more than a second, or a client stops acknowledging, the waiting output is dropped and the next `output` message brings the terminal to the current screen, leaving its scrollback alone. A slow link then stays about a second behind at worst. `sessionResized`, `sessionExited` and `sessionRemoved` keep their order with the output before them.
+
 ### `GET /v0/events` and `GET /v0/events?output=1`
 
-Every session. The server first sends `{ "type": "sessions", "sessions": [Session] }`, then events. `output` events are only included with `?output=1`. If the client fell behind, the server sends `{ "type": "resync", "sessions": [Session] }`; clients mirroring output should fetch fresh snapshots.
+Every session. The server first sends `{ "type": "sessions", "sessions": [Session] }`, then events. `output` events are only included with `?output=1`; `?output=first` includes only each session's first one. If the client fell behind, the server sends `{ "type": "resync", "sessions": [Session] }`; clients mirroring output should fetch fresh snapshots.
 
 Client → server (one connection keeps keystrokes for all sessions in order):
 
@@ -301,7 +303,7 @@ The home core relays every device's events on its own `/v0/events`:
 { "type": "deviceStatus", "device": "<id>", "online": false }
 ```
 
-`event` is exactly what that device sends on its own stream (`sessions`, `sessionCreated`, `output`, `agentState`, …). Without `?output=1`, relayed `output` events are left out too. Clients load the current state with `GET /v0/fleet` and `GET /v0/fleet/sessions`, then apply events. To type into a device's session over the same socket, add its id: `{ "type": "input", "device": "<id>", "id": "my-task", "data": "ls\n" }` (also for `resize`); the home core passes it on in order.
+`event` is exactly what that device sends on its own stream (`sessions`, `sessionCreated`, `agentState`, …). A device sends the home only each session's first `output`, which tells it the shell is ready; to see a device's session, attach to it (`/v0/devices/{id}/sessions/{sid}/attach`). Without `?output=1`, even that first `output` is left out. Clients load the current state with `GET /v0/fleet` and `GET /v0/fleet/sessions`, then apply events. To type into a device's session over the same socket, add its id: `{ "type": "input", "device": "<id>", "id": "my-task", "data": "ls\n" }` (also for `resize`); the home core passes it on in order.
 
 When a device is added, and whenever its events come back online, the home core turns on its own remote access and gives the device a home link (`PUT /v0/fleet/home { address, token, id, name, generation, clientToken? }` on the device): the home core's Tailscale address and a token that only opens the home core's MCP endpoints (`/mcp`, `/v0/mcp/call`). A core with a home link (a runner) forwards MCP tool calls there, so `tui-do-core mcp` works the same on every machine. A device refuses a link with an older `generation` than the one it has (`409`); a link without `clientToken` keeps the one the device has.
 
