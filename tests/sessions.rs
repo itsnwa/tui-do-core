@@ -596,7 +596,10 @@ async fn message(socket: &mut Socket, wait: Duration) -> Option<serde_json::Valu
 
 #[tokio::test]
 async fn a_paced_viewer_should_only_get_what_it_acknowledges_then_catch_up() {
-    const LINES: usize = 40_000;
+    // Well past the window, but small: a debug build parses output slowly,
+    // and a repaint waits for what the session hasn't parsed yet
+    const LINES: usize = 5_000;
+    const WINDOW: usize = 64 * 1024;
     let dir = TestDir::new();
     let core = Core::start(&dir).await;
     core.spawn(
@@ -609,42 +612,48 @@ async fn a_paced_viewer_should_only_get_what_it_acknowledges_then_catch_up() {
     )
     .await;
     let mut viewer = core.socket("/v0/sessions/paced/attach?paced=1&").await;
-    let first = message(&mut viewer, Duration::from_secs(10))
+    let first = message(&mut viewer, Duration::from_secs(30))
         .await
         .expect("a snapshot");
     assert_eq!(first["type"], "snapshot");
+    let mut unacknowledged = first["data"].as_str().expect("data").len();
 
-    // Without acknowledgements the output stops at the window
-    let mut unacknowledged = 0;
+    // Without acknowledgements the output stops at the window, and what's
+    // held back gets old enough to be given up on
     let mut frames = 1;
-    while let Some(event) = message(&mut viewer, Duration::from_millis(1500)).await {
+    loop {
+        let quiet = if unacknowledged < WINDOW { 30 } else { 3 };
+        let Some(event) = message(&mut viewer, Duration::from_secs(quiet)).await else {
+            break;
+        };
         if event["type"] == "output" {
             unacknowledged += event["data"].as_str().expect("data").len();
             frames += 1;
         }
     }
+    assert!(unacknowledged >= WINDOW, "only {unacknowledged} bytes came");
     assert!(
-        unacknowledged <= 80 * 1024,
+        unacknowledged < WINDOW + 16 * 1024,
         "{unacknowledged} bytes went out unacknowledged"
     );
 
-    // By now it's behind, so it gets the screen instead of everything it missed
-    let mut received = unacknowledged;
+    // Now it gets the current screen instead of everything it missed
     let ack = || Message::text(r#"{"type":"ack"}"#);
     for _ in 0..frames {
         viewer.send(ack()).await.expect("sends");
     }
+    let mut repainted = false;
     let finished = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
             let event = message(&mut viewer, Duration::from_secs(30))
                 .await
                 .expect("output keeps coming");
-            if event["type"] != "output" {
+            if !matches!(event["type"].as_str(), Some("output" | "snapshot")) {
                 continue;
             }
-            let data = event["data"].as_str().unwrap_or_default();
-            received += data.len();
             viewer.send(ack()).await.expect("sends");
+            let data = event["data"].as_str().unwrap_or_default();
+            repainted |= data.contains("\x1b[!p");
             if data.contains("finished") {
                 return;
             }
@@ -652,11 +661,7 @@ async fn a_paced_viewer_should_only_get_what_it_acknowledges_then_catch_up() {
     })
     .await;
     assert!(finished.is_ok(), "the viewer never caught up");
-    let produced = LINES * 50;
-    assert!(
-        received < produced,
-        "{received} of {produced} bytes: nothing was skipped"
-    );
+    assert!(repainted, "the viewer got everything instead of a repaint");
 }
 
 #[tokio::test]
