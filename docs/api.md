@@ -234,6 +234,7 @@ Two ways in:
 | `POST` | `/v0/mcp/call` | `{ name, arguments, session? }` | `{ result }` or `{ error }` (what `tui-do-core mcp` uses) |
 | `GET` | `/v0/tasks/{slug}/claude-session` | | `{ sessionId, cwd, linkedAt }` or 404 |
 | `PUT` | `/v0/tasks/{slug}/claude-session` | `{ sessionId, cwd }` (UUID, absolute path) | the stored link |
+| `GET` | `/v0/tasks/{slug}/codex-session` | | `{ sessionId, cwd, linkedAt }` for the Codex session on this machine, or 404. Written by the sessions `POST /v0/tasks/{ref}/agent` starts, when a turn ends. |
 
 # Paired clients
 
@@ -252,7 +253,7 @@ The TUI-DO Mac app pairs a phone with a QR code holding a link: `tuido://pair?ad
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/agents` | | `{ claude, codex }`: what the agents installed on this machine offer, `null` for one that isn't installed. `claude`: `{ models: [{ value, label, description, effortLevels, supportsAutoMode }], permissionModes }` (the models `/model` lists, and the `--permission-mode` choices). `codex`: `{ models: [{ slug, label, efforts }] }`. Cached for 30 minutes. Ask a fleet device through `/v0/devices/{id}/agents`. |
-| `POST` | `/v0/tasks/{ref}/agent` | `{ device?, agent?, model?, effort?, permissionMode?, yolo?, includeUncommitted?, worktree?, worktreePath?, cols?, rows? }` | `{ session, device, path, started }` |
+| `POST` | `/v0/tasks/{ref}/agent` | `{ device?, agent?, model?, effort?, permissionMode?, yolo?, includeUncommitted?, resume?, worktree?, worktreePath?, cols?, rows? }` | `{ session, device, path, started }` |
 
 `POST /v0/tasks/{ref}/agent` starts a coding agent on a task the way the Mac app does, so a client only picks the options:
 

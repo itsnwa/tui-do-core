@@ -17,7 +17,7 @@ use tui_do_core::clients::Clients;
 use tui_do_core::config::ConfigStore;
 use tui_do_core::fleet::Fleet;
 use tui_do_core::handoff::Handoffs;
-use tui_do_core::links::{SessionLink, TaskSessions};
+use tui_do_core::links::{SessionLink, TaskSessions, is_codex_conversation};
 use tui_do_core::mcp::TuiDoMcp;
 use tui_do_core::relay::Relays;
 use tui_do_core::replica::Replicas;
@@ -35,6 +35,8 @@ use base64::Engine;
 use rand::RngExt;
 
 const DEFAULT_ADDR: &str = "127.0.0.1:47821";
+/// Where each task's Codex session on this machine is recorded.
+const CODEX_SESSIONS_DIR: &str = "codex-sessions";
 /// launchd starts services with a limit of only 256 open files.
 const OPEN_FILES: u64 = 10_240;
 /// How long requests in progress get to finish when the core stops.
@@ -105,12 +107,36 @@ async fn run() -> anyhow::Result<()> {
     match std::env::args().nth(1).as_deref() {
         None => serve().await,
         Some("mcp") => serve_mcp_stdio().await,
+        Some("codex-notify") => codex_notify(&std::env::args().nth(2).unwrap_or_default()),
         Some("--version" | "-V") => {
             println!("tui-do-core {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         Some(other) => anyhow::bail!("unknown command {other:?} (usage: tui-do-core [mcp])"),
     }
+}
+
+/// `tui-do-core codex-notify <json>`: Codex's `notify` command in the sessions
+/// TUI-DO starts. Links the task to the Codex session and reports that it's
+/// waiting. Codex's session ids only mean something on this machine, so the
+/// link stays in this core's folder.
+fn codex_notify(payload: &str) -> anyhow::Result<()> {
+    let Some(link) = SessionLink::of_codex_turn(payload) else {
+        return Ok(());
+    };
+    let codex_home = match std::env::var_os("CODEX_HOME") {
+        Some(dir) => PathBuf::from(dir),
+        None => PathBuf::from(std::env::var_os("HOME").context("HOME is not set")?).join(".codex"),
+    };
+    if !is_codex_conversation(&codex_home, &link.session_id) {
+        return Ok(());
+    }
+    let task = std::env::var(hooks::SESSION_ENV).context("not in a TUI-DO session")?;
+    TaskSessions::new(core_dir()?.join(CODEX_SESSIONS_DIR)).set(&task, &link)?;
+    if let Some(state_file) = std::env::var_os(hooks::STATE_FILE_ENV) {
+        std::fs::write(state_file, "waiting")?;
+    }
+    Ok(())
 }
 
 /// `tui-do-core mcp`: an MCP stdio server that forwards to the running core.
@@ -205,6 +231,7 @@ async fn serve() -> anyhow::Result<()> {
         local_endpoint: format!("http://{local}").into(),
         workspace,
         sessions: Arc::new(TaskSessions::new(dir.join("task-sessions"))),
+        codex_sessions: Arc::new(TaskSessions::new(dir.join(CODEX_SESSIONS_DIR))),
         token: token.into(),
         clients: Arc::new(Clients::load(dir.join("clients.json"))?),
         replicas: Arc::new(Replicas::default()),

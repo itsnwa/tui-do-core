@@ -55,6 +55,8 @@ pub struct AppState {
     pub local_endpoint: Arc<str>,
     pub workspace: Arc<SharedWorkspace>,
     pub sessions: Arc<TaskSessions>,
+    /// This machine's Codex sessions, by task.
+    pub codex_sessions: Arc<TaskSessions>,
     pub token: Arc<str>,
     pub clients: Arc<Clients>,
     pub replicas: Arc<crate::replica::Replicas>,

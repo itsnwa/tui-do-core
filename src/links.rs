@@ -3,6 +3,7 @@
 //! in the core's own folder (`task-sessions/<task-slug>.json`), not in the
 //! shared workspace.
 
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -56,6 +57,57 @@ impl SessionLink {
         };
         link.validate().ok().map(|()| link)
     }
+
+    /// The Codex session a `notify` payload reports a finished turn for.
+    pub fn of_codex_turn(payload: &str) -> Option<Self> {
+        let json: serde_json::Value = serde_json::from_str(payload).ok()?;
+        if json.get("type")?.as_str()? != "agent-turn-complete" {
+            return None;
+        }
+        let link = SessionLink {
+            session_id: json.get("thread-id")?.as_str()?.to_string(),
+            cwd: json.get("cwd")?.as_str()?.to_string(),
+            linked_at: None,
+        };
+        link.validate().ok().map(|()| link)
+    }
+}
+
+/// The newest file under `dir` whose name ends in `suffix`, `depth` folders down.
+fn find_newest(dir: &Path, suffix: &str, depth: usize) -> Option<PathBuf> {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    entries.sort_unstable_by(|a, b| b.cmp(a));
+    entries.into_iter().find_map(|path| {
+        if depth == 0 {
+            path.to_string_lossy().ends_with(suffix).then_some(path)
+        } else {
+            find_newest(&path, suffix, depth - 1)
+        }
+    })
+}
+
+/// Whether a thread that reported a turn is a conversation that can be resumed,
+/// from what Codex saved in `sessions/YYYY/MM/DD/rollout-…-<id>.jsonl`. Its side
+/// threads report turns too: the one that titles a conversation isn't saved,
+/// and a subagent's source is an object instead of the client's name.
+pub fn is_codex_conversation(codex_home: &Path, session_id: &str) -> bool {
+    let suffix = format!("-{session_id}.jsonl");
+    let Some(path) = find_newest(&codex_home.join("sessions"), &suffix, 3) else {
+        return false;
+    };
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut first = String::new();
+    if BufReader::new(file).read_line(&mut first).is_err() {
+        return false;
+    }
+    serde_json::from_str::<serde_json::Value>(&first)
+        .is_ok_and(|meta| meta["payload"]["source"].is_string())
 }
 
 pub struct TaskSessions {
@@ -119,5 +171,72 @@ impl TaskSessions {
         std::fs::write(&tmp, serde_json::to_string_pretty(&stored)? + "\n")?;
         std::fs::rename(&tmp, &path)?;
         Ok(stored)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const THREAD: &str = "01a1c173-979a-70e0-bbe0-b83e52032d3f";
+
+    /// A Codex home with a saved session, whose first line has `source`.
+    fn codex_home(source: &str) -> PathBuf {
+        let home = std::env::temp_dir().join(format!("tui-do-links-{}", uuid::Uuid::new_v4()));
+        let day = home.join("sessions/2026/11/09");
+        std::fs::create_dir_all(&day).expect("folders");
+        std::fs::write(
+            day.join(format!("rollout-2026-11-09T19-00-00-{THREAD}.jsonl")),
+            format!("{{\"type\":\"session_meta\",\"payload\":{{\"source\":{source}}}}}\nmore\n"),
+        )
+        .expect("rollout");
+        home
+    }
+
+    #[test]
+    fn a_saved_codex_session_should_be_a_conversation() {
+        let home = codex_home(r#""cli""#);
+        let found = is_codex_conversation(&home, THREAD);
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(found);
+    }
+
+    #[test]
+    fn a_thread_codex_did_not_save_should_not_be_a_conversation() {
+        let home = codex_home(r#""cli""#);
+        let found = is_codex_conversation(&home, "01a1c189-b5d4-7810-9d32-2d6f5da4275c");
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(!found);
+    }
+
+    #[test]
+    fn a_subagent_should_not_be_a_conversation() {
+        let home = codex_home(r#"{"subagent":{"other":"guardian"}}"#);
+        let found = is_codex_conversation(&home, THREAD);
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(!found);
+    }
+
+    #[test]
+    fn a_finished_codex_turn_should_give_its_session() {
+        let payload =
+            format!(r#"{{"type":"agent-turn-complete","thread-id":"{THREAD}","cwd":"/code/x"}}"#);
+        let link = SessionLink::of_codex_turn(&payload).expect("a link");
+        assert_eq!(
+            (link.session_id.as_str(), link.cwd.as_str()),
+            (THREAD, "/code/x")
+        );
+    }
+
+    #[test]
+    fn other_codex_notifications_should_give_no_session() {
+        let payload = format!(r#"{{"type":"other","thread-id":"{THREAD}","cwd":"/code/x"}}"#);
+        assert!(SessionLink::of_codex_turn(&payload).is_none());
+    }
+
+    #[test]
+    fn a_codex_turn_without_a_real_session_id_should_give_no_session() {
+        let payload = r#"{"type":"agent-turn-complete","thread-id":"$(x)","cwd":"/code/x"}"#;
+        assert!(SessionLink::of_codex_turn(payload).is_none());
     }
 }

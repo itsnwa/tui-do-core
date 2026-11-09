@@ -337,7 +337,7 @@ impl Registry {
             bail!("two holders for session {:?}", meta.id);
         }
         let state_file =
-            (meta.agent.as_deref() == Some("claude")).then(|| self.hooks.state_file(&meta.id));
+            hooks::reports_state(meta.agent.as_deref()).then(|| self.hooks.state_file(&meta.id));
         let info = SessionInfo {
             id: meta.id.clone(),
             alive: true,
@@ -419,9 +419,8 @@ impl Registry {
         };
         let clear_env = !req.env.is_empty();
         let mut env: BTreeMap<String, String> = req.env.into_iter().collect();
-        let is_claude = req.agent.as_deref() == Some("claude");
-        let state_file = if is_claude {
-            let (hook_env, state_file) = self.hooks.env_for(&req.id);
+        let state_file = if hooks::reports_state(req.agent.as_deref()) {
+            let (hook_env, state_file) = self.hooks.env_for(&req.id, &self.exe);
             env.extend(hook_env);
             Some(state_file)
         } else {
@@ -465,7 +464,7 @@ impl Registry {
             alive: true,
             exit_code: None,
             agent: req.agent,
-            agent_state: is_claude.then_some(AgentState::Idle),
+            agent_state: state_file.is_some().then_some(AgentState::Idle),
             pid,
             cols: req.cols,
             rows: req.rows,
@@ -524,6 +523,7 @@ impl Registry {
             saved_at: Instant::now(),
             state_file,
             hook_seen: false,
+            turn_ended: false,
             state_mtime: None,
             last_output: Instant::now(),
             last_input: Instant::now() - ECHO_WINDOW,
@@ -739,6 +739,9 @@ struct Actor {
     state_file: Option<PathBuf>,
     /// Hooks reported at least once; stop guessing the state from output.
     hook_seen: bool,
+    /// Codex reported the end of a turn; what it draws until the next input
+    /// isn't new work.
+    turn_ended: bool,
     state_mtime: Option<SystemTime>,
     last_output: Instant,
     last_input: Instant,
@@ -854,6 +857,12 @@ impl Actor {
                     self.apply_size(term, size.1, size.2);
                 }
                 self.last_input = Instant::now();
+                if std::mem::take(&mut self.turn_ended) {
+                    // So a new core doesn't take it for the current turn's end
+                    if let Some(path) = &self.state_file {
+                        let _ = std::fs::remove_file(path);
+                    }
+                }
                 let _ = self.holder.send(ToHolder::Input(data));
             }
             Msg::Resize(cols, rows, client) => {
@@ -923,7 +932,7 @@ impl Actor {
         self.unsaved = true;
         self.last_output = Instant::now();
         self.quiet_sent = false;
-        if self.guessing_state() && self.last_input.elapsed() > ECHO_WINDOW {
+        if self.guessing_state() && !self.turn_ended && self.last_input.elapsed() > ECHO_WINDOW {
             self.set_state(AgentState::Working);
         }
         let text = self.utf8.push(bytes);
@@ -958,7 +967,10 @@ impl Actor {
         }
         self.state_mtime = Some(mtime);
         if let Some(state) = hooks::read_state(path) {
-            self.hook_seen = true;
+            // Claude's hooks report every change; Codex only says when a turn ends
+            let claude = lock(&self.info).agent.as_deref() == Some("claude");
+            self.hook_seen = claude;
+            self.turn_ended = !claude;
             self.set_state(state);
         }
     }
