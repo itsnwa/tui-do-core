@@ -183,6 +183,20 @@ pub fn use_versions_folder(core_dir: &Path, version: &str) -> anyhow::Result<()>
     Ok(())
 }
 
+/// This program's path, for starting it again later. An installed core uses
+/// the current link: on Linux `current_exe` gives the file behind it, which a
+/// later update deletes, or a path that's already gone if
+/// [`use_versions_folder`] replaced the file this core started from.
+pub fn own_path(core_dir: &Path) -> anyhow::Result<PathBuf> {
+    if restarts_itself() {
+        let link = current_link(root_of(core_dir)?);
+        if link.exists() {
+            return Ok(link);
+        }
+    }
+    std::env::current_exe().context("finding tui-do-core's own path")
+}
+
 /// A systemd unit with `KillMode=process` added, or None if there's nothing to do.
 fn with_kill_mode(unit: &str) -> Option<String> {
     if unit.contains("KillMode=") || !unit.contains("[Service]\n") {

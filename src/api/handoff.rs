@@ -234,8 +234,11 @@ struct SetupBody {
 }
 
 /// Register the TUI-DO tools with the coding agents installed on this machine.
-async fn setup_agents(Json(body): Json<SetupBody>) -> Response {
-    match tokio::task::spawn_blocking(move || crate::agents::setup(&body.instructions)).await {
+async fn setup_agents(State(state): State<AppState>, Json(body): Json<SetupBody>) -> Response {
+    let core_dir = Arc::clone(&state.core_dir);
+    match tokio::task::spawn_blocking(move || crate::agents::setup(&body.instructions, &core_dir))
+        .await
+    {
         Ok(Ok(done)) => Json(done).into_response(),
         Ok(Err(err)) => error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
         Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),

@@ -103,8 +103,8 @@ fn allow_tools(settings: &Path) -> anyhow::Result<()> {
 }
 
 /// Set up every agent installed here. `instructions` is the workflow section.
-pub fn setup(instructions: &str) -> anyhow::Result<Setup> {
-    let exe = std::env::current_exe().context("finding tui-do-core's own path")?;
+pub fn setup(instructions: &str, core_dir: &Path) -> anyhow::Result<Setup> {
+    let exe = crate::update::own_path(core_dir)?;
     let exe = exe.to_string_lossy().into_owned();
     let home = home()?;
     let mut done = Setup::default();

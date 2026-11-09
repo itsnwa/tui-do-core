@@ -224,15 +224,26 @@ struct Core {
 
 impl Core {
     async fn start(dir: &TestDir) -> Self {
+        Self::launch(dir, Command::new(BINARY)).await
+    }
+
+    async fn launch(dir: &TestDir, mut command: Command) -> Self {
         let endpoint = dir.0.join("core").join("endpoint");
         let _ = std::fs::remove_file(&endpoint);
-        let process = Command::new(BINARY)
+        command
             .env("TUI_DO_CORE_DIR", dir.0.join("core"))
             .env("TUI_DO_CORE_ADDR", "127.0.0.1:0")
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("starts the core");
+            .stderr(Stdio::null());
+        let process = loop {
+            match command.spawn() {
+                // A binary just written by this test, while another was forking
+                Err(err) if err.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                result => break result.expect("starts the core"),
+            }
+        };
         let http = reqwest::Client::new();
         assert!(eventually(async || endpoint.exists()).await, "no endpoint");
         let address = std::fs::read_to_string(&endpoint).expect("endpoint");
@@ -331,6 +342,57 @@ impl Drop for Core {
         let _ = self.process.kill();
         let _ = self.process.wait();
     }
+}
+
+/// An install from before versions sat side by side has a plain file where
+/// the current link goes, so its first start replaces the file it's running
+/// from. On Linux, that leaves the core with a deleted path as its own.
+#[tokio::test]
+async fn a_core_that_moved_into_the_versions_folder_should_use_the_link() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = TestDir::new();
+    let installed = dir.0.join("bin").join("tui-do-core");
+    std::fs::create_dir_all(installed.parent().expect("bin")).expect("bin");
+    std::fs::copy(BINARY, &installed).expect("installs");
+    let tools = dir.0.join("tools");
+    std::fs::create_dir_all(&tools).expect("tools");
+    let calls = dir.0.join("claude-calls");
+    let claude = tools.join("claude");
+    let script = format!("#!/bin/sh\necho \"$@\" >> {}\n", calls.display());
+    std::fs::write(&claude, script).expect("fake claude");
+    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).expect("runnable");
+
+    let mut command = Command::new(&installed);
+    command
+        .env("INVOCATION_ID", "test") // what makes it count as the service
+        .env("HOME", &dir.0)
+        .env("PATH", format!("{}:/usr/bin:/bin", tools.display()));
+    let core = Core::launch(&dir, command).await;
+
+    let link = std::fs::symlink_metadata(&installed).expect("link");
+    assert!(link.is_symlink(), "the core didn't move");
+    #[cfg(target_os = "linux")]
+    {
+        let own = std::fs::read_link(format!("/proc/{}/exe", core.process.id())).expect("exe");
+        assert!(own.to_string_lossy().ends_with(" (deleted)"), "{own:?}");
+    }
+
+    core.spawn("moved", "echo started; cat").await;
+    assert!(core.shows("moved", "started").await);
+
+    let setup = core
+        .http
+        .put(format!("{}/v0/agents/setup", core.endpoint))
+        .bearer_auth(&core.token)
+        .json(&serde_json::json!({ "instructions": "## Test" }))
+        .send()
+        .await
+        .expect("put");
+    assert!(setup.status().is_success(), "{}", setup.status());
+    let calls = std::fs::read_to_string(&calls).expect("claude was called");
+    let registered = format!("tui-do -- {} mcp", installed.display());
+    assert!(calls.contains(&registered), "{calls}");
 }
 
 async fn survives(stop: &str) {

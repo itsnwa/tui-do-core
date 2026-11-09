@@ -151,7 +151,7 @@ async fn serve() -> anyhow::Result<()> {
         }
     }
     let hooks = hooks::Hooks::prepare(&dir.join("claude-hooks"))?;
-    let exe = std::env::current_exe().context("finding tui-do-core's own path")?;
+    let exe = update::own_path(&dir)?;
     let registry = Arc::new(session::Registry::new(hooks, dir.join("holders"), exe)?);
     let config = Arc::new(ConfigStore::load(dir.join("config.json"))?);
     let default_workspace = dir
