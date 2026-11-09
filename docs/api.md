@@ -162,7 +162,7 @@ Only the [home core](#the-home-role) writes the workspace. Every other core serv
 | `DELETE` | `/v0/tasks/{slug}` | | Undo token `{ task, planSnapshot, attachmentSnapshots }`; also deletes the task's plan and stored attachments |
 | `POST` | `/v0/tasks/restore` | the undo token | Task + `description` |
 | `POST` | `/v0/tasks/{slug}/reorder` | `{ direction: "up" \| "down", project? }` | `{ success, error? }` (moves within the same due date) |
-| `POST` | `/v0/tasks/{slug}/attachments` | `{ filePath }` or `{ fileName, dataBase64 }` (stored under `attachments/<slug>/`) | Task + `description` |
+| `POST` | `/v0/tasks/{slug}/attachments` | `{ filePath }` or `{ fileName, dataBase64 }` (stored under `attachments/<slug>/`; the request can be up to 32 MB, so a file of about 24 MB) | Task + `description` |
 | `POST` | `/v0/tasks/{slug}/attachments/remove` | `{ filePath }` | Task + `description` |
 | `GET` | `/v0/tasks/{slug}/attachments/{index}` | | the file at that position in the task's `attachments`, with a `Content-Type` from its extension. Files stored with the task (under `attachments/`) are in the workspace on every machine; an attachment that's a path elsewhere is only found on the machine it's on. |
 

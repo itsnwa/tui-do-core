@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
@@ -18,18 +18,29 @@ use crate::workspace::projects::{CreateProject, UpdateProject};
 use crate::workspace::tasks::{CreateTask, DeletedTask, TaskFilter, UpdateTask};
 use crate::workspace::{Error, Workspace};
 
+/// Largest attachment request: a file of about 24 MB, as base64 in JSON.
+const MAX_ATTACHMENT: usize = 32 * 1024 * 1024;
+/// An undo token carries all of a deleted task's attachments.
+const MAX_RESTORE: usize = 2 * 1024 * 1024 * 1024;
+
 pub fn routes() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/v0/workspace", get(get_workspace).put(set_workspace))
         .route("/v0/tasks", get(list_tasks).post(create_task))
         .route("/v0/tasks/lookup", get(lookup_task))
-        .route("/v0/tasks/restore", post(restore_task))
+        .route(
+            "/v0/tasks/restore",
+            post(restore_task).layer(DefaultBodyLimit::max(MAX_RESTORE)),
+        )
         .route(
             "/v0/tasks/{slug}",
             get(get_task).patch(update_task).delete(delete_task),
         )
         .route("/v0/tasks/{slug}/reorder", post(reorder_task))
-        .route("/v0/tasks/{slug}/attachments", post(add_attachment))
+        .route(
+            "/v0/tasks/{slug}/attachments",
+            post(add_attachment).layer(DefaultBodyLimit::max(MAX_ATTACHMENT)),
+        )
         .route(
             "/v0/tasks/{slug}/attachments/remove",
             post(remove_attachment),
