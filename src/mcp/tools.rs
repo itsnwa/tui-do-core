@@ -139,6 +139,12 @@ pub fn definitions() -> Vec<Tool> {
                     false,
                 ),
                 (
+                    "archived",
+                    "boolean",
+                    "Whether the project is archived (hidden from the normal views, restorable)",
+                    false,
+                ),
+                (
                     "directory",
                     "string",
                     "Absolute path to the project directory",
@@ -148,7 +154,7 @@ pub fn definitions() -> Vec<Tool> {
         ),
         tool(
             "delete_project",
-            "Delete a project",
+            "Delete a project along with its tasks, and their plans and attachments. This can't be undone.",
             &[("slug", "string", "Project slug", true)],
         ),
         tool(
@@ -347,6 +353,7 @@ pub fn call(
             let req = UpdateProject {
                 title: args.opt("title"),
                 muted: args.0.get("muted").and_then(Json::as_bool),
+                archived: args.0.get("archived").and_then(Json::as_bool),
                 directory: args.opt("directory"),
             };
             ws.update_project(&args.req("slug")?, req).and_then(to_json)
