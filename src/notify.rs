@@ -1,17 +1,15 @@
-//! Phone notifications when an agent waits for input, sent through ntfy.
+//! Phone notifications when an agent waits for input (sent with `apns`).
 //!
 //! The home core sees every session's agent state: its own, and other
 //! machines' as relayed `deviceEvent`s. A session that turns `waiting` and is
 //! still waiting a little later is notified once, to each paired client that
-//! turned notifications on (each has its own ntfy topic), unless that client
-//! has the session open or someone was typing in it.
+//! turned notifications on, unless that client has the session open or
+//! someone was typing in it.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::{Context, bail};
-use serde_json::json;
 use tokio::time::Instant;
 
 use crate::session::{AgentState, Event};
@@ -166,14 +164,6 @@ impl Drop for Watch {
     }
 }
 
-/// One notification.
-pub struct Message {
-    pub title: String,
-    pub body: String,
-    /// Opened when the notification is tapped.
-    pub click: Option<String>,
-}
-
 /// The app's link to a session.
 pub fn session_link(device: &str, session: &str) -> String {
     let encode = |s: &str| -> String {
@@ -187,40 +177,6 @@ pub fn session_link(device: &str, session: &str) -> String {
             .collect()
     };
     format!("tuido://session/{}/{}", encode(device), encode(session))
-}
-
-/// Post a notification to an ntfy topic. `curl` makes the request, as for
-/// updates, so the core needs no TLS stack of its own.
-pub async fn publish(server: &str, topic: &str, message: &Message) -> anyhow::Result<()> {
-    let mut body = json!({
-        "topic": topic,
-        "title": message.title,
-        "message": message.body,
-    });
-    if let Some(click) = &message.click {
-        body["click"] = click.clone().into();
-    }
-    let out = tokio::process::Command::new("curl")
-        .args([
-            "-fsS",
-            "--max-time",
-            "10",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            &body.to_string(),
-            server,
-        ])
-        .output()
-        .await
-        .context("running curl")?;
-    if !out.status.success() {
-        bail!(
-            "ntfy refused the notification: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-    }
-    Ok(())
 }
 
 #[cfg(test)]

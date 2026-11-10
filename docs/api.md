@@ -252,17 +252,17 @@ The TUI-DO Mac app pairs a phone with a QR code holding a link: `tuido://pair?ad
 
 ## Notifications
 
-The home core can tell a paired client when an agent on any machine waits for input, through [ntfy](https://ntfy.sh). Each client that turns them on gets its own random topic (on a public server, the topic is the password), stored with the client, so revoking the client stops them. The client subscribes to that topic in the ntfy app.
+The home core can tell a paired client when an agent on any machine waits for input, through Apple's push service (APNs). The client sends its device token while turning them on; it's stored with the client, so revoking the client stops them.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/notifications` | | `{ enabled, server, topic }` for the calling client (`topic` is `null` while off). Only a paired client's token can use these. |
-| `PUT` | `/v0/notifications` | `{ enabled }` | the same. Turning them on keeps an existing topic; turning them off drops it. |
-| `POST` | `/v0/notifications/test` | | 204 once a test notification is sent, 502 if ntfy refused it. |
+| `GET` | `/v0/notifications` | | `{ enabled, available }` for the calling client. `available`: the home has an APNs key. Only a paired client's token can use these. |
+| `PUT` | `/v0/notifications` | `{ enabled, deviceToken?, environment?, topic? }` | the same. Turning them on needs the APNs device token (hex), `environment` (`development` for builds signed for development, else `production`) and `topic` (the app's bundle id). Sending them again replaces the token. |
+| `POST` | `/v0/notifications/test` | | 204 once a test notification is sent; 409 without an APNs key; 502 with APNs's reason if it refused. |
 
-A session is notified when it turns `waiting` and is still waiting 15 seconds later, once each time it waits. It's skipped when someone typed in it during the 30 seconds before it started waiting, and for a client that has it open (`/attach`, directly or through `/v0/devices/{id}/…`). The notification's title is the task's title (or the session id) and the machine, its message the `detail` from `agentState`, and tapping it opens `tuido://session/<device id>/<session id>`.
+A session is notified when it turns `waiting` and is still waiting 15 seconds later, once each time it waits. It's skipped when someone typed in it during the 30 seconds before it started waiting, and for a client that has it open (`/attach`, directly or through `/v0/devices/{id}/…`). The notification's title is the task's title (or the session id) and the machine, its body the `detail` from `agentState`. Its payload has `link`: `tuido://session/<device id>/<session id>`. If APNs answers that a device token is no longer registered, the client's notifications turn off.
 
-The server is `https://ntfy.sh` unless `ntfyServer` is set in the home core's `config.json`. A self-hosted server needs `upstream-base-url` set for its notifications to reach iPhones. The core sends them with `curl`.
+The APNs key is an auth key (`.p8`) from the Apple Developer portal with APNs enabled, from the team the app is signed by. Give it to the home core with `tui-do-core apns-key <AuthKey_KEYID.p8> <team id>`, which keeps it in `apns.json` in the core's folder (`0600`). A new home gets a copy when the home moves. The core sends with `curl` over HTTP/2.
 
 # Coding agents
 
