@@ -87,16 +87,17 @@ pub enum Event {
     SessionRemoved {
         id: Arc<str>,
     },
-    /// `detail` (what it waits for) and `inputAgoMs` (since someone last
-    /// typed in it) come with `waiting`, for notifications.
-    #[serde(rename_all = "camelCase")]
+    /// `detail` (what it waits for) can come with `waiting`, for notifications.
     AgentState {
         id: Arc<str>,
         state: AgentState,
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        input_ago_ms: Option<u64>,
+    },
+    /// Someone typed in a session whose agent is waiting (once each time it
+    /// waits): they're answering, so nobody needs a notification.
+    SessionTyped {
+        id: Arc<str>,
     },
     /// The session produced no output for a while (e.g. an agent finished a reply).
     SessionQuiet {
@@ -158,6 +159,7 @@ impl Event {
             | Event::SessionExited { id, .. }
             | Event::SessionRemoved { id }
             | Event::AgentState { id, .. }
+            | Event::SessionTyped { id }
             | Event::SessionQuiet { id }
             | Event::SessionResized { id, .. } => id,
         }
@@ -534,7 +536,7 @@ impl Registry {
             state_mtime: None,
             last_output: Instant::now(),
             last_input: Instant::now() - ECHO_WINDOW,
-            typed_at: None,
+            typed_while_waiting: false,
             quiet_sent: true,
             utf8: Utf8Stream::default(),
             sizes: Vec::new(),
@@ -753,8 +755,8 @@ struct Actor {
     state_mtime: Option<SystemTime>,
     last_output: Instant,
     last_input: Instant,
-    /// When someone last typed (not a terminal's answer to a query).
-    typed_at: Option<Instant>,
+    /// Someone typed since the agent started waiting.
+    typed_while_waiting: bool,
     quiet_sent: bool,
     utf8: Utf8Stream,
     /// Each client's last requested size, the client in use last.
@@ -860,7 +862,7 @@ impl Actor {
                 // The client typing gets its size back before its keys arrive
                 // (not for its terminal's answers to queries)
                 if is_typing(&data) {
-                    self.typed_at = Some(Instant::now());
+                    self.typed_in_wait();
                     if let Some(at) = self.sizes.iter().position(|s| s.0 == client) {
                         let size = self.sizes.remove(at);
                         self.sizes.push(size);
@@ -992,29 +994,34 @@ impl Actor {
         !self.hook_seen && lock(&self.info).agent.is_some()
     }
 
-    fn set_state(&self, state: AgentState) {
+    fn set_state(&mut self, state: AgentState) {
         let mut info = lock(&self.info);
         if info.agent_state == Some(state) {
             return;
         }
         info.agent_state = Some(state);
         drop(info);
-        let waiting = state == AgentState::Waiting;
+        self.typed_while_waiting = false;
         let detail = self
             .state_file
             .as_deref()
-            .filter(|_| waiting)
+            .filter(|_| state == AgentState::Waiting)
             .and_then(hooks::read_detail);
-        let input_ago_ms = self
-            .typed_at
-            .filter(|_| waiting)
-            .map(|at| u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX));
         let _ = self.events.send(Event::AgentState {
             id: Arc::clone(&self.id),
             state,
             detail,
-            input_ago_ms,
         });
+    }
+
+    /// Say once per wait that someone is typing an answer.
+    fn typed_in_wait(&mut self) {
+        let waiting = lock(&self.info).agent_state == Some(AgentState::Waiting);
+        if waiting && !std::mem::replace(&mut self.typed_while_waiting, true) {
+            let _ = self.events.send(Event::SessionTyped {
+                id: Arc::clone(&self.id),
+            });
+        }
     }
 
     fn finish(&mut self, code: Option<u32>) {

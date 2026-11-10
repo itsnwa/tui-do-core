@@ -4,7 +4,7 @@
 //! machines' as relayed `deviceEvent`s. A session that turns `waiting` and is
 //! still waiting a little later is notified once, to each paired client that
 //! turned notifications on, unless that client has the session open or
-//! someone was typing in it.
+//! someone started typing an answer.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -16,8 +16,6 @@ use crate::session::{AgentState, Event};
 
 /// How long a session has to stay waiting before it's notified.
 pub const DELAY: Duration = Duration::from_secs(15);
-/// Someone who typed this recently before the agent started waiting is at it.
-pub const TYPED_RECENTLY: Duration = Duration::from_secs(30);
 
 /// A session on a machine: (device id, session id).
 pub type SessionKey = (String, String);
@@ -29,27 +27,23 @@ pub enum Change {
         key: SessionKey,
         state: AgentState,
         detail: Option<String>,
-        input_ago: Option<Duration>,
     },
-    Gone(SessionKey),
+    /// Someone is typing an answer, or the session ended.
+    Settled(SessionKey),
 }
 
 /// The change an event makes, given this core's own device id.
 pub fn change(event: &Event, own_id: &str) -> Option<Change> {
     match event {
-        Event::AgentState {
-            id,
-            state,
-            detail,
-            input_ago_ms,
-        } => Some(Change::State {
+        Event::AgentState { id, state, detail } => Some(Change::State {
             key: (own_id.to_string(), id.to_string()),
             state: *state,
             detail: detail.clone(),
-            input_ago: input_ago_ms.map(Duration::from_millis),
         }),
-        Event::SessionExited { id, .. } | Event::SessionRemoved { id } => {
-            Some(Change::Gone((own_id.to_string(), id.to_string())))
+        Event::SessionTyped { id }
+        | Event::SessionExited { id, .. }
+        | Event::SessionRemoved { id } => {
+            Some(Change::Settled((own_id.to_string(), id.to_string())))
         }
         Event::DeviceEvent { device, event } => {
             let id = event["id"].as_str()?;
@@ -59,9 +53,8 @@ pub fn change(event: &Event, own_id: &str) -> Option<Change> {
                     key,
                     state: serde_json::from_value(event["state"].clone()).ok()?,
                     detail: event["detail"].as_str().map(str::to_string),
-                    input_ago: event["inputAgoMs"].as_u64().map(Duration::from_millis),
                 }),
-                "sessionExited" | "sessionRemoved" => Some(Change::Gone(key)),
+                "sessionTyped" | "sessionExited" | "sessionRemoved" => Some(Change::Settled(key)),
                 _ => None,
             }
         }
@@ -82,15 +75,10 @@ impl Waits {
                 key,
                 state: AgentState::Waiting,
                 detail,
-                input_ago,
             } => {
-                if input_ago.is_some_and(|ago| ago < TYPED_RECENTLY) {
-                    self.pending.remove(&key);
-                } else {
-                    self.pending.insert(key, (now + DELAY, detail));
-                }
+                self.pending.insert(key, (now + DELAY, detail));
             }
-            Change::State { key, .. } | Change::Gone(key) => {
+            Change::State { key, .. } | Change::Settled(key) => {
                 self.pending.remove(&key);
             }
         }
@@ -188,12 +176,11 @@ mod tests {
         ("cube".to_string(), id.to_string())
     }
 
-    fn state(id: &str, state: AgentState, input_ago: Option<u64>) -> Change {
+    fn state(id: &str, state: AgentState) -> Change {
         Change::State {
             key: key(id),
             state,
             detail: Some("Which one?".into()),
-            input_ago: input_ago.map(Duration::from_secs),
         }
     }
 
@@ -201,7 +188,7 @@ mod tests {
     fn a_session_still_waiting_after_the_delay_should_be_due_once() {
         let start = Instant::now();
         let mut waits = Waits::default();
-        waits.apply(state("a", AgentState::Waiting, None), start);
+        waits.apply(state("a", AgentState::Waiting), start);
         assert!(waits.take_due(start + DELAY / 2).is_empty());
         assert_eq!(waits.next(), Some(start + DELAY));
         let due = waits.take_due(start + DELAY);
@@ -214,19 +201,24 @@ mod tests {
     fn a_session_that_stops_waiting_should_not_be_due() {
         let start = Instant::now();
         let mut waits = Waits::default();
-        waits.apply(state("a", AgentState::Waiting, None), start);
-        waits.apply(state("a", AgentState::Working, None), start);
-        waits.apply(state("b", AgentState::Waiting, None), start);
-        waits.apply(Change::Gone(key("b")), start);
+        waits.apply(state("a", AgentState::Waiting), start);
+        waits.apply(state("a", AgentState::Working), start);
+        waits.apply(state("b", AgentState::Waiting), start);
+        waits.apply(Change::Settled(key("b")), start);
         assert!(waits.take_due(start + DELAY).is_empty());
     }
 
     #[test]
-    fn a_session_someone_just_typed_in_should_not_be_due() {
+    fn a_session_someone_answers_should_not_be_due() {
         let start = Instant::now();
         let mut waits = Waits::default();
-        waits.apply(state("a", AgentState::Waiting, Some(5)), start);
-        waits.apply(state("b", AgentState::Waiting, Some(600)), start);
+        waits.apply(state("a", AgentState::Waiting), start);
+        waits.apply(state("b", AgentState::Waiting), start);
+        let typed = Event::DeviceEvent {
+            device: "cube".into(),
+            event: serde_json::json!({ "type": "sessionTyped", "id": "a" }),
+        };
+        waits.apply(change(&typed, "mac").expect("a change"), start + DELAY / 2);
         let due = waits.take_due(start + DELAY);
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].0, key("b"));
@@ -238,7 +230,6 @@ mod tests {
             id: "task".into(),
             state: AgentState::Waiting,
             detail: Some("Go?".into()),
-            input_ago_ms: Some(1500),
         };
         assert_eq!(
             change(&own, "mac"),
@@ -246,7 +237,6 @@ mod tests {
                 key: ("mac".into(), "task".into()),
                 state: AgentState::Waiting,
                 detail: Some("Go?".into()),
-                input_ago: Some(Duration::from_millis(1500)),
             })
         );
         let relayed = Event::DeviceEvent {
@@ -259,14 +249,13 @@ mod tests {
                 key: key("t"),
                 state: AgentState::Working,
                 detail: None,
-                input_ago: None,
             })
         );
         let removed = Event::DeviceEvent {
             device: "cube".into(),
             event: serde_json::json!({ "type": "sessionRemoved", "id": "t" }),
         };
-        assert_eq!(change(&removed, "mac"), Some(Change::Gone(key("t"))));
+        assert_eq!(change(&removed, "mac"), Some(Change::Settled(key("t"))));
         let output = Event::DeviceEvent {
             device: "cube".into(),
             event: serde_json::json!({ "type": "output", "id": "t", "data": "x" }),
