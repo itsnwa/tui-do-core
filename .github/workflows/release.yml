@@ -35,6 +35,39 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - run: cargo build --release --locked
+      # macOS keeps privacy grants (Local Network, Files & Folders) per code
+      # identity. The linker's ad-hoc signature changes with every build, so
+      # each update asked again; a Developer ID signature with a fixed
+      # identifier stays the same across versions.
+      - name: Sign
+        if: runner.os == 'macOS'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          if [ -z "$CERTIFICATE" ]; then
+            if [ "$IS_TAG" = true ]; then
+              echo "::error::MACOS_CERTIFICATE isn't set; a release must be signed"
+              exit 1
+            fi
+            echo "::warning::MACOS_CERTIFICATE isn't set; leaving the binary unsigned"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(openssl rand -hex 16)
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          rm "$RUNNER_TEMP/certificate.p12"
+          codesign --force --timestamp --keychain "$keychain" --identifier dev.tui-do.core \
+            --sign "Developer ID Application" target/release/tui-do-core
+          codesign --verify --strict --verbose=2 target/release/tui-do-core
+          codesign -dr - target/release/tui-do-core
+          security delete-keychain "$keychain"
       - name: Package
         shell: bash
         env:
