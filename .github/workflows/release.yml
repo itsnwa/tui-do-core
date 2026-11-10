@@ -45,6 +45,8 @@ jobs:
           CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          # The certificate's issuer, which the runner's keychains don't have
+          INTERMEDIATE_SHA256: 7afc9d01a62f03a2de9637936d4afe68090d2de18d03f29c88cfb0b1ba63587f
         run: |
           if [ -z "$CERTIFICATE" ]; then
             if [ "$IS_TAG" = true ]; then
@@ -63,6 +65,12 @@ jobs:
           security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
           rm "$RUNNER_TEMP/certificate.p12"
+          curl -fsSL -o "$RUNNER_TEMP/intermediate.cer" https://www.apple.com/certificateauthority/DeveloperIDCA.cer
+          echo "$INTERMEDIATE_SHA256  $RUNNER_TEMP/intermediate.cer" | shasum -a 256 -c -
+          security import "$RUNNER_TEMP/intermediate.cer" -k "$keychain"
+          # codesign only finds identities in keychains on the search list
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$keychain"
           codesign --force --timestamp --keychain "$keychain" --identifier dev.tui-do.core \
             --sign "Developer ID Application" target/release/tui-do-core
           codesign --verify --strict --verbose=2 target/release/tui-do-core
