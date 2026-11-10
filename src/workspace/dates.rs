@@ -127,15 +127,19 @@ pub fn id_year_prefix() -> String {
     format!("{:02}", Local::now().year().rem_euclid(100))
 }
 
+/// A timestamp as milliseconds since the epoch.
+pub fn millis_of(v: &Value) -> Option<i64> {
+    match v {
+        Value::Date(ms) => Some(*ms),
+        Value::String(s) => crate::format::parse_timestamp(s),
+        _ => None,
+    }
+}
+
 /// The local calendar date of a timestamp.
 pub fn local_date_of(v: &Value) -> Option<String> {
-    let ms = match v {
-        Value::Date(ms) => *ms,
-        Value::String(s) => crate::format::parse_timestamp(s)?,
-        _ => return None,
-    };
     Local
-        .timestamp_millis_opt(ms)
+        .timestamp_millis_opt(millis_of(v)?)
         .single()
         .map(|dt| dt.format("%Y-%m-%d").to_string())
 }

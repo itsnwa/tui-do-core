@@ -33,7 +33,7 @@ const UPDATE_PLAN: &str = "Write the plan document linked to a task: your implem
 
 It replaces the whole document, so include any existing content that still applies (start_task returns the current plan). Save your plan here before implementing, and again when it changes, so it's visible in the TUI-DO app. Only write to the task you're working on; in plan mode, save it right after the plan is approved.";
 
-const LIST_TASKS: &str = "List tasks, optionally filtered by project, state, or due date. Returns task IDs in YY-NNN format (e.g. 26-058). When the user refers to 'task 58', pass '58' to other tools — it auto-resolves to the current year ('26-058').";
+const LIST_TASKS: &str = "List tasks, optionally filtered by project, state, or due date. Completed tasks are left out unless you filter by state or due date, or set include_completed. Returns task IDs in YY-NNN format (e.g. 26-058). When the user refers to 'task 58', pass '58' to other tools — it auto-resolves to the current year ('26-058').";
 
 /// One parameter: name, JSON type, description, required. A type of
 /// `"state"` / `"recurrence"` is a string enum; `"recurrence?"` also allows null.
@@ -164,6 +164,12 @@ pub fn definitions() -> Vec<Tool> {
                 ("project", "string", "Filter by project slug", false),
                 ("state", "state", "Filter by state", false),
                 ("due", "string", "Filter by due date (YYYY-MM-DD)", false),
+                (
+                    "include_completed",
+                    "boolean",
+                    "Also return completed tasks when not filtering by state or due date",
+                    false,
+                ),
             ],
         ),
         tool(
@@ -364,10 +370,17 @@ pub fn call(
                 .map(|()| json!({ "deleted": slug }))
         }
         "list_tasks" => {
+            let state = args.state("state")?;
+            let due = args.opt("due");
+            let include_completed = args.0.get("include_completed").and_then(Json::as_bool);
+            // Completed tasks are most of the list, so an agent has to ask for them
+            let hide_completed =
+                state.is_none() && due.is_none() && include_completed != Some(true);
             let filter = TaskFilter {
                 project: args.opt("project"),
-                state: args.state("state")?,
-                due: args.opt("due"),
+                state,
+                due,
+                completed_within: hide_completed.then_some(0),
             };
             ws.list_tasks(&filter).and_then(to_json)
         }
@@ -482,5 +495,45 @@ mod tests {
             .find(|t| t.name == "start_task")
             .expect("start_task");
         assert_eq!(start.input_schema["required"], json!(["task_id"]));
+    }
+
+    #[test]
+    fn list_tasks_should_leave_out_completed_tasks_unless_asked() {
+        let root = std::env::temp_dir().join(format!("tui-do-mcp-{}", uuid::Uuid::new_v4()));
+        let ws = Workspace::open(root.clone()).expect("open");
+        let sessions = TaskSessions::new(root.join("sessions"));
+        let add = |title: &str| {
+            ws.create_task(CreateTask {
+                title: title.into(),
+                due: Some("2026-01-01".into()),
+                ..CreateTask::default()
+            })
+            .expect("create")
+            .task
+            .slug
+        };
+        add("Open");
+        let done = add("Done");
+        ws.update_task(
+            &done,
+            UpdateTask {
+                state: Some("completed".into()),
+                ..UpdateTask::default()
+            },
+        )
+        .expect("complete");
+        let count = |args: Json| {
+            let Json::Object(args) = args else {
+                panic!("arguments must be an object")
+            };
+            let tasks = call(&ws, &sessions, "list_tasks", args, None).expect("list");
+            tasks.as_array().expect("array").len()
+        };
+
+        assert_eq!(count(json!({})), 1);
+        assert_eq!(count(json!({ "include_completed": true })), 2);
+        assert_eq!(count(json!({ "state": "completed" })), 1);
+        assert_eq!(count(json!({ "due": "2026-01-01" })), 2);
+        std::fs::remove_dir_all(root).expect("clean up");
     }
 }

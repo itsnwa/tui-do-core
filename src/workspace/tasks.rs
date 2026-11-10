@@ -88,6 +88,8 @@ pub struct TaskFilter {
     pub project: Option<String>,
     pub state: Option<String>,
     pub due: Option<String>,
+    /// Leave out tasks completed longer ago than this many days.
+    pub completed_within: Option<u32>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -191,6 +193,18 @@ fn summarize(slug: &str, data: &Map) -> Task {
         },
         device: opt_text(data.get("device")).filter(|d| !d.is_empty()),
     }
+}
+
+const MS_PER_DAY: i64 = 24 * 60 * 60 * 1000;
+
+/// Whether a task is open, or was completed after `cutoff` (ms since the
+/// epoch). A completed task with no usable date counts as old.
+fn open_or_completed_after(data: &Map, cutoff: i64) -> bool {
+    data.get("state").and_then(Value::as_str) != Some("completed")
+        || data
+            .get("completed")
+            .and_then(dates::millis_of)
+            .is_some_and(|ms| ms > cutoff)
 }
 
 fn detail(slug: &str, doc: &Document, with_content: bool) -> TaskDetail {
@@ -466,9 +480,13 @@ impl Workspace {
             non_empty(&filter.state),
             non_empty(&filter.due),
         );
+        let cutoff = filter
+            .completed_within
+            .map(|days| dates::now_millis() - i64::from(days) * MS_PER_DAY);
         let mut tasks: Vec<Task> = self
             .task_entries()?
             .iter()
+            .filter(|e| cutoff.is_none_or(|c| open_or_completed_after(&e.doc.data, c)))
             .map(|e| summarize(&e.slug, &e.doc.data))
             .filter(|t| project.as_ref().is_none_or(|p| &t.project == p))
             .filter(|t| state.as_ref().is_none_or(|s| &t.state == s))
@@ -1092,6 +1110,44 @@ mod tests {
         let older = task("completed", None, Some("2026-01-01T00:00:00.000Z"), 0.0);
         let newer = task("completed", None, Some("2026-02-01T00:00:00.000Z"), 0.0);
         assert_eq!(compare(&newer, &older), Ordering::Less);
+    }
+
+    #[test]
+    fn completed_within_should_keep_open_and_recently_completed_tasks() {
+        let root = std::env::temp_dir().join(format!("tui-do-window-{}", uuid::Uuid::new_v4()));
+        let ws = Workspace::open(root.clone()).expect("open");
+        let write = |slug: &str, state: &str, completed: Value| {
+            let mut data = Map::new();
+            data.insert("state".into(), state.into());
+            data.insert("completed".into(), completed);
+            ws.store.write(Dir::Tasks, slug, &data, "").expect("write");
+        };
+        write("recent", "completed", dates::now_iso().into());
+        write("open", "not-started", Value::Null);
+        write("old", "completed", "2020-01-01T00:00:00.000Z".into());
+        write("old-date", "completed", Value::Date(0));
+        write("undated", "completed", Value::Null);
+        let slugs = |completed_within| {
+            let filter = TaskFilter {
+                completed_within,
+                ..TaskFilter::default()
+            };
+            let tasks = ws.list_tasks(&filter).expect("list");
+            tasks.into_iter().map(|t| t.slug).collect::<Vec<_>>()
+        };
+
+        assert_eq!(slugs(Some(7)), ["open", "recent"]);
+        assert_eq!(slugs(Some(0)), ["open"]);
+        assert_eq!(slugs(None).len(), 5);
+        std::fs::remove_dir_all(root).expect("clean up");
+    }
+
+    #[test]
+    fn completed_within_should_be_read_from_the_query() {
+        let uri = "/v0/tasks?completedWithin=7".parse().expect("uri");
+        let axum::extract::Query(filter) =
+            axum::extract::Query::<TaskFilter>::try_from_uri(&uri).expect("query");
+        assert_eq!(filter.completed_within, Some(7));
     }
 
     #[test]
