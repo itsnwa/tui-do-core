@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use anyhow::Context;
@@ -47,13 +47,13 @@ impl Dir {
 
 pub struct Entry {
     pub slug: String,
-    pub doc: Document,
+    pub doc: Arc<Document>,
 }
 
 struct Cached {
     mtime: SystemTime,
     size: u64,
-    doc: Document,
+    doc: Arc<Document>,
 }
 
 pub struct Store {
@@ -89,7 +89,7 @@ impl Store {
     pub fn read(&self, dir: Dir, slug: &str) -> Result<Option<Document>> {
         let path = self.path(dir, slug);
         match self.read_path(&path) {
-            Ok(doc) => Ok(Some(doc)),
+            Ok(doc) => Ok(Some(Arc::unwrap_or_clone(doc))),
             Err(Error::NotFound(_)) => Ok(None),
             Err(err) => Err(err),
         }
@@ -101,7 +101,7 @@ impl Store {
             .ok_or_else(|| Error::NotFound(format!("{what} not found: {slug}")))
     }
 
-    fn read_path(&self, path: &Path) -> Result<Document> {
+    fn read_path(&self, path: &Path) -> Result<Arc<Document>> {
         let meta = match std::fs::metadata(path) {
             Ok(meta) => meta,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -120,6 +120,7 @@ impl Store {
         let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         let raw = String::from_utf8_lossy(&bytes);
         let doc = format::parse_file(&raw)
+            .map(Arc::new)
             .map_err(|err| Error::Invalid(format!("{}: {err}", path.display())))?;
         lock(&self.cache).insert(
             path.to_path_buf(),

@@ -159,7 +159,7 @@ Only the [home core](#the-home-role) writes the workspace. Every other core serv
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/tasks?project=&state=&due=` | | `[Task]`, sorted: open tasks by due date then position, then completed tasks, most recent first. `due` also matches recurring tasks that fall on that date. |
+| `GET` | `/v0/tasks?project=&state=&due=&completedWithin=` | | `[Task]`, sorted: open tasks by due date then position, then completed tasks, most recent first. `due` also matches recurring tasks that fall on that date. `completedWithin` is a number of days: tasks completed longer ago are left out. |
 | `POST` | `/v0/tasks` | `{ title, project?, due?, recurrence?, description? }` | Task + `description` |
 | `GET` | `/v0/tasks/lookup?ref=58` | | Task by short ID (`58`, `#58`, `26-058`; bare numbers are this year's) or slug |
 | `GET` | `/v0/tasks/{slug}` | | Task + `description` + `content` |
