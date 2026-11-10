@@ -75,6 +75,13 @@ async fn run(program: &str, args: &[&str]) -> anyhow::Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// The version in a release page's address (`…/releases/tag/v1.2.3`).
+fn version_in_url(url: &str) -> Option<&str> {
+    let (_, tag) = url.trim().rsplit_once("/releases/tag/")?;
+    let version = tag.trim_start_matches('v');
+    valid_version(version).then_some(version)
+}
+
 /// The newest release's version (without the `v`), cached for a while.
 pub async fn latest() -> anyhow::Result<String> {
     if let Ok(cache) = LATEST.lock()
@@ -83,28 +90,26 @@ pub async fn latest() -> anyhow::Result<String> {
     {
         return Ok(version.clone());
     }
-    let body = run(
+    // The page redirects to the newest release. GitHub's API would say the
+    // same, but allows a connection only 60 anonymous requests an hour.
+    let url = run(
         "curl",
         &[
-            "-fsSL",
+            "-fsSIL",
             "--max-time",
             "10",
-            "-H",
-            "Accept: application/vnd.github+json",
-            &format!("https://api.github.com/repos/{REPO}/releases/latest"),
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{url_effective}",
+            &format!("https://github.com/{REPO}/releases/latest"),
         ],
     )
     .await
     .context("couldn't ask GitHub for the latest release")?;
-    let release: serde_json::Value = serde_json::from_str(&body)?;
-    let version = release["tag_name"]
-        .as_str()
-        .context("the latest release has no tag")?
-        .trim_start_matches('v')
-        .to_string();
-    if !valid_version(&version) {
-        bail!("unexpected release tag {version:?}");
-    }
+    let Some(version) = version_in_url(&url).map(str::to_string) else {
+        bail!("unexpected release page {url:?}");
+    };
     if let Ok(mut cache) = LATEST.lock() {
         *cache = Some((Instant::now(), version.clone()));
     }
@@ -512,6 +517,17 @@ mod tests {
         let dir = root.join("versions").join(version);
         std::fs::create_dir_all(&dir).expect("version");
         std::fs::write(dir.join(BINARY), version).expect("binary");
+    }
+
+    #[test]
+    fn the_version_should_come_from_the_release_page_address() {
+        let tag = "https://github.com/itsnwa/tui-do-core/releases/tag/v0.3.14";
+        assert_eq!(version_in_url(tag), Some("0.3.14"));
+        // No releases yet: GitHub redirects to the list
+        let list = "https://github.com/itsnwa/tui-do-core/releases";
+        assert_eq!(version_in_url(list), None);
+        let odd = "https://github.com/itsnwa/tui-do-core/releases/tag/bad%20tag";
+        assert_eq!(version_in_url(odd), None);
     }
 
     #[test]
