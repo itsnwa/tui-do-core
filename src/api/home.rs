@@ -440,6 +440,9 @@ struct Handover {
     clients: crate::clients::Record,
     sessions: Vec<(String, SessionLink)>,
     handoffs: Vec<(String, Record)>,
+    /// The key phone notifications are sent with (homes before 0.3.11 have none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    apns: Option<crate::apns::Key>,
     /// The old home's device id.
     from: String,
 }
@@ -554,6 +557,7 @@ async fn move_to(state: &AppState, target: &Device) -> anyhow::Result<Value> {
                 (task, record)
             })
             .collect(),
+        apns: crate::apns::load(&state.core_dir),
         from: own.device_id.clone(),
     };
     let adopted = match send_adopt(client, target, &handover).await {
@@ -725,6 +729,9 @@ fn take_over(state: &AppState, handover: Handover) -> anyhow::Result<()> {
     }
     state.sessions.replace(&handover.sessions)?;
     state.handoffs.replace_records(&handover.handoffs)?;
+    if let Some(key) = &handover.apns {
+        crate::apns::save(&state.core_dir, key)?;
+    }
     state.config.update(|c| {
         c.home = None;
         c.workspace_path = Some(folder.clone());

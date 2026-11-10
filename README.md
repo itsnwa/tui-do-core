@@ -6,7 +6,7 @@ Sessions run inside the core, not inside a client, so they keep running when a c
 
 The core runs on every machine you work from. One of them, the home core, holds the task workspace; the others run tasks for it, reached over [Tailscale](https://tailscale.com).
 
-> Status: early, and the API (`/v0`) may still change. Sessions, the task workspace, the MCP server, machines, code handoff, self-update, paired clients and phone notifications (through ntfy) work.
+> Status: early, and the API (`/v0`) may still change. Sessions, the task workspace, the MCP server, machines, code handoff, self-update, paired clients and phone notifications (APNs) work.
 
 ## Build
 
@@ -33,7 +33,7 @@ On macOS, `scripts/install-dev.sh` builds a release binary, installs it to `~/.t
 | `TUI_DO_WORKSPACE` | the workspace set through the API (overrides it, for testing) |
 | `RUST_LOG` | `tui_do_core=info` |
 
-The core writes `token` (bearer token, `0600`), `endpoint` (base URL) and `config.json` (device id and name, workspace, remote access, and `ntfyServer` for notifications) to its directory. Clients on the same machine read the token and endpoint from there. The core listens on loopback; turning on remote access (`PATCH /v0/device`) also makes it listen on the machine's Tailscale address.
+The core writes `token` (bearer token, `0600`), `endpoint` (base URL) and `config.json` (device id and name, workspace, remote access) to its directory. Clients on the same machine read the token and endpoint from there. The core listens on loopback; turning on remote access (`PATCH /v0/device`) also makes it listen on the machine's Tailscale address.
 
 ## Machines
 

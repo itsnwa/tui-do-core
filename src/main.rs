@@ -108,11 +108,14 @@ async fn run() -> anyhow::Result<()> {
         None => serve().await,
         Some("mcp") => serve_mcp_stdio().await,
         Some("codex-notify") => codex_notify(&std::env::args().nth(2).unwrap_or_default()),
+        Some("apns-key") => apns_key(&std::env::args().skip(2).collect::<Vec<_>>()),
         Some("--version" | "-V") => {
             println!("tui-do-core {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        Some(other) => anyhow::bail!("unknown command {other:?} (usage: tui-do-core [mcp])"),
+        Some(other) => anyhow::bail!(
+            "unknown command {other:?} (usage: tui-do-core [mcp | apns-key <AuthKey_KEYID.p8> <team id> [key id]])"
+        ),
     }
 }
 
@@ -138,6 +141,26 @@ fn codex_notify(payload: &str) -> anyhow::Result<()> {
         std::fs::write(hooks::detail_file(&state_file), payload)?;
         std::fs::write(state_file, "waiting")?;
     }
+    Ok(())
+}
+
+/// `tui-do-core apns-key <AuthKey_KEYID.p8> <team id> [key id]`: keep the
+/// APNs auth key phone notifications are sent with. Only the home sends
+/// them; the key moves with the home.
+fn apns_key(args: &[String]) -> anyhow::Result<()> {
+    let [p8, team_id, rest @ ..] = args else {
+        anyhow::bail!("usage: tui-do-core apns-key <AuthKey_KEYID.p8> <team id> [key id]");
+    };
+    let key =
+        tui_do_core::apns::from_file(Path::new(p8), team_id, rest.first().map(String::as_str))?;
+    let dir = core_dir()?;
+    tui_do_core::apns::save(&dir, &key)?;
+    println!(
+        "Saved APNs key {} for team {} in {}. Phones can turn notifications on now.",
+        key.key_id,
+        key.team_id,
+        dir.join("apns.json").display()
+    );
     Ok(())
 }
 

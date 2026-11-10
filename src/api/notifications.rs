@@ -1,5 +1,5 @@
 //! Phone notifications (see `crate::notify`): a paired client turns its own
-//! on or off, and the home core sends them when an agent waits.
+//! on or off, and the home core sends them through APNs when an agent waits.
 
 use std::sync::Arc;
 
@@ -13,8 +13,9 @@ use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
 
 use super::{AppState, error};
+use crate::apns::{self, Alert, Sent, Target};
 use crate::clients::Caller;
-use crate::notify::{self, Message, SessionKey, Waits};
+use crate::notify::{self, SessionKey, Waits};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -37,25 +38,28 @@ fn not_a_client() -> Response {
     )
 }
 
-fn describe(state: &AppState, topic: Option<String>) -> Response {
+fn describe(state: &AppState, id: &str) -> Response {
     Json(json!({
-        "enabled": topic.is_some(),
-        "server": state.config.get().ntfy_server(),
-        "topic": topic,
+        "enabled": state.clients.push_target(id).is_some(),
+        "available": apns::load(&state.core_dir).is_some(),
     }))
     .into_response()
 }
 
 async fn status(State(state): State<AppState>, caller: Option<Extension<Caller>>) -> Response {
     match client(caller.as_deref()) {
-        Some(id) => describe(&state, state.clients.ntfy_topic(id)),
+        Some(id) => describe(&state, id),
         None => not_a_client(),
     }
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Change {
     enabled: bool,
+    device_token: Option<String>,
+    environment: Option<String>,
+    topic: Option<String>,
 }
 
 async fn set(
@@ -66,10 +70,31 @@ async fn set(
     let Some(id) = client(caller.as_deref()) else {
         return not_a_client();
     };
-    match state.clients.set_notifications(id, change.enabled) {
-        Ok(topic) => {
+    let target = if change.enabled {
+        let (Some(device_token), Some(environment), Some(topic)) =
+            (change.device_token, change.environment, change.topic)
+        else {
+            return error(
+                StatusCode::BAD_REQUEST,
+                "turning notifications on needs deviceToken, environment and topic",
+            );
+        };
+        let target = Target {
+            device_token: device_token.to_ascii_lowercase(),
+            environment,
+            topic,
+        };
+        if let Err(err) = target.validate() {
+            return error(StatusCode::BAD_REQUEST, &format!("{err:#}"));
+        }
+        Some(target)
+    } else {
+        None
+    };
+    match state.clients.set_push(id, target) {
+        Ok(()) => {
             tracing::info!(client = %id, on = change.enabled, "notifications changed");
-            describe(&state, topic)
+            describe(&state, id)
         }
         Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{err:#}")),
     }
@@ -80,21 +105,42 @@ async fn test(State(state): State<AppState>, caller: Option<Extension<Caller>>) 
     let Some(id) = client(caller.as_deref()) else {
         return not_a_client();
     };
-    let Some(topic) = state.clients.ntfy_topic(id) else {
+    let Some(target) = state.clients.push_target(id) else {
         return error(StatusCode::BAD_REQUEST, "notifications are off");
     };
-    let config = state.config.get();
-    let message = Message {
+    let Some(key) = apns::load(&state.core_dir) else {
+        return error(StatusCode::CONFLICT, "the home core has no APNs key");
+    };
+    let alert = Alert {
         title: "TUI-DO".into(),
         body: format!(
             "Notifications from {} work. You'll get one when an agent waits for you.",
-            config.device_name
+            state.config.get().device_name
         ),
-        click: None,
+        link: None,
+        thread: None,
     };
-    match notify::publish(&config.ntfy_server(), &topic, &message).await {
+    match deliver(&state, &key, &target, &alert).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => error(StatusCode::BAD_GATEWAY, &format!("{err:#}")),
+    }
+}
+
+/// Send one notification, forgetting a device APNs says is gone.
+async fn deliver(
+    state: &AppState,
+    key: &apns::Key,
+    target: &Target,
+    alert: &Alert,
+) -> anyhow::Result<()> {
+    match apns::send(key, target, alert).await? {
+        Sent::Delivered => Ok(()),
+        Sent::Unregistered => {
+            state.clients.forget_device_token(&target.device_token)?;
+            anyhow::bail!(
+                "the phone isn't registered for notifications any more; turn them on again"
+            )
+        }
     }
 }
 
@@ -134,16 +180,20 @@ async fn send(state: AppState, key: SessionKey, detail: Option<String>) {
     if !config.is_home() {
         return;
     }
-    let topics: Vec<String> = state
+    let targets: Vec<Target> = state
         .clients
-        .ntfy_topics()
+        .push_targets()
         .into_iter()
         .filter(|(client, _)| !state.watching.is_open(client, &key))
-        .map(|(_, topic)| topic)
+        .map(|(_, target)| target)
         .collect();
-    if topics.is_empty() {
+    if targets.is_empty() {
         return;
     }
+    let Some(apns_key) = apns::load(&state.core_dir) else {
+        tracing::warn!("a phone has notifications on, but this home has no APNs key");
+        return;
+    };
     let (device, session) = &key;
     let machine = if *device == config.device_id {
         config.device_name.clone()
@@ -161,15 +211,15 @@ async fn send(state: AppState, key: SessionKey, detail: Option<String>) {
     .await
     .ok()
     .flatten();
-    let message = Message {
+    let alert = Alert {
         title: format!("{} · {machine}", task.as_deref().unwrap_or(session)),
         body: detail.unwrap_or_else(|| "Waiting for input".into()),
-        click: Some(notify::session_link(device, session)),
+        link: Some(notify::session_link(device, session)),
+        thread: Some(format!("{device}/{session}")),
     };
-    let server = config.ntfy_server();
-    let sent = topics
+    let sent = targets
         .iter()
-        .map(|topic| notify::publish(&server, topic, &message));
+        .map(|target| deliver(&state, &apns_key, target, &alert));
     let mut delivered = 0;
     for result in futures_util::future::join_all(sent).await {
         match result {

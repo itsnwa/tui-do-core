@@ -4,6 +4,7 @@
 pub mod agent_models;
 pub mod agents;
 pub mod api;
+pub mod apns;
 pub mod clients;
 pub mod config;
 pub mod fleet;

@@ -9,8 +9,6 @@ use std::sync::Mutex;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
-pub const DEFAULT_NTFY_SERVER: &str = "https://ntfy.sh";
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreConfig {
@@ -29,9 +27,6 @@ pub struct CoreConfig {
     /// On a runner: the home core to forward MCP tool calls to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub home: Option<HomeLink>,
-    /// The ntfy server phone notifications go through (default `https://ntfy.sh`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ntfy_server: Option<String>,
     #[serde(flatten)]
     pub other: serde_json::Map<String, serde_json::Value>,
 }
@@ -62,17 +57,6 @@ impl CoreConfig {
     /// Whether this core is the home: it holds the workspace and the fleet.
     pub fn is_home(&self) -> bool {
         self.home.is_none()
-    }
-
-    /// The ntfy server's base URL, without a trailing slash.
-    pub fn ntfy_server(&self) -> String {
-        self.ntfy_server
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .unwrap_or(DEFAULT_NTFY_SERVER)
-            .trim_end_matches('/')
-            .to_string()
     }
 }
 

@@ -36,9 +36,9 @@ struct Client {
     /// clients on the Mac's behalf.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     manager: bool,
-    /// The ntfy topic its notifications go to, while they're on.
+    /// Where its notifications go, while they're on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    ntfy_topic: Option<String>,
+    push: Option<crate::apns::Target>,
 }
 
 /// A client as listed: everything but the token hash.
@@ -62,7 +62,7 @@ impl From<&Client> for ClientInfo {
             created_at: c.created_at.clone(),
             last_seen_at: c.last_seen_at.clone(),
             manager: c.manager,
-            notifications: c.ntfy_topic.is_some(),
+            notifications: c.push.is_some(),
         }
     }
 }
@@ -86,16 +86,6 @@ fn hash(token: &str) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
-}
-
-/// An ntfy topic nobody can guess: on a public server, the topic is the password.
-fn new_topic() -> String {
-    let mut bytes = [0u8; 18];
-    rand::rng().fill(&mut bytes);
-    format!(
-        "tuido-{}",
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
-    )
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -202,7 +192,7 @@ impl Clients {
             created_at: crate::workspace::dates::now_iso(),
             last_seen_at: None,
             manager,
-            ntfy_topic: None,
+            push: None,
         };
         let mut record = self.lock();
         let mut next = record.clone();
@@ -291,43 +281,61 @@ impl Clients {
         self.lock().clients.iter().any(|c| c.id == id)
     }
 
-    /// The client's ntfy topic, while its notifications are on.
-    pub fn ntfy_topic(&self, id: &str) -> Option<String> {
+    /// Where the client's notifications go, while they're on.
+    pub fn push_target(&self, id: &str) -> Option<crate::apns::Target> {
         self.lock()
             .clients
             .iter()
             .find(|c| c.id == id)
-            .and_then(|c| c.ntfy_topic.clone())
+            .and_then(|c| c.push.clone())
     }
 
-    /// Turn a client's notifications on (with a new topic) or off. Answers
-    /// with its topic, or `None` once they're off; an error if there's no
-    /// such client.
-    pub fn set_notifications(&self, id: &str, on: bool) -> anyhow::Result<Option<String>> {
+    /// Turn a client's notifications on (to that device) or off. An error if
+    /// there's no such client.
+    pub fn set_push(&self, id: &str, target: Option<crate::apns::Target>) -> anyhow::Result<()> {
         let mut record = self.lock();
         let mut next = record.clone();
         let Some(client) = next.clients.iter_mut().find(|c| c.id == id) else {
             bail!("no such client");
         };
-        match (&client.ntfy_topic, on) {
-            (Some(topic), true) => return Ok(Some(topic.clone())),
-            (None, false) => return Ok(None),
-            _ => {}
+        if client.push == target {
+            return Ok(());
         }
-        client.ntfy_topic = on.then(new_topic);
-        let topic = client.ntfy_topic.clone();
+        client.push = target;
         self.save(&next)?;
         *record = next;
-        Ok(topic)
+        Ok(())
     }
 
-    /// Each client with notifications on, and its topic.
-    pub fn ntfy_topics(&self) -> Vec<(String, String)> {
+    /// Each client with notifications on, and where they go.
+    pub fn push_targets(&self) -> Vec<(String, crate::apns::Target)> {
         self.lock()
             .clients
             .iter()
-            .filter_map(|c| Some((c.id.clone(), c.ntfy_topic.clone()?)))
+            .filter_map(|c| Some((c.id.clone(), c.push.clone()?)))
             .collect()
+    }
+
+    /// Stop sending to a device token APNs no longer takes.
+    pub fn forget_device_token(&self, token: &str) -> anyhow::Result<()> {
+        let mut record = self.lock();
+        let mut next = record.clone();
+        let mut changed = false;
+        for client in &mut next.clients {
+            if client
+                .push
+                .as_ref()
+                .is_some_and(|p| p.device_token == token)
+            {
+                client.push = None;
+                changed = true;
+            }
+        }
+        if changed {
+            self.save(&next)?;
+            *record = next;
+        }
+        Ok(())
     }
 
     fn watch(&self) -> watch::Receiver<u64> {
@@ -447,27 +455,23 @@ mod tests {
     }
 
     #[test]
-    fn notifications_should_get_a_topic_until_turned_off_or_revoked() {
+    fn notifications_should_go_to_the_device_until_turned_off_or_revoked() {
         let clients = clients();
         let (phone, _) = clients.create("iPhone").expect("creates");
         let (other, _) = clients.create("iPad").expect("creates");
-        assert_eq!(clients.ntfy_topic(&phone.id), None);
-        let topic = clients
-            .set_notifications(&phone.id, true)
-            .expect("turns on")
-            .expect("topic");
-        assert!(topic.starts_with("tuido-") && topic.len() == 30);
-        assert!(
-            topic[6..]
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        );
-        // Turning it on again keeps the topic the phone subscribed to
+        let target = crate::apns::Target {
+            device_token: "abcd".into(),
+            environment: "development".into(),
+            topic: "com.itsnwa.tuido".into(),
+        };
+        assert_eq!(clients.push_target(&phone.id), None);
+        clients
+            .set_push(&phone.id, Some(target.clone()))
+            .expect("on");
         assert_eq!(
-            clients.set_notifications(&phone.id, true).expect("on"),
-            Some(topic.clone())
+            clients.push_targets(),
+            vec![(phone.id.clone(), target.clone())]
         );
-        assert_eq!(clients.ntfy_topics(), vec![(phone.id.clone(), topic)]);
         assert!(
             clients
                 .list()
@@ -481,15 +485,19 @@ mod tests {
                 .any(|c| c.id == other.id && !c.notifications)
         );
 
-        assert_eq!(
-            clients.set_notifications(&phone.id, false).expect("off"),
-            None
-        );
-        assert!(clients.ntfy_topics().is_empty());
-        clients.set_notifications(&phone.id, true).expect("on");
+        clients.set_push(&phone.id, None).expect("off");
+        assert!(clients.push_targets().is_empty());
+        clients
+            .set_push(&phone.id, Some(target.clone()))
+            .expect("on");
+        clients.forget_device_token("abcd").expect("forgets");
+        assert!(clients.push_targets().is_empty());
+        clients
+            .set_push(&phone.id, Some(target.clone()))
+            .expect("on");
         clients.revoke(&phone.id).expect("revokes");
-        assert!(clients.ntfy_topics().is_empty());
-        assert!(clients.set_notifications(&phone.id, true).is_err());
+        assert!(clients.push_targets().is_empty());
+        assert!(clients.set_push(&phone.id, Some(target)).is_err());
     }
 
     #[tokio::test]
