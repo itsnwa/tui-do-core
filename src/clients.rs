@@ -36,6 +36,9 @@ struct Client {
     /// clients on the Mac's behalf.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     manager: bool,
+    /// The ntfy topic its notifications go to, while they're on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ntfy_topic: Option<String>,
 }
 
 /// A client as listed: everything but the token hash.
@@ -47,6 +50,8 @@ pub struct ClientInfo {
     pub created_at: String,
     pub last_seen_at: Option<String>,
     pub manager: bool,
+    /// Whether it gets notifications when an agent waits.
+    pub notifications: bool,
 }
 
 impl From<&Client> for ClientInfo {
@@ -57,6 +62,7 @@ impl From<&Client> for ClientInfo {
             created_at: c.created_at.clone(),
             last_seen_at: c.last_seen_at.clone(),
             manager: c.manager,
+            notifications: c.ntfy_topic.is_some(),
         }
     }
 }
@@ -80,6 +86,16 @@ fn hash(token: &str) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+/// An ntfy topic nobody can guess: on a public server, the topic is the password.
+fn new_topic() -> String {
+    let mut bytes = [0u8; 18];
+    rand::rng().fill(&mut bytes);
+    format!(
+        "tuido-{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+    )
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -186,6 +202,7 @@ impl Clients {
             created_at: crate::workspace::dates::now_iso(),
             last_seen_at: None,
             manager,
+            ntfy_topic: None,
         };
         let mut record = self.lock();
         let mut next = record.clone();
@@ -272,6 +289,45 @@ impl Clients {
 
     pub fn is_active(&self, id: &str) -> bool {
         self.lock().clients.iter().any(|c| c.id == id)
+    }
+
+    /// The client's ntfy topic, while its notifications are on.
+    pub fn ntfy_topic(&self, id: &str) -> Option<String> {
+        self.lock()
+            .clients
+            .iter()
+            .find(|c| c.id == id)
+            .and_then(|c| c.ntfy_topic.clone())
+    }
+
+    /// Turn a client's notifications on (with a new topic) or off. Answers
+    /// with its topic, or `None` once they're off; an error if there's no
+    /// such client.
+    pub fn set_notifications(&self, id: &str, on: bool) -> anyhow::Result<Option<String>> {
+        let mut record = self.lock();
+        let mut next = record.clone();
+        let Some(client) = next.clients.iter_mut().find(|c| c.id == id) else {
+            bail!("no such client");
+        };
+        match (&client.ntfy_topic, on) {
+            (Some(topic), true) => return Ok(Some(topic.clone())),
+            (None, false) => return Ok(None),
+            _ => {}
+        }
+        client.ntfy_topic = on.then(new_topic);
+        let topic = client.ntfy_topic.clone();
+        self.save(&next)?;
+        *record = next;
+        Ok(topic)
+    }
+
+    /// Each client with notifications on, and its topic.
+    pub fn ntfy_topics(&self) -> Vec<(String, String)> {
+        self.lock()
+            .clients
+            .iter()
+            .filter_map(|c| Some((c.id.clone(), c.ntfy_topic.clone()?)))
+            .collect()
     }
 
     fn watch(&self) -> watch::Receiver<u64> {
@@ -388,6 +444,52 @@ mod tests {
         clients.create("iPhone").expect("creates");
         assert_eq!(clients.authenticate("tdc_nope"), None);
         assert_eq!(clients.authenticate(""), None);
+    }
+
+    #[test]
+    fn notifications_should_get_a_topic_until_turned_off_or_revoked() {
+        let clients = clients();
+        let (phone, _) = clients.create("iPhone").expect("creates");
+        let (other, _) = clients.create("iPad").expect("creates");
+        assert_eq!(clients.ntfy_topic(&phone.id), None);
+        let topic = clients
+            .set_notifications(&phone.id, true)
+            .expect("turns on")
+            .expect("topic");
+        assert!(topic.starts_with("tuido-") && topic.len() == 30);
+        assert!(
+            topic[6..]
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        );
+        // Turning it on again keeps the topic the phone subscribed to
+        assert_eq!(
+            clients.set_notifications(&phone.id, true).expect("on"),
+            Some(topic.clone())
+        );
+        assert_eq!(clients.ntfy_topics(), vec![(phone.id.clone(), topic)]);
+        assert!(
+            clients
+                .list()
+                .iter()
+                .any(|c| c.id == phone.id && c.notifications)
+        );
+        assert!(
+            clients
+                .list()
+                .iter()
+                .any(|c| c.id == other.id && !c.notifications)
+        );
+
+        assert_eq!(
+            clients.set_notifications(&phone.id, false).expect("off"),
+            None
+        );
+        assert!(clients.ntfy_topics().is_empty());
+        clients.set_notifications(&phone.id, true).expect("on");
+        clients.revoke(&phone.id).expect("revokes");
+        assert!(clients.ntfy_topics().is_empty());
+        assert!(clients.set_notifications(&phone.id, true).is_err());
     }
 
     #[tokio::test]

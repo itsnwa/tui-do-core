@@ -15,6 +15,7 @@ mod fleet;
 mod handoff;
 mod home;
 pub(crate) mod mcp;
+mod notifications;
 mod update;
 mod workspace;
 
@@ -41,6 +42,7 @@ use crate::session::{ClientId, Event, Registry, SpawnRequest};
 use crate::workspace::shared::SharedWorkspace;
 
 pub use home::spawn_background;
+pub use notifications::spawn_notifier;
 
 pub const API_VERSION: u32 = 0;
 
@@ -68,6 +70,8 @@ pub struct AppState {
     pub linking: Arc<tokio::sync::Mutex<()>>,
     /// The app tokens this home has made, by device id.
     pub app_tokens: Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
+    /// The sessions paired clients have open, which they aren't notified about.
+    pub watching: Arc<crate::notify::Watching>,
 }
 
 impl AppState {
@@ -100,6 +104,7 @@ pub fn router(state: AppState) -> Router {
         .merge(home::routes())
         .merge(handoff::routes())
         .merge(update::routes())
+        .merge(notifications::routes())
         .merge(mcp::routes(&state))
         .route_layer(middleware::from_fn_with_state(state.clone(), guard_writes))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
@@ -391,9 +396,13 @@ async fn attach(
         return not_found();
     }
     let revocation = Revocation::new(&state.clients, caller.as_deref());
+    let watch = state.watch(caller.as_deref(), &state.config.get().device_id, &id);
     let size = query.cols.zip(query.rows);
     let paced = matches!(query.paced.as_deref(), Some("1" | "true"));
-    ws.on_upgrade(move |socket| attach_loop(socket, state.registry, id, size, paced, revocation))
+    ws.on_upgrade(move |socket| async move {
+        attach_loop(socket, state.registry, id, size, paced, revocation).await;
+        drop(watch);
+    })
 }
 
 async fn send_snapshot(
