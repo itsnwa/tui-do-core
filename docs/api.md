@@ -107,12 +107,14 @@ Client → server (one connection keeps keystrokes for all sessions in order):
 { "type": "output", "id": "my-task", "data": "text with VT sequences" }
 { "type": "sessionExited", "id": "my-task", "exitCode": 0 }
 { "type": "sessionRemoved", "id": "my-task" }
-{ "type": "agentState", "id": "my-task", "state": "waiting" }
+{ "type": "agentState", "id": "my-task", "state": "waiting", "detail": "Which approach?", "inputAgoMs": 95000 }
 { "type": "sessionQuiet", "id": "my-task" }
 { "type": "sessionResized", "id": "my-task", "cols": 120, "rows": 40 }
 ```
 
 `output` data is always valid UTF-8; a character split across PTY reads is held back until it's complete. `sessionQuiet` fires when a session has produced no output for 2 seconds. `sessionResized` fires when the PTY takes another size (see [Several clients on one session](#several-clients-on-one-session)).
+
+An `agentState` that's `waiting` can carry `detail`, one line on what the agent waits for (a question it asked, a permission it needs, or the last line of its reply), and `inputAgoMs`, the time since someone last typed in the session. Both are left out when unknown, and cores before 0.3.10 never send them.
 
 ## Notes for clients
 
@@ -242,11 +244,25 @@ A client on another device (a phone, say) gets its own token from the home core 
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/clients` | | `[{ id, name, createdAt, lastSeenAt }]` (`lastSeenAt` is updated at most every 10 minutes) |
+| `GET` | `/v0/clients` | | `[{ id, name, createdAt, lastSeenAt, manager, notifications }]` (`lastSeenAt` is updated at most every 10 minutes; `notifications`: whether it gets [notifications](#notifications)) |
 | `POST` | `/v0/clients` | `{ name }` | `{ client, token }`. The token (`tdc_…`) is only returned here. |
 | `DELETE` | `/v0/clients/{id}` | | 204. The token stops working, and the client's open WebSockets close. |
 
 The TUI-DO Mac app pairs a phone with a QR code holding a link: `tuido://pair?address=<home core's Tailscale URL>&token=<client token>&name=<home core's name>`. Paired clients move with the home, so a client token keeps working after a move; the client finds the new address as described in [Finding the home](#finding-the-home).
+
+## Notifications
+
+The home core can tell a paired client when an agent on any machine waits for input, through [ntfy](https://ntfy.sh). Each client that turns them on gets its own random topic (on a public server, the topic is the password), stored with the client, so revoking the client stops them. The client subscribes to that topic in the ntfy app.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/notifications` | | `{ enabled, server, topic }` for the calling client (`topic` is `null` while off). Only a paired client's token can use these. |
+| `PUT` | `/v0/notifications` | `{ enabled }` | the same. Turning them on keeps an existing topic; turning them off drops it. |
+| `POST` | `/v0/notifications/test` | | 204 once a test notification is sent, 502 if ntfy refused it. |
+
+A session is notified when it turns `waiting` and is still waiting 15 seconds later, once each time it waits. It's skipped when someone typed in it during the 30 seconds before it started waiting, and for a client that has it open (`/attach`, directly or through `/v0/devices/{id}/…`). The notification's title is the task's title (or the session id) and the machine, its message the `detail` from `agentState`, and tapping it opens `tuido://session/<device id>/<session id>`.
+
+The server is `https://ntfy.sh` unless `ntfyServer` is set in the home core's `config.json`. A self-hosted server needs `upstream-base-url` set for its notifications to reach iPhones. The core sends them with `curl`.
 
 # Coding agents
 

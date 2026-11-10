@@ -396,7 +396,12 @@ async fn proxy(
             encode_pairs(&query)
         );
         let revocation = Revocation::new(&state.clients, caller.as_deref());
-        return ws.on_upgrade(move |socket| bridge(socket, url, revocation));
+        let watch = attached_session(&rest)
+            .and_then(|session| state.watch(caller.as_deref(), &device.id, session));
+        return ws.on_upgrade(move |socket| async move {
+            bridge(socket, url, revocation).await;
+            drop(watch);
+        });
     }
 
     let method = req.method().clone();
@@ -491,6 +496,13 @@ fn encode_pairs(pairs: &[(String, String)]) -> String {
         .join("&")
 }
 
+/// The session a forwarded `sessions/{id}/attach` opens.
+fn attached_session(rest: &str) -> Option<&str> {
+    rest.strip_prefix("sessions/")?
+        .strip_suffix("/attach")
+        .filter(|id| !id.is_empty() && !id.contains('/'))
+}
+
 /// Pass WebSocket messages both ways between a client and a device, until
 /// either side closes or the client is revoked.
 async fn bridge(client: WebSocket, url: String, mut revocation: Revocation) {
@@ -544,6 +556,15 @@ async fn bridge(client: WebSocket, url: String, mut revocation: Revocation) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_session_attach_should_count_as_opening_it() {
+        assert_eq!(attached_session("sessions/26-962/attach"), Some("26-962"));
+        assert_eq!(attached_session("sessions/26-962/snapshot"), None);
+        assert_eq!(attached_session("sessions//attach"), None);
+        assert_eq!(attached_session("sessions/a/b/attach"), None);
+        assert_eq!(attached_session("events"), None);
+    }
 
     #[test]
     fn query_should_round_trip() {

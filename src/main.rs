@@ -134,6 +134,8 @@ fn codex_notify(payload: &str) -> anyhow::Result<()> {
     let task = std::env::var(hooks::SESSION_ENV).context("not in a TUI-DO session")?;
     TaskSessions::new(core_dir()?.join(CODEX_SESSIONS_DIR)).set(&task, &link)?;
     if let Some(state_file) = std::env::var_os(hooks::STATE_FILE_ENV) {
+        let state_file = PathBuf::from(state_file);
+        std::fs::write(hooks::detail_file(&state_file), payload)?;
         std::fs::write(state_file, "waiting")?;
     }
     Ok(())
@@ -239,9 +241,11 @@ async fn serve() -> anyhow::Result<()> {
         moving: Arc::default(),
         linking: Arc::default(),
         app_tokens: Arc::default(),
+        watching: Arc::default(),
     };
     // Devices are linked and given the workspace as their relays come online
     api::spawn_background(state.clone());
+    api::spawn_notifier(state.clone());
     for device in fleet.devices() {
         relays.start(device);
     }

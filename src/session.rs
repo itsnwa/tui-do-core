@@ -87,9 +87,16 @@ pub enum Event {
     SessionRemoved {
         id: Arc<str>,
     },
+    /// `detail` (what it waits for) and `inputAgoMs` (since someone last
+    /// typed in it) come with `waiting`, for notifications.
+    #[serde(rename_all = "camelCase")]
     AgentState {
         id: Arc<str>,
         state: AgentState,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        input_ago_ms: Option<u64>,
     },
     /// The session produced no output for a while (e.g. an agent finished a reply).
     SessionQuiet {
@@ -527,6 +534,7 @@ impl Registry {
             state_mtime: None,
             last_output: Instant::now(),
             last_input: Instant::now() - ECHO_WINDOW,
+            typed_at: None,
             quiet_sent: true,
             utf8: Utf8Stream::default(),
             sizes: Vec::new(),
@@ -745,6 +753,8 @@ struct Actor {
     state_mtime: Option<SystemTime>,
     last_output: Instant,
     last_input: Instant,
+    /// When someone last typed (not a terminal's answer to a query).
+    typed_at: Option<Instant>,
     quiet_sent: bool,
     utf8: Utf8Stream,
     /// Each client's last requested size, the client in use last.
@@ -849,12 +859,13 @@ impl Actor {
             Msg::Input(data, client) => {
                 // The client typing gets its size back before its keys arrive
                 // (not for its terminal's answers to queries)
-                if is_typing(&data)
-                    && let Some(at) = self.sizes.iter().position(|s| s.0 == client)
-                {
-                    let size = self.sizes.remove(at);
-                    self.sizes.push(size);
-                    self.apply_size(term, size.1, size.2);
+                if is_typing(&data) {
+                    self.typed_at = Some(Instant::now());
+                    if let Some(at) = self.sizes.iter().position(|s| s.0 == client) {
+                        let size = self.sizes.remove(at);
+                        self.sizes.push(size);
+                        self.apply_size(term, size.1, size.2);
+                    }
                 }
                 self.last_input = Instant::now();
                 if std::mem::take(&mut self.turn_ended) {
@@ -988,9 +999,21 @@ impl Actor {
         }
         info.agent_state = Some(state);
         drop(info);
+        let waiting = state == AgentState::Waiting;
+        let detail = self
+            .state_file
+            .as_deref()
+            .filter(|_| waiting)
+            .and_then(hooks::read_detail);
+        let input_ago_ms = self
+            .typed_at
+            .filter(|_| waiting)
+            .map(|at| u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX));
         let _ = self.events.send(Event::AgentState {
             id: Arc::clone(&self.id),
             state,
+            detail,
+            input_ago_ms,
         });
     }
 
@@ -1005,6 +1028,7 @@ impl Actor {
         }
         if let Some(path) = &self.state_file {
             let _ = std::fs::remove_file(path);
+            let _ = std::fs::remove_file(hooks::detail_file(path));
         }
         let _ = self.holder.send(ToHolder::Bye);
         tracing::info!(id = %self.id, ?code, "session exited");
