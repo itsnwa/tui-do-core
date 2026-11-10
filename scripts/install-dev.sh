@@ -13,6 +13,15 @@ set -eu
 cd "$(dirname "$0")/.."
 cargo build --release
 
+# Sign like the releases, so macOS keeps its privacy grants (Local Network,
+# Files & Folders) across builds instead of asking again for each one
+if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
+  codesign --force --timestamp=none --identifier dev.tui-do.core \
+    --sign "Developer ID Application" target/release/tui-do-core
+else
+  echo "No Developer ID Application identity; macOS will ask for permissions again" >&2
+fi
+
 bin_dir="$HOME/.tui-do/bin"
 core_dir="$HOME/.tui-do/core"
 version_dir="$HOME/.tui-do/versions/dev"
