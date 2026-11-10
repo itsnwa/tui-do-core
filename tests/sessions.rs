@@ -708,3 +708,53 @@ async fn output_first_should_send_only_a_session_s_first_output() {
     }
     assert_eq!(outputs, 1);
 }
+
+#[tokio::test]
+async fn a_waiting_agent_should_say_what_it_asks_and_when_someone_answers() {
+    use tui_do_core::session::{AgentState, Event};
+    let dir = TestDir::new();
+    let registry = dir.registry();
+    let mut events = registry.subscribe();
+    let mut req = request(
+        "agent",
+        &[
+            "/bin/sh",
+            "-c",
+            // What Claude's waiting hooks do: save their input, then report
+            r#"printf '{"message":"Which one?"}' > "$TUI_DO_CLAUDE_STATE_FILE.json"; printf waiting > "$TUI_DO_CLAUDE_STATE_FILE"; sleep 10"#,
+        ],
+    );
+    req.agent = Some("claude".into());
+    registry.spawn(req).expect("spawns");
+
+    let mut waiting = None;
+    let mut typed = 0;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, events.recv()).await {
+        match event {
+            Event::AgentState {
+                state: AgentState::Waiting,
+                detail,
+                ..
+            } => {
+                waiting = Some(detail);
+                // Typing an answer, twice: said once
+                registry.input("agent", b"a".to_vec());
+                registry.input("agent", b"b".to_vec());
+            }
+            Event::SessionTyped { .. } => typed += 1,
+            _ => {}
+        }
+        if typed > 0 {
+            // Give a second one the chance to show up
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            while let Ok(event) = events.try_recv() {
+                typed += usize::from(matches!(event, Event::SessionTyped { .. }));
+            }
+            break;
+        }
+    }
+    registry.kill_all();
+    assert_eq!(waiting, Some(Some("Which one?".to_string())));
+    assert_eq!(typed, 1);
+}

@@ -107,14 +107,15 @@ Client → server (one connection keeps keystrokes for all sessions in order):
 { "type": "output", "id": "my-task", "data": "text with VT sequences" }
 { "type": "sessionExited", "id": "my-task", "exitCode": 0 }
 { "type": "sessionRemoved", "id": "my-task" }
-{ "type": "agentState", "id": "my-task", "state": "waiting", "detail": "Which approach?", "inputAgoMs": 95000 }
+{ "type": "agentState", "id": "my-task", "state": "waiting", "detail": "Which approach?" }
+{ "type": "sessionTyped", "id": "my-task" }
 { "type": "sessionQuiet", "id": "my-task" }
 { "type": "sessionResized", "id": "my-task", "cols": 120, "rows": 40 }
 ```
 
 `output` data is always valid UTF-8; a character split across PTY reads is held back until it's complete. `sessionQuiet` fires when a session has produced no output for 2 seconds. `sessionResized` fires when the PTY takes another size (see [Several clients on one session](#several-clients-on-one-session)).
 
-An `agentState` that's `waiting` can carry `detail`, one line on what the agent waits for (a question it asked, a permission it needs, or the last line of its reply), and `inputAgoMs`, the time since someone last typed in the session. Both are left out when unknown, and cores before 0.3.10 never send them.
+An `agentState` that's `waiting` can carry `detail`, one line on what the agent waits for (a question it asked, a permission it needs, or the last line of its reply); it's left out when unknown, and cores before 0.3.10 never send it. `sessionTyped` fires the first time someone types in a session after its agent started waiting (cores 0.3.12 and later).
 
 ## Notes for clients
 
@@ -260,7 +261,7 @@ The home core can tell a paired client when an agent on any machine waits for in
 | `PUT` | `/v0/notifications` | `{ enabled, deviceToken?, environment?, topic? }` | the same. Turning them on needs the APNs device token (hex), `environment` (`development` for builds signed for development, else `production`) and `topic` (the app's bundle id). Sending them again replaces the token. |
 | `POST` | `/v0/notifications/test` | | 204 once a test notification is sent; 409 without an APNs key; 502 with APNs's reason if it refused. |
 
-A session is notified when it turns `waiting` and is still waiting 15 seconds later, once each time it waits. It's skipped when someone typed in it during the 30 seconds before it started waiting, and for a client that has it open (`/attach`, directly or through `/v0/devices/{id}/…`). The notification's title is the task's title (or the session id) and the machine, its body the `detail` from `agentState`. Its payload has `link`: `tuido://session/<device id>/<session id>`. If APNs answers that a device token is no longer registered, the client's notifications turn off.
+A session is notified when it turns `waiting` and is still waiting 15 seconds later, once each time it waits. It's skipped once someone types in it (`sessionTyped`: they're answering), and for a client that has it open (`/attach`, directly or through `/v0/devices/{id}/…`). The notification's title is the task's title (or the session id) and the machine, its body the `detail` from `agentState`. Its payload has `link`: `tuido://session/<device id>/<session id>`. If APNs answers that a device token is no longer registered, the client's notifications turn off.
 
 The APNs key is an auth key (`.p8`) from the Apple Developer portal with APNs enabled, from the team the app is signed by. Give it to the home core with `tui-do-core apns-key <AuthKey_KEYID.p8> <team id>`, which keeps it in `apns.json` in the core's folder (`0600`). A new home gets a copy when the home moves. The core sends with `curl` over HTTP/2.
 
