@@ -24,7 +24,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Extension, Path, Query, Request, State};
+use axum::extract::{DefaultBodyLimit, Extension, Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -45,6 +45,10 @@ pub use home::spawn_background;
 pub use notifications::spawn_notifier;
 
 pub const API_VERSION: u32 = 0;
+
+/// Largest file sent to a session: about 24 MB, as base64 in JSON (what the
+/// device proxy passes on).
+const MAX_UPLOAD: usize = 32 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -95,6 +99,10 @@ pub fn router(state: AppState) -> Router {
         .route("/v0/sessions/{id}/resize", post(resize))
         .route("/v0/sessions/{id}/snapshot", get(snapshot))
         .route("/v0/sessions/{id}/attach", get(attach))
+        .route(
+            "/v0/sessions/{id}/files",
+            post(upload).layer(DefaultBodyLimit::max(MAX_UPLOAD)),
+        )
         .route("/v0/events", get(events))
         .route("/v0/device", get(get_device).patch(update_device))
         .merge(workspace::routes())
@@ -298,9 +306,44 @@ async fn spawn_session(State(state): State<AppState>, Json(req): Json<SpawnReque
 
 async fn remove_session(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     if state.registry.remove(&id) {
+        crate::uploads::remove(&state.core_dir.join("uploads"), &id);
         StatusCode::NO_CONTENT.into_response()
     } else {
         not_found()
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UploadBody {
+    file_name: String,
+    data_base64: String,
+}
+
+/// Save a file on this machine for a session's program to read, such as a
+/// photo from the phone; answers with its path.
+async fn upload(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<UploadBody>,
+) -> Response {
+    use base64::Engine;
+    if state.registry.info(&id).is_none() {
+        return not_found();
+    }
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&body.data_base64) else {
+        return error(StatusCode::BAD_REQUEST, "dataBase64 isn't valid base64");
+    };
+    let dir = state.core_dir.join("uploads");
+    let saved = tokio::task::spawn_blocking(move || {
+        crate::uploads::prune(&dir, crate::uploads::KEEP);
+        crate::uploads::save(&dir, &id, &body.file_name, &bytes)
+    })
+    .await;
+    match saved {
+        Ok(Ok(path)) => Json(json!({ "path": path })).into_response(),
+        Ok(Err(err)) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{err:#}")),
+        Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
     }
 }
 

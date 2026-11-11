@@ -347,6 +347,42 @@ impl Drop for Core {
     }
 }
 
+#[tokio::test]
+async fn a_file_sent_to_a_session_should_be_saved_until_it_s_removed() {
+    use base64::Engine;
+    let dir = TestDir::new();
+    let core = Core::start(&dir).await;
+    core.spawn("answer", "sleep 30").await;
+    let body = serde_json::json!({
+        "fileName": "Photo 1.png",
+        "dataBase64": base64::engine::general_purpose::STANDARD.encode(b"png"),
+    });
+    let saved = core.post("/v0/sessions/answer/files", body.clone()).await;
+    let path = PathBuf::from(saved["path"].as_str().expect("path"));
+    assert_eq!(path, core.dir.join("uploads/answer/Photo-1.png"));
+    assert_eq!(std::fs::read(&path).expect("saved"), b"png");
+
+    let unknown = core
+        .http
+        .post(format!("{}/v0/sessions/nobody/files", core.endpoint))
+        .bearer_auth(&core.token)
+        .json(&body)
+        .send()
+        .await
+        .expect("post");
+    assert_eq!(unknown.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let removed = core
+        .http
+        .delete(format!("{}/v0/sessions/answer", core.endpoint))
+        .bearer_auth(&core.token)
+        .send()
+        .await
+        .expect("delete");
+    assert!(removed.status().is_success());
+    assert!(!path.exists());
+}
+
 /// An install from before versions sat side by side has a plain file where
 /// the current link goes, so its first start replaces the file it's running
 /// from. On Linux, that leaves the core with a deleted path as its own.
