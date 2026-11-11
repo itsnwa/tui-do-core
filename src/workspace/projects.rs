@@ -1,5 +1,6 @@
-//! Projects: `projects/<slug>.md`, each pointing at a directory on the home
-//! machine. A task runs on another machine with a copy of it (see handoff).
+//! Projects: `projects/<slug>.md`, each pointing at a directory on the code
+//! machine and/or a git remote. A task runs on another machine with a copy of
+//! it, from the code machine or the remote (see handoff).
 
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +9,14 @@ use super::tasks::text_or;
 use super::{Error, Result, Workspace, dates, slug};
 use crate::format::{Map, Value};
 
-const PROJECT_KEYS: [&str; 5] = ["title", "muted", "archived", "created", "directory"];
+const PROJECT_KEYS: [&str; 6] = [
+    "title",
+    "muted",
+    "archived",
+    "created",
+    "directory",
+    "remote",
+];
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Project {
@@ -18,6 +26,8 @@ pub struct Project {
     pub archived: bool,
     pub created: String,
     pub directory: String,
+    /// The git remote the code can be fetched from (e.g. its GitHub URL).
+    pub remote: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
 }
@@ -27,6 +37,7 @@ pub struct Project {
 pub struct CreateProject {
     pub title: String,
     pub directory: Option<String>,
+    pub remote: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -36,6 +47,7 @@ pub struct UpdateProject {
     pub muted: Option<bool>,
     pub archived: Option<bool>,
     pub directory: Option<String>,
+    pub remote: Option<String>,
 }
 
 fn summarize(slug: &str, data: &Map, content: Option<String>) -> Project {
@@ -46,6 +58,7 @@ fn summarize(slug: &str, data: &Map, content: Option<String>) -> Project {
         archived: matches!(data.get("archived"), Some(Value::Bool(true))),
         created: text_or(data.get("created"), ""),
         directory: text_or(data.get("directory"), ""),
+        remote: text_or(data.get("remote"), ""),
         content,
     }
 }
@@ -92,6 +105,10 @@ impl Workspace {
         data.insert("muted".into(), false.into());
         data.insert("created".into(), dates::now_iso().into());
         data.insert("directory".into(), req.directory.unwrap_or_default().into());
+        let remote = req.remote.unwrap_or_default();
+        if !remote.trim().is_empty() {
+            data.insert("remote".into(), remote.trim().into());
+        }
         self.store.write(Dir::Projects, &slug, &data, "")?;
         Ok(summarize(&slug, &data, None))
     }
@@ -118,6 +135,15 @@ impl Workspace {
             .directory
             .unwrap_or_else(|| text_or(data.get("directory"), ""));
         data.insert("directory".into(), directory.into());
+        match req.remote.as_deref().map(str::trim) {
+            Some("") => {
+                data.shift_remove("remote");
+            }
+            Some(remote) => {
+                data.insert("remote".into(), remote.into());
+            }
+            None => {}
+        }
         let data = ordered(data);
 
         let new_slug = match req.title.as_deref().map(slug::slugify) {
@@ -179,7 +205,7 @@ mod tests {
     fn project(ws: &Workspace, title: &str) -> Project {
         ws.create_project(CreateProject {
             title: title.into(),
-            directory: None,
+            ..CreateProject::default()
         })
         .expect("project")
     }

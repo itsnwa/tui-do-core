@@ -106,6 +106,9 @@ struct StartAgent {
     /// Take the project's uncommitted changes along to another machine.
     #[serde(default)]
     include_uncommitted: bool,
+    /// Start from the project's git remote, not the code machine's folder.
+    #[serde(default)]
+    from_remote: bool,
     /// Codex only: continue the task's session on that machine, with its own
     /// settings. Without one, a new session starts.
     #[serde(default)]
@@ -267,13 +270,9 @@ async fn start(
     };
     // Another core's sessions are reached over HTTP; this core's directly
     let device = (target.id != own_id).then(|| target.clone());
-    let in_place = target.id == code.id();
-    if in_place && directory.is_empty() {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "the task's project has no folder to work in",
-        );
-    }
+    // On the code machine the task works in the project's folder, unless it
+    // has none (only a remote) or should start from the remote
+    let in_place = target.id == code.id() && !directory.is_empty() && !req.from_remote;
 
     if let Some(running) = running_session(&state, device.as_ref(), &task.slug).await {
         return Json(json!({
@@ -297,6 +296,7 @@ async fn start(
                 &target,
                 &code,
                 req.include_uncommitted,
+                req.from_remote,
             )
             .await
         {
@@ -514,6 +514,7 @@ mod tests {
             permission_mode: mode.map(str::to_string),
             yolo,
             include_uncommitted: false,
+            from_remote: false,
             resume: false,
             worktree: None,
             worktree_path: None,

@@ -11,8 +11,14 @@
 //! it into the project as that branch. The home core runs all of it; when
 //! the code machine is another core, it asks that core for the snapshot and
 //! to land the branch.
+//!
+//! A project with a git remote (its GitHub URL) can start without the code
+//! machine: when it has no folder, the code machine isn't reachable, or it's
+//! asked to. The device fetches the remote's default branch instead, and
+//! completing the task pushes the branch there and opens a pull request.
 
 pub mod git;
+pub mod github;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -23,6 +29,9 @@ use tokio::sync::broadcast;
 
 use crate::fleet::{Device, Fleet};
 use crate::session::{Event, expand_home};
+use crate::workspace::projects::UpdateProject;
+use crate::workspace::shared::SharedWorkspace;
+use crate::workspace::tasks::UpdateTask;
 use crate::workspace::{Workspace, slug};
 
 /// What the home core remembers about a task it handed off.
@@ -43,6 +52,13 @@ pub struct Record {
     /// The machine `repo` is on; empty for the home that wrote the record.
     #[serde(default)]
     pub source: String,
+    /// The git remote the task started from instead of the code machine; its
+    /// work goes back there as a pull request.
+    #[serde(default)]
+    pub remote: String,
+    /// The remote's branch it started from, the pull request's base.
+    #[serde(default)]
+    pub base_branch: String,
 }
 
 /// A snapshot made on the code machine, as it answers the home core.
@@ -53,6 +69,27 @@ pub struct RemoteSnapshot {
     pub commit: String,
     pub base: String,
     pub dirty: bool,
+    /// The repo's `origin`, if it has one.
+    #[serde(default)]
+    pub remote: String,
+}
+
+/// What the home core asks a device to fetch from a project's remote.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchRequest {
+    pub remote: String,
+    pub branch: String,
+}
+
+/// What a device fetched: the task's folder, and the commit and branch it
+/// started from.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fetched {
+    pub path: String,
+    pub commit: String,
+    pub base_branch: String,
 }
 
 /// What the home core asks the code machine to snapshot.
@@ -111,6 +148,14 @@ impl SnapshotParams {
     }
 }
 
+/// A remote URL that's safe to hand to git (not an option, one line).
+fn valid_remote(remote: &str) -> anyhow::Result<()> {
+    if remote.is_empty() || remote.starts_with('-') || remote.contains(char::is_whitespace) {
+        bail!("invalid git remote {remote:?}");
+    }
+    Ok(())
+}
+
 fn valid_branch(branch: &str) -> anyhow::Result<()> {
     let ok = branch.starts_with("tui-do/")
         && !branch.contains("..")
@@ -133,11 +178,18 @@ pub fn completed_task(answer: &serde_json::Value) -> Option<&str> {
     answer["task"]["slug"].as_str().filter(|_| completed)
 }
 
+/// The "## Completion Summary" at the end of a plan, if it has one.
+fn completion_summary(plan: &str) -> Option<String> {
+    let (_, summary) = plan.rsplit_once("## Completion Summary")?;
+    Some(summary.trim().to_string()).filter(|s| !s.is_empty())
+}
+
 /// The response header that carries a code machine's `RemoteSnapshot`.
 pub const SNAPSHOT_HEADER: &str = "x-tui-do-snapshot";
 
 pub struct Handoffs {
     fleet: Arc<Fleet>,
+    workspace: Arc<SharedWorkspace>,
     /// This core as a device (its loopback address and own token), for tasks
     /// that run on the home itself.
     own: Device,
@@ -151,6 +203,7 @@ pub struct Handoffs {
 impl Handoffs {
     pub fn new(
         fleet: Arc<Fleet>,
+        workspace: Arc<SharedWorkspace>,
         own: Device,
         events: broadcast::Sender<Event>,
         core_dir: &Path,
@@ -160,6 +213,7 @@ impl Handoffs {
             .map_or_else(|| core_dir.join("work"), |p| p.join("work"));
         Self {
             fleet,
+            workspace,
             own,
             events,
             records: core_dir.join("handoffs"),
@@ -253,6 +307,65 @@ impl Handoffs {
         Ok(worktree)
     }
 
+    /// Fetch a project from its remote and check the task out in its own
+    /// worktree, as [`Self::receive`] does with a bundle.
+    pub fn fetch(&self, project: &str, task: &str, req: &FetchRequest) -> anyhow::Result<Fetched> {
+        slug::validate(project)?;
+        slug::validate(task)?;
+        valid_remote(&req.remote)?;
+        valid_branch(&req.branch)?;
+        let cache = self.cache(project);
+        let worktree = self.worktree(project, task);
+        let (commit, base_branch) =
+            git::fetch(&cache, &req.remote, &format!("refs/tui-do/incoming/{task}"))?;
+        let snapshot = git::Snapshot {
+            repo: PathBuf::new(),
+            base: commit.clone(),
+            commit: commit.clone(),
+            dirty: false,
+        };
+        git::receive(
+            &cache,
+            &worktree,
+            &format!("refs/tui-do/tasks/{task}"),
+            &req.branch,
+            &snapshot,
+            None,
+        )?;
+        Ok(Fetched {
+            path: worktree.to_string_lossy().into_owned(),
+            commit,
+            base_branch,
+        })
+    }
+
+    /// Push a task's branch to the remote it was fetched from. Whether there
+    /// was anything to push.
+    pub fn publish(
+        &self,
+        project: &str,
+        task: &str,
+        params: &SnapshotParams,
+        remote: &str,
+    ) -> anyhow::Result<bool> {
+        slug::validate(project)?;
+        slug::validate(task)?;
+        params.validate()?;
+        valid_remote(remote)?;
+        git::publish(
+            &self.cache(project),
+            &self.worktree(project, task),
+            &[
+                &format!("refs/tui-do/tasks/{task}"),
+                &format!("refs/tui-do/incoming/{task}"),
+            ],
+            &params.branch,
+            &params.snapshot(PathBuf::new()),
+            &params.title,
+            remote,
+        )
+    }
+
     /// Code machine: snapshot a project for the home core, and bundle what
     /// the device it's going to lacks.
     pub fn snapshot_here(
@@ -271,6 +384,7 @@ impl Handoffs {
         let bundle = git::bundle(&snapshot.repo, &handoff_ref, &req.known)?;
         Ok((
             RemoteSnapshot {
+                remote: git::origin(&snapshot.repo).unwrap_or_default(),
                 repo: snapshot.repo,
                 commit: snapshot.commit,
                 base: snapshot.base,
@@ -321,7 +435,9 @@ impl Handoffs {
     /// Hand a task's project from the code machine to `device` and return
     /// its working folder there (and the branch). A task that's already there
     /// keeps its copy (and the work in it). On the code machine itself the
-    /// task works in the project's folder, with no branch.
+    /// task works in the project's folder, with no branch. The project comes
+    /// from its git remote instead when `from_remote` asks for it, when it
+    /// has no folder, or when the code machine can't be reached.
     pub async fn start(
         &self,
         workspace: Arc<Workspace>,
@@ -329,6 +445,7 @@ impl Handoffs {
         device: &Device,
         code: &CodeMachine,
         include_uncommitted: bool,
+        from_remote: bool,
     ) -> anyhow::Result<(String, String)> {
         let ws = Arc::clone(&workspace);
         let slug_owned = task_slug.to_string();
@@ -347,10 +464,15 @@ impl Handoffs {
         {
             return Ok((record.path, record.branch));
         }
-        if project.directory.is_empty() {
-            bail!("the project {} has no folder", project.title);
+        if project.directory.is_empty() && project.remote.is_empty() {
+            bail!("the project {} has no folder or git remote", project.title);
         }
-        if device.id == code.id() {
+        if from_remote && project.remote.is_empty() {
+            bail!("the project {} has no git remote", project.title);
+        }
+        let from_remote = !project.remote.is_empty()
+            && (from_remote || project.directory.is_empty() || !self.reachable(code).await);
+        if !from_remote && device.id == code.id() {
             return Ok((project.directory, String::new()));
         }
         let branch = format!(
@@ -362,6 +484,27 @@ impl Handoffs {
             }
         );
         valid_branch(&branch)?;
+        if from_remote {
+            self.emit(
+                task_slug,
+                "starting",
+                Some(&branch),
+                Some(format!("Fetching {} on {}", project.title, device.name)),
+            );
+            let (path, record) = self
+                .start_from_remote(&project.slug, &project.remote, task_slug, &branch, device)
+                .await?;
+            self.save_record(
+                task_slug,
+                &Record {
+                    title: task.task.title,
+                    source: code.id().to_string(),
+                    ..record
+                },
+            )?;
+            self.emit(task_slug, "started", Some(&branch), None);
+            return Ok((path, branch));
+        }
         self.emit(
             task_slug,
             "starting",
@@ -399,6 +542,20 @@ impl Handoffs {
                     .await?
             }
         };
+        if project.remote.is_empty() && !snapshot.remote.is_empty() {
+            // Learn the project's remote, for when the code machine is away
+            let (slug, remote) = (project.slug.clone(), snapshot.remote.clone());
+            let _ = tokio::task::spawn_blocking(move || {
+                workspace.update_project(
+                    &slug,
+                    UpdateProject {
+                        remote: Some(remote),
+                        ..UpdateProject::default()
+                    },
+                )
+            })
+            .await;
+        }
 
         let params = SnapshotParams {
             branch: branch.clone(),
@@ -429,25 +586,94 @@ impl Handoffs {
         }
         let received: Received = res.json().await?;
 
-        let record = Record {
-            device: device.id.clone(),
-            project: project.slug.clone(),
-            repo: snapshot.repo.clone(),
-            branch: branch.clone(),
-            commit: snapshot.commit,
-            base: snapshot.base,
-            dirty: snapshot.dirty,
-            title: task.task.title,
-            path: received.path.clone(),
-            source: code.id().to_string(),
-        };
-        std::fs::create_dir_all(&self.records)?;
-        std::fs::write(
-            self.record_path(task_slug),
-            serde_json::to_string_pretty(&record)? + "\n",
+        self.save_record(
+            task_slug,
+            &Record {
+                device: device.id.clone(),
+                project: project.slug.clone(),
+                repo: snapshot.repo.clone(),
+                branch: branch.clone(),
+                commit: snapshot.commit,
+                base: snapshot.base,
+                dirty: snapshot.dirty,
+                title: task.task.title,
+                path: received.path.clone(),
+                source: code.id().to_string(),
+                remote: String::new(),
+                base_branch: String::new(),
+            },
         )?;
         self.emit(task_slug, "started", Some(&branch), None);
         Ok((received.path, branch))
+    }
+
+    fn save_record(&self, task_slug: &str, record: &Record) -> anyhow::Result<()> {
+        std::fs::create_dir_all(&self.records)?;
+        std::fs::write(
+            self.record_path(task_slug),
+            serde_json::to_string_pretty(record)? + "\n",
+        )?;
+        Ok(())
+    }
+
+    /// Whether the code machine answers.
+    async fn reachable(&self, code: &CodeMachine) -> bool {
+        match code {
+            CodeMachine::Here(_) => true,
+            CodeMachine::Device(device) => self
+                .fleet
+                .identify(&device.address, &device.token)
+                .await
+                .is_ok(),
+        }
+    }
+
+    /// Have `device` fetch the project from its remote. Its folder there, and
+    /// the record of the handoff (without the task's title and source).
+    async fn start_from_remote(
+        &self,
+        project: &str,
+        remote: &str,
+        task_slug: &str,
+        branch: &str,
+        device: &Device,
+    ) -> anyhow::Result<(String, Record)> {
+        let res = self
+            .fleet
+            .client()
+            .post(format!(
+                "{}/v0/handoff/{project}/{task_slug}/fetch",
+                device.address
+            ))
+            .bearer_auth(&device.token)
+            .json(&FetchRequest {
+                remote: remote.to_string(),
+                branch: branch.to_string(),
+            })
+            .timeout(std::time::Duration::from_secs(600))
+            .send()
+            .await
+            .with_context(|| format!("{} isn't reachable", device.name))?;
+        if !res.status().is_success() {
+            let body = res.text().await.unwrap_or_default();
+            bail!("{} couldn't fetch the project: {body}", device.name);
+        }
+        let fetched: Fetched = res.json().await?;
+        let record = Record {
+            device: device.id.clone(),
+            project: project.to_string(),
+            repo: PathBuf::new(),
+            branch: branch.to_string(),
+            commit: fetched.commit.clone(),
+            base: fetched.commit,
+            dirty: false,
+            title: String::new(),
+            path: fetched.path.clone(),
+            source: String::new(),
+            remote: remote.to_string(),
+            base_branch: fetched.base_branch,
+        };
+        Ok((fetched.path, record))
     }
 
     /// A task was completed: if it ran on another machine, bring its work
@@ -460,20 +686,30 @@ impl Handoffs {
         tokio::spawn(async move { handoffs.bring_back(&task).await });
     }
 
-    /// The task was completed: bring its work back from the device it ran on.
+    /// The task was completed: bring its work back from the device it ran on,
+    /// to the code machine or, if it started from the remote, as a pull
+    /// request there.
     async fn bring_back(&self, task_slug: &str) {
         let Some(record) = self.record(task_slug) else {
             return;
         };
-        match self.collect_from_device(task_slug, &record).await {
-            Ok(landed) => {
+        let returned = if record.remote.is_empty() {
+            self.collect_from_device(task_slug, &record)
+                .await
+                .map(|landed| {
+                    if landed {
+                        format!("The work is on branch {}", record.branch)
+                    } else {
+                        "Nothing changed on the other machine".to_string()
+                    }
+                })
+        } else {
+            self.publish_from_device(task_slug, &record).await
+        };
+        match returned {
+            Ok(message) => {
                 let _ = std::fs::remove_file(self.record_path(task_slug));
-                let message = if landed {
-                    format!("The work is on branch {}", record.branch)
-                } else {
-                    "Nothing changed on the other machine".to_string()
-                };
-                tracing::info!(task = task_slug, branch = %record.branch, landed, "handoff returned");
+                tracing::info!(task = task_slug, branch = %record.branch, %message, "handoff returned");
                 self.emit(task_slug, "returned", Some(&record.branch), Some(message));
             }
             Err(err) => {
@@ -488,6 +724,121 @@ impl Handoffs {
         }
     }
 
+    /// The device the record's task ran on.
+    fn record_device(&self, record: &Record) -> anyhow::Result<Device> {
+        if record.device == self.own.id {
+            Ok(self.own.clone())
+        } else {
+            self.fleet
+                .device(&record.device)
+                .context("the machine is no longer in the fleet")
+        }
+    }
+
+    /// Have the device push the task's branch to the remote, and open a pull
+    /// request for it. What happened, for the app.
+    async fn publish_from_device(
+        &self,
+        task_slug: &str,
+        record: &Record,
+    ) -> anyhow::Result<String> {
+        let device = self.record_device(record)?;
+        let params = SnapshotParams {
+            branch: record.branch.clone(),
+            commit: record.commit.clone(),
+            base: record.base.clone(),
+            dirty: record.dirty,
+            title: record.title.clone(),
+        };
+        let res = self
+            .fleet
+            .client()
+            .post(format!(
+                "{}/v0/handoff/{}/{task_slug}/publish",
+                device.address, record.project
+            ))
+            .bearer_auth(&device.token)
+            .query(&params)
+            .json(&serde_json::json!({ "remote": record.remote }))
+            .timeout(std::time::Duration::from_secs(600))
+            .send()
+            .await
+            .with_context(|| format!("{} isn't reachable", device.name))?;
+        if !res.status().is_success() {
+            let body = res.text().await.unwrap_or_default();
+            bail!("{} couldn't push the work: {body}", device.name);
+        }
+        #[derive(Deserialize)]
+        struct Published {
+            pushed: bool,
+        }
+        let published: Published = res.json().await?;
+        if !published.pushed {
+            return Ok("Nothing changed on the other machine".to_string());
+        }
+        let Some(repo) = git::github_repo(&record.remote) else {
+            return Ok(format!(
+                "The work is on branch {} at {}",
+                record.branch, record.remote
+            ));
+        };
+        Ok(match self.open_pr(task_slug, record, repo).await {
+            Ok(url) => format!("Opened a pull request: {url}"),
+            Err(err) => format!(
+                "The work is on branch {}, but the pull request couldn't be opened: {err:#}",
+                record.branch
+            ),
+        })
+    }
+
+    /// Open a pull request for a task's pushed branch, described by its
+    /// completion summary, and keep its URL on the task.
+    async fn open_pr(
+        &self,
+        task_slug: &str,
+        record: &Record,
+        repo: String,
+    ) -> anyhow::Result<String> {
+        let ws = self
+            .workspace
+            .current()
+            .context("the workspace isn't configured")?;
+        let (task_slug, branch, base) = (
+            task_slug.to_string(),
+            record.branch.clone(),
+            record.base_branch.clone(),
+        );
+        tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
+            let task = ws.get_task(&task_slug)?;
+            let summary = task
+                .task
+                .plan
+                .as_deref()
+                .and_then(|plan| ws.get_plan(plan).ok()?.content)
+                .and_then(|content| completion_summary(&content));
+            let id = if task.task.id.is_empty() {
+                &task_slug
+            } else {
+                &task.task.id
+            };
+            let body = format!(
+                "{}\n\n---\nTUI-DO task {id}",
+                summary.unwrap_or_else(|| task.description.trim().to_string())
+            );
+            let url =
+                github::create_pr(&repo, &branch, &base, &task.task.title, body.trim_start())?;
+            ws.update_task(
+                &task_slug,
+                UpdateTask {
+                    pr: Some(Some(url.clone())),
+                    ..UpdateTask::default()
+                },
+            )?;
+            Ok(url)
+        })
+        .await?
+    }
+
     async fn collect_from_device(&self, task_slug: &str, record: &Record) -> anyhow::Result<bool> {
         // Where the work lands: here, unless the project is on another machine
         let source = match self.fleet.device(&record.source) {
@@ -495,13 +846,7 @@ impl Handoffs {
             None if record.source.is_empty() || record.source == self.own.id => None,
             None => bail!("the machine with the project is no longer in the fleet"),
         };
-        let device = if record.device == self.own.id {
-            self.own.clone()
-        } else {
-            self.fleet
-                .device(&record.device)
-                .context("the machine is no longer in the fleet")?
-        };
+        let device = self.record_device(record)?;
         let params = SnapshotParams {
             branch: record.branch.clone(),
             commit: record.commit.clone(),
