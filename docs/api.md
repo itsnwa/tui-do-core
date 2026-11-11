@@ -13,6 +13,7 @@ Every route except `/v0/health` needs a token, sent as `Authorization: Bearer <t
   "exitCode": null,
   "agent": "claude",
   "agentState": "waiting",
+  "agentDetail": "Which approach?",
   "pid": 12345,
   "cols": 120,
   "rows": 40,
@@ -23,6 +24,7 @@ Every route except `/v0/health` needs a token, sent as `Authorization: Bearer <t
 - `id` — chosen by the client; letters, digits, `-`, `_` and `.`, up to 200 characters.
 - `exitCode` — set once the session ended; `null` while running or when it was killed by a signal.
 - `agent` / `agentState` — for sessions started with `"agent": "claude"`: `idle`, `working` or `waiting`. Comes from Claude Code hooks when the session loads them (see below), otherwise from output timing (2 s of quiet → `waiting`; output more than 500 ms after the last input → `working`).
+- `agentDetail` — while the agent is `waiting`, one line on what it waits for, the same text as `detail` on the `agentState` event; left out when unknown or not waiting (cores 0.3.17 and later).
 - `labels` — free-form string tags, stored and returned as given.
 
 ## HTTP
@@ -58,7 +60,7 @@ Every route except `/v0/health` needs a token, sent as `Authorization: Bearer <t
 
 All fields except `id` are optional. An empty `argv` runs the user's default shell as a login shell. An empty `env` inherits the core's environment; a non-empty one replaces it. `cwd` may start with `~/`. If a live session with this id exists it's returned unchanged; a dead one is replaced.
 
-With `"agent": "claude"` the core adds `TUI_DO_CLAUDE_SETTINGS` (a Claude Code settings file with state-reporting hooks) and `TUI_DO_CLAUDE_STATE_FILE` to the environment. Start Claude with `claude --settings "$TUI_DO_CLAUDE_SETTINGS"` to get exact states.
+With `"agent": "claude"` the core adds `TUI_DO_CLAUDE_SETTINGS` (a Claude Code settings file with state-reporting hooks) and `TUI_DO_CLAUDE_STATE_FILE` to the environment. Start Claude with `claude --settings "$TUI_DO_CLAUDE_SETTINGS"` to get exact states. Claude has no hook for two things, which aren't reported: an interrupted turn (Esc) stays `working` until the next prompt, and an approved tool call stays `waiting` until it finishes.
 
 ### Snapshots
 
@@ -116,7 +118,7 @@ Client → server (one connection keeps keystrokes for all sessions in order):
 
 `output` data is always valid UTF-8; a character split across PTY reads is held back until it's complete. `sessionQuiet` fires when a session has produced no output for 2 seconds. `sessionResized` fires when the PTY takes another size (see [Several clients on one session](#several-clients-on-one-session)).
 
-An `agentState` that's `waiting` can carry `detail`, one line on what the agent waits for (a question it asked, a permission it needs, or the last line of its reply); it's left out when unknown, and cores before 0.3.10 never send it. `sessionTyped` fires the first time someone types in a session after its agent started waiting (cores 0.3.12 and later).
+An `agentState` that's `waiting` can carry `detail`, one line on what the agent waits for (a question it asked, a permission it needs, the error its turn ended on, or the last line of its reply); it's left out when unknown, and cores before 0.3.10 never send it. `sessionTyped` fires the first time someone types in a session after its agent started waiting (cores 0.3.12 and later).
 
 ## Notes for clients
 
@@ -164,7 +166,7 @@ Only the [home core](#the-home-role) writes the workspace. Every other core serv
 | `POST` | `/v0/tasks` | `{ title, project?, due?, recurrence?, description? }` | Task + `description` |
 | `GET` | `/v0/tasks/lookup?ref=58` | | Task by short ID (`58`, `#58`, `26-058`; bare numbers are this year's) or slug |
 | `GET` | `/v0/tasks/{slug}` | | Task + `description` + `content` |
-| `PATCH` | `/v0/tasks/{slug}` | any of `{ title, state, project, due, recurrence, plan, description, pr }` (`null` clears `due`, `recurrence`, `plan`, `pr`) | Task + `description`. Completing a recurring task moves it to its next due date instead. |
+| `PATCH` | `/v0/tasks/{slug}` | any of `{ title, state, project, due, recurrence, plan, description, pr }` (`null` clears `due`, `recurrence`, `plan`, `pr`) | Task + `description`. Completing a recurring task moves it to its next due date instead. A `state` that isn't one of the three is refused with `400` (cores 0.3.17 and later). |
 | `DELETE` | `/v0/tasks/{slug}` | | Undo token `{ task, planSnapshot, attachmentSnapshots }`; also deletes the task's plan and stored attachments |
 | `POST` | `/v0/tasks/restore` | the undo token | Task + `description` |
 | `POST` | `/v0/tasks/{slug}/reorder` | `{ direction: "up" \| "down", project? }` | `{ success, error? }` (moves within the same due date) |
@@ -280,6 +282,7 @@ The APNs key is an auth key (`.p8`) from the Apple Developer portal with APNs en
 - `worktree` (Claude only): a name for a new git worktree (`--worktree`). `worktreePath`: a worktree that already exists, which Claude starts in instead. Cores before 0.3.3 ignore both.
 - The session is the task's slug, a login shell in the project's folder (or the task's folder on the machine) with `agent` set. Once the shell prints its first output (or after 5 s), the core types the agent's command with the prompt `Start working on task <id>`.
 - If the task's session is already running there, it's returned as it is with `started: false`.
+- A session that starts puts the task `in-progress`, also one that was completed (cores 0.3.17 and later; before, only the agent's `start_task` did).
 
 # Fleet
 
