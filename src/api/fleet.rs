@@ -297,16 +297,6 @@ async fn setup_agents_on(state: &AppState, device: &Device, instructions: &str) 
 /// Sessions on this core and every reachable device, each with a `device` id.
 async fn fleet_sessions(State(state): State<AppState>) -> Response {
     let own_id = state.config.get().device_id;
-    let mut all: Vec<serde_json::Value> = state
-        .registry
-        .list()
-        .into_iter()
-        .filter_map(|s| serde_json::to_value(s).ok())
-        .map(|mut s| {
-            s["device"] = own_id.clone().into();
-            s
-        })
-        .collect();
     let remote = state.fleet.devices().into_iter().map(|device| {
         let client = state.fleet.client().clone();
         async move {
@@ -324,11 +314,19 @@ async fn fleet_sessions(State(state): State<AppState>) -> Response {
             }))
         }
     });
-    for sessions in futures_util::future::join_all(remote)
-        .await
+    let remote = futures_util::future::join_all(remote).await;
+    // Listed after the devices answered, so this core's are as they are now
+    let mut all: Vec<serde_json::Value> = state
+        .registry
+        .list()
         .into_iter()
-        .flatten()
-    {
+        .filter_map(|s| serde_json::to_value(s).ok())
+        .map(|mut s| {
+            s["device"] = own_id.clone().into();
+            s
+        })
+        .collect();
+    for sessions in remote.into_iter().flatten() {
         all.extend(sessions);
     }
     Json(all).into_response()

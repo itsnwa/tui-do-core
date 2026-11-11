@@ -20,7 +20,7 @@ use crate::fleet::Device;
 use crate::links::SessionLink;
 use crate::session::{Event, SpawnRequest};
 use crate::workspace::Error;
-use crate::workspace::tasks::UpdateTask;
+use crate::workspace::tasks::{Task, UpdateTask};
 
 /// How long to wait for the shell's first output before typing anyway.
 const SHELL_READY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -333,22 +333,14 @@ async fn start(
 
     // The task remembers where it runs (none: in place, on the code machine)
     let device_id = (!in_place).then(|| target.id.clone());
-    if task.device != device_id {
+    if let Some(change) = started_change(&task, device_id.as_deref()) {
         let ws = state.workspace.current();
         let slug = task.slug.clone();
-        let change = device_id.clone();
-        let _ = tokio::task::spawn_blocking(move || {
-            ws.map(|ws| {
-                ws.update_task(
-                    &slug,
-                    UpdateTask {
-                        device: Some(change),
-                        ..Default::default()
-                    },
-                )
-            })
-        })
-        .await;
+        let updated =
+            tokio::task::spawn_blocking(move || ws.map(|ws| ws.update_task(&slug, change))).await;
+        if let Ok(Some(Err(err))) = updated {
+            tracing::warn!(task = %task.slug, %err, "couldn't record that the task started");
+        }
     }
 
     let resume = if req.resume && agent == Agent::Codex {
@@ -379,6 +371,18 @@ async fn start(
         "started": true,
     }))
     .into_response()
+}
+
+/// What starting an agent changes on its task: it's in progress from now
+/// (also one that was completed), on that machine. None if it already says so.
+fn started_change(task: &Task, device: Option<&str>) -> Option<UpdateTask> {
+    let state = (task.state != "in-progress").then(|| "in-progress".to_string());
+    let device = (task.device.as_deref() != device).then(|| device.map(str::to_string));
+    (state.is_some() || device.is_some()).then(|| UpdateTask {
+        state,
+        device,
+        ..Default::default()
+    })
 }
 
 fn agent_name(agent: &Agent) -> &'static str {
@@ -521,6 +525,33 @@ mod tests {
             cols: 80,
             rows: 24,
         }
+    }
+
+    fn task(state: &str, device: Option<&str>) -> Task {
+        Task {
+            state: state.into(),
+            device: device.map(str::to_string),
+            ..Task::default()
+        }
+    }
+
+    #[test]
+    fn starting_an_agent_should_put_its_task_in_progress() {
+        let change = started_change(&task("not-started", None), None).expect("a change");
+        assert_eq!(change.state.as_deref(), Some("in-progress"));
+        assert_eq!(change.device, None);
+        let reopened = started_change(&task("completed", None), None).expect("a change");
+        assert_eq!(reopened.state.as_deref(), Some("in-progress"));
+    }
+
+    #[test]
+    fn starting_an_agent_should_record_where_it_runs() {
+        let moved = started_change(&task("in-progress", None), Some("cube")).expect("a change");
+        assert_eq!(moved.state, None);
+        assert_eq!(moved.device, Some(Some("cube".into())));
+        let back = started_change(&task("in-progress", Some("cube")), None).expect("a change");
+        assert_eq!(back.device, Some(None));
+        assert!(started_change(&task("in-progress", Some("cube")), Some("cube")).is_none());
     }
 
     #[test]

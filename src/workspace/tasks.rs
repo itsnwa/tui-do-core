@@ -609,6 +609,14 @@ impl Workspace {
                 .and_then(|r| dates::RECURRENCES.iter().copied().find(|x| *x == r)),
             None => current_recurrence,
         };
+        if let Some(state) = &req.state
+            && !STATES.contains(&state.as_str())
+        {
+            return Err(Error::Invalid(format!(
+                "state must be one of {}, got {state:?}",
+                STATES.join(", ")
+            )));
+        }
         let old_state = text_or(data.get("state"), "not-started");
         let old_due = dates::due_of(data.get("due"));
         let mut completed = data.get("completed").cloned().unwrap_or(Value::Null);
@@ -1165,6 +1173,38 @@ mod tests {
         let axum::extract::Query(filter) =
             axum::extract::Query::<TaskFilter>::try_from_uri(&uri).expect("query");
         assert_eq!(filter.completed_within, Some(7));
+    }
+
+    #[test]
+    fn update_should_refuse_a_state_that_isn_t_one() {
+        let root = std::env::temp_dir().join(format!("tui-do-state-{}", uuid::Uuid::new_v4()));
+        let ws = Workspace::open(root.clone()).expect("open");
+        let task = ws
+            .create_task(CreateTask {
+                title: "A task".into(),
+                ..CreateTask::default()
+            })
+            .expect("create");
+        let change = |state: &str| {
+            ws.update_task(
+                &task.task.slug,
+                UpdateTask {
+                    state: Some(state.into()),
+                    ..UpdateTask::default()
+                },
+            )
+        };
+
+        assert!(matches!(change("done"), Err(Error::Invalid(_))));
+        assert_eq!(
+            ws.get_task(&task.task.slug).expect("get").task.state,
+            "not-started"
+        );
+        assert_eq!(
+            change("in-progress").expect("update").task.state,
+            "in-progress"
+        );
+        std::fs::remove_dir_all(root).expect("clean up");
     }
 
     #[test]

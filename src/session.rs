@@ -33,7 +33,7 @@ use crate::hooks::{self, Hooks};
 use crate::utf8::Utf8Stream;
 
 const MAX_SCROLLBACK_LINES: usize = 10_000;
-/// How often the actor wakes without input to check quiet time and hook state.
+/// How often the actor checks quiet time and hook state.
 const TICK: Duration = Duration::from_millis(250);
 /// No output for this long counts as quiet (agent likely waiting).
 const QUIET_AFTER: Duration = Duration::from_secs(2);
@@ -62,6 +62,9 @@ pub struct SessionInfo {
     pub exit_code: Option<u32>,
     pub agent: Option<String>,
     pub agent_state: Option<AgentState>,
+    /// What a waiting agent waits for, in one line, when the core knows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_detail: Option<String>,
     pub pid: Option<u32>,
     pub cols: u16,
     pub rows: u16,
@@ -347,13 +350,18 @@ impl Registry {
         }
         let state_file =
             hooks::reports_state(meta.agent.as_deref()).then(|| self.hooks.state_file(&meta.id));
+        let agent_state = state_file
+            .as_deref()
+            .map(|path| hooks::read_state(path).unwrap_or(AgentState::Idle));
         let info = SessionInfo {
             id: meta.id.clone(),
             alive: true,
             exit_code: None,
-            agent_state: state_file
+            agent_state,
+            agent_detail: state_file
                 .as_deref()
-                .map(|path| hooks::read_state(path).unwrap_or(AgentState::Idle)),
+                .filter(|_| agent_state == Some(AgentState::Waiting))
+                .and_then(hooks::read_detail),
             agent: meta.agent,
             pid: connection.welcome.pid,
             cols: connection.welcome.cols,
@@ -474,6 +482,7 @@ impl Registry {
             exit_code: None,
             agent: req.agent,
             agent_state: state_file.is_some().then_some(AgentState::Idle),
+            agent_detail: None,
             pid,
             cols: req.cols,
             rows: req.rows,
@@ -793,8 +802,9 @@ impl Actor {
 
         // Set once the holder says the program has exited, or goes away
         let mut ended: Option<Option<u32>> = None;
+        let mut next_tick = Instant::now() + TICK;
         loop {
-            match rx.recv_timeout(TICK) {
+            match rx.recv_timeout(next_tick.saturating_duration_since(Instant::now())) {
                 Ok(Msg::Output(first, mut position)) => {
                     let mut bytes = first;
                     // Coalesce whatever else is already queued into one event.
@@ -817,8 +827,14 @@ impl Actor {
                     }
                 }
                 Ok(msg) => self.handle(&mut term, msg, &mut ended),
-                Err(mpsc::RecvTimeoutError::Timeout) => self.tick(),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+            // On a schedule, not only when nothing arrives: an agent that
+            // keeps drawing would otherwise never have its hook state read
+            if Instant::now() >= next_tick {
+                self.tick();
+                next_tick = Instant::now() + TICK;
             }
             if let Some(code) = ended {
                 self.finish(code);
@@ -861,7 +877,8 @@ impl Actor {
             Msg::Input(data, client) => {
                 // The client typing gets its size back before its keys arrive
                 // (not for its terminal's answers to queries)
-                if is_typing(&data) {
+                let typing = is_typing(&data);
+                if typing {
                     self.typed_in_wait();
                     if let Some(at) = self.sizes.iter().position(|s| s.0 == client) {
                         let size = self.sizes.remove(at);
@@ -870,7 +887,9 @@ impl Actor {
                     }
                 }
                 self.last_input = Instant::now();
-                if std::mem::take(&mut self.turn_ended) {
+                // Only typing starts a turn; what a terminal sends by itself
+                // (focus, answers to queries) is followed by a repaint, not work
+                if typing && std::mem::take(&mut self.turn_ended) {
                     // So a new core doesn't take it for the current turn's end
                     if let Some(path) = &self.state_file {
                         let _ = std::fs::remove_file(path);
@@ -995,18 +1014,19 @@ impl Actor {
     }
 
     fn set_state(&mut self, state: AgentState) {
-        let mut info = lock(&self.info);
-        if info.agent_state == Some(state) {
+        if lock(&self.info).agent_state == Some(state) {
             return;
         }
-        info.agent_state = Some(state);
-        drop(info);
-        self.typed_while_waiting = false;
         let detail = self
             .state_file
             .as_deref()
             .filter(|_| state == AgentState::Waiting)
             .and_then(hooks::read_detail);
+        let mut info = lock(&self.info);
+        info.agent_state = Some(state);
+        info.agent_detail.clone_from(&detail);
+        drop(info);
+        self.typed_while_waiting = false;
         let _ = self.events.send(Event::AgentState {
             id: Arc::clone(&self.id),
             state,
@@ -1031,6 +1051,7 @@ impl Actor {
             info.exit_code = code;
             if info.agent.is_some() {
                 info.agent_state = Some(AgentState::Idle);
+                info.agent_detail = None;
             }
         }
         if let Some(path) = &self.state_file {

@@ -795,6 +795,63 @@ async fn a_waiting_agent_should_say_what_it_asks_and_when_someone_answers() {
     assert_eq!(typed, 1);
 }
 
+/// An agent session that runs `script` under `/bin/sh`.
+fn agent_request(id: &str, agent: &str, script: &str) -> SpawnRequest {
+    let mut req = request(id, &["/bin/sh", "-c", script]);
+    req.agent = Some(agent.into());
+    req
+}
+
+#[tokio::test]
+async fn a_state_change_should_arrive_while_the_agent_keeps_printing() {
+    use tui_do_core::session::AgentState;
+    let dir = TestDir::new();
+    let registry = dir.registry();
+    // A spinner: output far more often than the state is looked at
+    let script = r#"(sleep 0.3; printf '{"message":"Go on?"}' > "$TUI_DO_CLAUDE_STATE_FILE.json"; printf waiting > "$TUI_DO_CLAUDE_STATE_FILE") & while :; do printf .; sleep 0.02; done"#;
+    registry
+        .spawn(agent_request("agent", "claude", script))
+        .expect("spawns");
+
+    let waiting = eventually(async || {
+        registry
+            .info("agent")
+            .is_some_and(|s| s.agent_state == Some(AgentState::Waiting))
+    })
+    .await;
+    let detail = registry.info("agent").and_then(|s| s.agent_detail);
+    registry.kill_all();
+    assert!(waiting, "the hook's state was never read");
+    // A client that connects now still learns what it waits for
+    assert_eq!(detail.as_deref(), Some("Go on?"));
+}
+
+#[tokio::test]
+async fn what_a_terminal_sends_by_itself_should_not_start_a_codex_turn() {
+    use tui_do_core::session::AgentState;
+    let dir = TestDir::new();
+    let registry = dir.registry();
+    // Codex ended its turn, and repaints a while after the terminal gets focus
+    let script =
+        r#"printf waiting > "$TUI_DO_CLAUDE_STATE_FILE"; sleep 1.5; printf repainted; sleep 10"#;
+    registry
+        .spawn(agent_request("agent", "codex", script))
+        .expect("spawns");
+    let is_waiting = || {
+        registry
+            .info("agent")
+            .is_some_and(|s| s.agent_state == Some(AgentState::Waiting))
+    };
+    assert!(eventually(async || is_waiting()).await);
+
+    // Focus in, and an answer to a query: not typing
+    registry.input("agent", b"\x1b[I\x1b[?62;22c".to_vec());
+    assert!(shows(&registry, "agent", "repainted").await);
+    let still_waiting = is_waiting();
+    registry.kill_all();
+    assert!(still_waiting, "a repaint was taken for work");
+}
+
 fn relayed_device(id: &str, address: String, token: String) -> tui_do_core::fleet::Device {
     tui_do_core::fleet::Device {
         id: id.into(),
