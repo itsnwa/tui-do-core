@@ -6,18 +6,27 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::AbortHandle;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use crate::fleet::Device;
 use crate::session::Event;
 
 const RETRY_MIN: Duration = Duration::from_secs(2);
 const RETRY_MAX: Duration = Duration::from_secs(30);
+/// How often a device is pinged. A device that sleeps or changes network can
+/// vanish without closing its socket, and only silence gives that away.
+const PING_EVERY: Duration = Duration::from_secs(10);
+/// A device that sends nothing for this long, not even a pong, is gone.
+const SILENCE_LIMIT: Duration = Duration::from_secs(30);
+
+type Sink = SplitSink<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>, Message>;
 
 struct Link {
     outgoing: mpsc::UnboundedSender<String>,
@@ -98,24 +107,34 @@ async fn relay(
         while outgoing.try_recv().is_ok() {}
 
         let (mut tx, mut rx) = socket.split();
+        let mut ping = tokio::time::interval(PING_EVERY);
+        let mut heard = Instant::now();
         loop {
             tokio::select! {
-                msg = rx.next() => match msg {
-                    Some(Ok(Message::Text(text))) => {
-                        if let Ok(event) = serde_json::from_str::<serde_json::Value>(text.as_str()) {
-                            let _ = events.send(Event::DeviceEvent { device: device.id.clone(), event });
+                msg = rx.next() => {
+                    heard = Instant::now();
+                    match msg {
+                        Some(Ok(Message::Text(text))) => {
+                            if let Ok(event) = serde_json::from_str::<serde_json::Value>(text.as_str()) {
+                                let _ = events.send(Event::DeviceEvent { device: device.id.clone(), event });
+                            }
                         }
+                        Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
+                        Some(Ok(_)) => {}
                     }
-                    Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
-                    Some(Ok(_)) => {}
                 },
                 message = outgoing.recv() => match message {
                     Some(text) => {
-                        if tx.send(Message::text(text)).await.is_err() {
+                        if !send(&mut tx, Message::text(text)).await {
                             break;
                         }
                     }
                     None => return,
+                },
+                _ = ping.tick() => {
+                    if heard.elapsed() >= SILENCE_LIMIT || !send(&mut tx, Message::Ping(Default::default())).await {
+                        break;
+                    }
                 },
             }
         }
@@ -126,4 +145,12 @@ async fn relay(
         });
         tokio::time::sleep(RETRY_MIN).await;
     }
+}
+
+/// Send to a device; false if that failed or a dead connection held it up.
+async fn send(tx: &mut Sink, message: Message) -> bool {
+    matches!(
+        tokio::time::timeout(SILENCE_LIMIT, tx.send(message)).await,
+        Ok(Ok(()))
+    )
 }
