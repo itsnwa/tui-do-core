@@ -124,6 +124,12 @@ pub fn definitions() -> Vec<Tool> {
                     "Absolute path to the project directory",
                     false,
                 ),
+                (
+                    "remote",
+                    "string",
+                    "Git remote URL the code can be fetched from (e.g. https://github.com/owner/repo)",
+                    false,
+                ),
             ],
         ),
         tool(
@@ -148,6 +154,12 @@ pub fn definitions() -> Vec<Tool> {
                     "directory",
                     "string",
                     "Absolute path to the project directory",
+                    false,
+                ),
+                (
+                    "remote",
+                    "string",
+                    "Git remote URL the code can be fetched from (e.g. https://github.com/owner/repo)",
                     false,
                 ),
             ],
@@ -352,6 +364,7 @@ pub fn call(
             let req = CreateProject {
                 title: args.req("title")?,
                 directory: args.opt("directory"),
+                remote: args.opt("remote"),
             };
             ws.create_project(req).and_then(to_json)
         }
@@ -361,6 +374,7 @@ pub fn call(
                 muted: args.0.get("muted").and_then(Json::as_bool),
                 archived: args.0.get("archived").and_then(Json::as_bool),
                 directory: args.opt("directory"),
+                remote: args.opt("remote"),
             };
             ws.update_project(&args.req("slug")?, req).and_then(to_json)
         }
@@ -438,6 +452,7 @@ pub fn call(
                 plan: args.opt("plan").map(Some),
                 description: args.opt("description"),
                 device: None,
+                pr: None,
             };
             ws.update_task(&slug, req).and_then(to_json)
         }

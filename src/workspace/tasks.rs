@@ -15,7 +15,7 @@ use super::store::{Dir, Entry};
 use super::{Error, Result, Workspace, slug};
 use crate::format::{Document, Map, Value};
 
-const TASK_KEYS: [&str; 12] = [
+const TASK_KEYS: [&str; 13] = [
     "id",
     "title",
     "state",
@@ -28,6 +28,7 @@ const TASK_KEYS: [&str; 12] = [
     "created",
     "attachments",
     "device",
+    "pr",
 ];
 pub const STATES: [&str; 3] = ["not-started", "in-progress", "completed"];
 
@@ -51,6 +52,9 @@ pub struct Task {
     /// The fleet device the task runs on (chosen when starting it); absent = the home machine.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
+    /// The pull request the task's work was opened as.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr: Option<String>,
 }
 
 /// A task with its description (and, from `get`, the same text as `content`).
@@ -118,6 +122,9 @@ pub struct UpdateTask {
     /// The device to run on; `null` = the home machine.
     #[serde(deserialize_with = "double_option")]
     pub device: Option<Option<String>>,
+    /// The pull request's URL; `null` = none.
+    #[serde(deserialize_with = "double_option")]
+    pub pr: Option<Option<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -192,6 +199,7 @@ fn summarize(slug: &str, data: &Map) -> Task {
             _ => Vec::new(),
         },
         device: opt_text(data.get("device")).filter(|d| !d.is_empty()),
+        pr: opt_text(data.get("pr")).filter(|p| !p.is_empty()),
     }
 }
 
@@ -671,6 +679,15 @@ impl Workspace {
             }
             Some(_) => {
                 data.shift_remove("device");
+            }
+            None => {}
+        }
+        match req.pr {
+            Some(Some(pr)) if !pr.is_empty() => {
+                data.insert("pr".into(), pr.into());
+            }
+            Some(_) => {
+                data.shift_remove("pr");
             }
             None => {}
         }

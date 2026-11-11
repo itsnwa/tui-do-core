@@ -4,6 +4,10 @@
 //! only what the runner lacks, and [`land`] the work that comes back as a
 //! branch. Runner side: [`receive`] a bundle into a per-project cache and a
 //! worktree for the task, and [`collect`] the task's branch when it's done.
+//!
+//! Or, through the project's git remote instead of the code machine: the
+//! runner [`fetch`]es the remote's default branch into its cache, and
+//! [`publish`]es the task's branch back to the remote when it's done.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -230,6 +234,20 @@ pub fn collect(
     snapshot: &Snapshot,
     title: &str,
 ) -> anyhow::Result<Option<Vec<u8>>> {
+    commit_leftovers(worktree, snapshot, title)?;
+    // What the home already has: the snapshot and, for a dirty one, its parent
+    let mut known = vec![snapshot.commit.clone()];
+    if snapshot.dirty {
+        known.push(snapshot.base.clone());
+    }
+    let bundle = bundle(cache, &format!("refs/heads/{branch}"), &known)?;
+    clean_up(cache, worktree, task_refs, branch, snapshot)?;
+    Ok(bundle)
+}
+
+/// Runner: commit what's left in the task's worktree. Uncommitted changes
+/// that came along and weren't touched stay out: they're still at home.
+fn commit_leftovers(worktree: &Path, snapshot: &Snapshot, title: &str) -> anyhow::Result<()> {
     if !worktree.exists() {
         bail!("the task's working folder is gone ({})", worktree.display());
     }
@@ -262,12 +280,17 @@ pub fn collect(
             &identity(worktree),
         )?;
     }
-    // What the home already has: the snapshot and, for a dirty one, its parent
-    let mut known = vec![snapshot.commit.clone()];
-    if snapshot.dirty {
-        known.push(snapshot.base.clone());
-    }
-    let bundle = bundle(cache, &format!("refs/heads/{branch}"), &known)?;
+    Ok(())
+}
+
+/// Runner: remove the task's worktree, branch and refs, keeping the history.
+fn clean_up(
+    cache: &Path,
+    worktree: &Path,
+    task_refs: &[&str],
+    branch: &str,
+    snapshot: &Snapshot,
+) -> anyhow::Result<()> {
     let path = worktree.to_string_lossy().into_owned();
     git(cache, &["worktree", "remove", "--force", &path], &[])?;
     git(cache, &["update-ref", KNOWN_REF, &snapshot.base], &[])?;
@@ -275,7 +298,115 @@ pub fn collect(
     for task_ref in task_refs {
         let _ = git(cache, &["update-ref", "-d", task_ref], &[]);
     }
-    Ok(bundle)
+    Ok(())
+}
+
+/// The URL of a project's `origin` remote, if it has one.
+pub fn origin(dir: &Path) -> Option<String> {
+    git(dir, &["remote", "get-url", "origin"], &[])
+        .ok()
+        .filter(|url| !url.is_empty())
+}
+
+/// `owner/repo` for a GitHub remote URL (https, ssh or scp-like).
+pub fn github_repo(url: &str) -> Option<String> {
+    let url = url.trim();
+    let path = [
+        "https://github.com/",
+        "http://github.com/",
+        "ssh://git@github.com/",
+        "git@github.com:",
+    ]
+    .iter()
+    .find_map(|prefix| url.strip_prefix(prefix))?;
+    let path = path.trim_end_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let mut parts = path.split('/');
+    let (owner, repo) = (parts.next()?, parts.next()?);
+    let valid = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    };
+    (parts.next().is_none() && valid(owner) && valid(repo)).then(|| format!("{owner}/{repo}"))
+}
+
+/// The URLs to try for a remote: as given, then a GitHub ssh one over https
+/// (a machine may have `gh`'s https credentials but no ssh key).
+fn remote_urls(url: &str) -> Vec<String> {
+    let mut urls = vec![url.to_string()];
+    if !url.starts_with("https://")
+        && let Some(repo) = github_repo(url)
+    {
+        urls.push(format!("https://github.com/{repo}.git"));
+    }
+    urls
+}
+
+/// Never wait for a password: the core has no one to ask.
+const NO_PROMPT: [(&str, &str); 1] = [("GIT_TERMINAL_PROMPT", "0")];
+
+/// Run a git command against each of the remote's URLs until one works.
+fn with_remote<T>(url: &str, run: impl Fn(&str) -> anyhow::Result<T>) -> anyhow::Result<T> {
+    let mut failed = None;
+    for url in remote_urls(url) {
+        match run(&url) {
+            Ok(value) => return Ok(value),
+            Err(err) => failed = Some(err),
+        }
+    }
+    Err(failed.unwrap_or_else(|| anyhow::anyhow!("no remote to reach")))
+}
+
+/// Runner: fetch the remote's default branch into the project's cache as
+/// `incoming_ref`. Returns its commit and the branch's name.
+pub fn fetch(cache: &Path, url: &str, incoming_ref: &str) -> anyhow::Result<(String, String)> {
+    if !cache.exists() {
+        std::fs::create_dir_all(cache)?;
+        git(cache, &["init", "--bare", "--quiet"], &[])?;
+    }
+    let default_branch = with_remote(url, |url| {
+        let out = git(cache, &["ls-remote", "--symref", url, "HEAD"], &NO_PROMPT)?;
+        out.lines()
+            .find_map(|line| line.strip_prefix("ref: refs/heads/")?.split_once('\t'))
+            .map(|(branch, _)| branch.to_string())
+            .context("the remote has no default branch")
+    })
+    .with_context(|| format!("couldn't reach {url}"))?;
+    let refspec = format!("+refs/heads/{default_branch}:{incoming_ref}");
+    with_remote(url, |url| {
+        git(cache, &["fetch", "--quiet", url, &refspec], &NO_PROMPT)
+    })
+    .with_context(|| format!("fetching {url}"))?;
+    let commit = git(cache, &["rev-parse", incoming_ref], &[])?;
+    Ok((commit, default_branch))
+}
+
+/// Runner: commit what's left in the task's worktree and push its branch to
+/// the remote. Returns whether there was anything to push. The worktree, its
+/// branch and the task's refs are removed afterwards (not if the push fails,
+/// so it can be tried again).
+pub fn publish(
+    cache: &Path,
+    worktree: &Path,
+    task_refs: &[&str],
+    branch: &str,
+    snapshot: &Snapshot,
+    title: &str,
+    url: &str,
+) -> anyhow::Result<bool> {
+    commit_leftovers(worktree, snapshot, title)?;
+    let range = format!("{}..refs/heads/{branch}", snapshot.commit);
+    let ahead = git(cache, &["rev-list", "--count", &range], &[])? != "0";
+    if ahead {
+        let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
+        with_remote(url, |url| {
+            git(cache, &["push", "--quiet", url, &refspec], &NO_PROMPT)
+        })
+        .with_context(|| format!("pushing {branch} to {url}"))?;
+    }
+    clean_up(cache, worktree, task_refs, branch, snapshot)?;
+    Ok(ahead)
 }
 
 /// Home: fetch the returned work into the project as `branch`. Returns the
@@ -409,5 +540,107 @@ mod tests {
         .expect("bundle");
         assert!(none.is_none());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// From the remote and back: fetch its default branch, work in a
+    /// worktree, push the task's branch; a second task fetches what's new.
+    #[test]
+    fn remote_handoff_should_fetch_and_push_a_branch() {
+        let root = temp_path("remote");
+        let laptop = root.join("laptop");
+        repo_with_commit(&laptop);
+        let remote = root.join("remote.git");
+        std::fs::create_dir_all(&remote).expect("dir");
+        git(&remote, &["init", "--bare", "--quiet", "-b", "main"], &[]).expect("init");
+        let url = remote.to_string_lossy().into_owned();
+        git(&laptop, &["push", "--quiet", &url, "main"], &[]).expect("push");
+
+        let cache = root.join("runner/repo.git");
+        let worktree = root.join("runner/t");
+        let (commit, base_branch) = fetch(&cache, &url, "refs/tui-do/incoming/t").expect("fetch");
+        assert_eq!(base_branch, "main");
+        assert_eq!(
+            commit,
+            git(&laptop, &["rev-parse", "HEAD"], &[]).expect("head")
+        );
+        let snap = Snapshot {
+            repo: PathBuf::new(),
+            base: commit.clone(),
+            commit: commit.clone(),
+            dirty: false,
+        };
+        let refs = ["refs/tui-do/tasks/t", "refs/tui-do/incoming/t"];
+        receive(&cache, &worktree, refs[0], "tui-do/26-1", &snap, None).expect("receive");
+        assert!(worktree.join("a.txt").exists());
+
+        std::fs::write(worktree.join("b.txt"), "done\n").expect("work");
+        let pushed =
+            publish(&cache, &worktree, &refs, "tui-do/26-1", &snap, "Task", &url).expect("publish");
+        assert!(pushed && !worktree.exists());
+        let files = git(&remote, &["ls-tree", "--name-only", "tui-do/26-1"], &[]).expect("ls");
+        assert!(files.contains("b.txt"));
+        // main on the remote is untouched
+        assert_eq!(
+            git(&remote, &["rev-parse", "main"], &[]).expect("main"),
+            commit
+        );
+
+        // Nothing done: nothing pushed
+        let worktree = root.join("runner/u");
+        receive(
+            &cache,
+            &worktree,
+            "refs/tui-do/tasks/u",
+            "tui-do/26-2",
+            &snap,
+            None,
+        )
+        .expect("receive");
+        let pushed = publish(
+            &cache,
+            &worktree,
+            &["refs/tui-do/tasks/u"],
+            "tui-do/26-2",
+            &snap,
+            "Task",
+            &url,
+        )
+        .expect("publish");
+        assert!(!pushed);
+        assert!(git(&remote, &["rev-parse", "--verify", "tui-do/26-2"], &[]).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn github_repo_should_parse_remote_urls() {
+        for url in [
+            "https://github.com/itsnwa/tui-do-core.git",
+            "https://github.com/itsnwa/tui-do-core",
+            "https://github.com/itsnwa/tui-do-core/",
+            "git@github.com:itsnwa/tui-do-core.git",
+            "ssh://git@github.com/itsnwa/tui-do-core.git",
+        ] {
+            assert_eq!(
+                github_repo(url).as_deref(),
+                Some("itsnwa/tui-do-core"),
+                "{url}"
+            );
+        }
+        for url in [
+            "https://gitlab.com/a/b.git",
+            "https://github.com/a",
+            "https://github.com/a/b/tree/main",
+            "/srv/git/repo.git",
+        ] {
+            assert_eq!(github_repo(url), None, "{url}");
+        }
+        assert_eq!(
+            remote_urls("git@github.com:a/b.git"),
+            ["git@github.com:a/b.git", "https://github.com/a/b.git"]
+        );
+        assert_eq!(
+            remote_urls("https://github.com/a/b"),
+            ["https://github.com/a/b"]
+        );
     }
 }

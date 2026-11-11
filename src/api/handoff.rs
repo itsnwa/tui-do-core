@@ -1,6 +1,7 @@
-//! Handoff routes: on the home core, starting a task on a device; on a
-//! device, receiving a project and handing the work back; on the code
-//! machine, snapshotting a project and landing returned work (see `handoff`).
+//! Handoff routes: on the home core, starting a task on a device and its pull
+//! request; on a device, receiving or fetching a project and handing the work
+//! back; on the code machine, snapshotting a project and landing returned
+//! work (see `handoff`).
 
 use std::sync::Arc;
 
@@ -14,7 +15,10 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{AppState, error};
-use crate::handoff::{CodeMachine, Handoffs, SNAPSHOT_HEADER, SnapshotParams, SnapshotRequest};
+use crate::handoff::{
+    CodeMachine, FetchRequest, Handoffs, SNAPSHOT_HEADER, SnapshotParams, SnapshotRequest, github,
+};
+use crate::workspace::projects::UpdateProject;
 
 /// Bundles can be large (a whole repo's history the first time).
 const MAX_BUNDLE: usize = 2 * 1024 * 1024 * 1024;
@@ -30,6 +34,10 @@ pub fn routes() -> axum::Router<AppState> {
             post(receive).layer(DefaultBodyLimit::max(MAX_BUNDLE)),
         )
         .route("/v0/handoff/{project}/{task}/collect", post(collect))
+        .route("/v0/handoff/{project}/{task}/fetch", post(fetch))
+        .route("/v0/handoff/{project}/{task}/publish", post(publish))
+        .route("/v0/tasks/{slug}/pr", get(pull_request))
+        .route("/v0/tasks/{slug}/pr/merge", post(merge_pull_request))
         .route("/v0/handoff/{project}/{task}/snapshot", post(snapshot))
         .route(
             "/v0/handoff/{project}/{task}/land",
@@ -45,6 +53,9 @@ struct StartBody {
     /// Take the project's uncommitted changes along (off: commits only).
     #[serde(default)]
     include_uncommitted: bool,
+    /// Start from the project's git remote, not the code machine's folder.
+    #[serde(default)]
+    from_remote: bool,
 }
 
 /// Home: hand the task's project to a device; answers with its folder there.
@@ -62,7 +73,14 @@ async fn start(
     let code = state.code_machine();
     match state
         .handoffs
-        .start(workspace, &slug, &device, &code, body.include_uncommitted)
+        .start(
+            workspace,
+            &slug,
+            &device,
+            &code,
+            body.include_uncommitted,
+            body.from_remote,
+        )
         .await
     {
         Ok((path, branch)) => {
@@ -106,6 +124,81 @@ async fn collect(
     match tokio::task::spawn_blocking(move || handoffs.collect(&project, &task, &params)).await {
         Ok(Ok(Some(bundle))) => bundle.into_response(),
         Ok(Ok(None)) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(err)) => error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
+        Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+    }
+}
+
+/// Device: fetch a project from its remote for a task.
+async fn fetch(
+    State(state): State<AppState>,
+    Path((project, task)): Path<(String, String)>,
+    Json(req): Json<FetchRequest>,
+) -> Response {
+    let handoffs = Arc::clone(&state.handoffs);
+    match tokio::task::spawn_blocking(move || handoffs.fetch(&project, &task, &req)).await {
+        Ok(Ok(fetched)) => Json(fetched).into_response(),
+        Ok(Err(err)) => error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
+        Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+    }
+}
+
+#[derive(Deserialize)]
+struct PublishBody {
+    remote: String,
+}
+
+/// Device: push a task's work to the remote it was fetched from.
+async fn publish(
+    State(state): State<AppState>,
+    Path((project, task)): Path<(String, String)>,
+    Query(params): Query<SnapshotParams>,
+    Json(body): Json<PublishBody>,
+) -> Response {
+    let handoffs = Arc::clone(&state.handoffs);
+    match tokio::task::spawn_blocking(move || {
+        handoffs.publish(&project, &task, &params, &body.remote)
+    })
+    .await
+    {
+        Ok(Ok(pushed)) => Json(json!({ "pushed": pushed })).into_response(),
+        Ok(Err(err)) => error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
+        Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+    }
+}
+
+/// Home: the task's pull request, as GitHub has it now.
+async fn pull_request(State(state): State<AppState>, Path(slug): Path<String>) -> Response {
+    let Some(workspace) = state.workspace.current() else {
+        return error(StatusCode::CONFLICT, "Workspace not configured.");
+    };
+    let found = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let pr = workspace.get_task(&slug)?.task.pr;
+        let pr = pr.ok_or_else(|| anyhow::anyhow!("the task has no pull request"))?;
+        github::view_pr(&pr)
+    })
+    .await;
+    match found {
+        Ok(Ok(pr)) => Json(pr).into_response(),
+        Ok(Err(err)) => error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
+        Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+    }
+}
+
+/// Home: squash-merge the task's pull request; answers with it merged.
+async fn merge_pull_request(State(state): State<AppState>, Path(slug): Path<String>) -> Response {
+    let Some(workspace) = state.workspace.current() else {
+        return error(StatusCode::CONFLICT, "Workspace not configured.");
+    };
+    let merged = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let pr = workspace.get_task(&slug)?.task.pr;
+        let pr = pr.ok_or_else(|| anyhow::anyhow!("the task has no pull request"))?;
+        github::merge_pr(&pr)?;
+        github::view_pr(&pr)
+    })
+    .await;
+    match merged {
+        Ok(Ok(pr)) => Json(pr).into_response(),
         Ok(Err(err)) => error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
         Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
     }
@@ -167,38 +260,61 @@ struct GitStatusQuery {
     dir: String,
 }
 
-/// Whether a folder on this machine is a git repo, and how many files have
-/// uncommitted changes.
+/// Whether a folder on this machine is a git repo, how many files have
+/// uncommitted changes, and its `origin`.
 async fn git_status(Query(query): Query<GitStatusQuery>) -> Response {
     let dir = crate::session::expand_home(&query.dir);
-    match tokio::task::spawn_blocking(move || crate::handoff::git::status(&dir)).await {
-        Ok((is_repo, uncommitted)) => {
-            Json(json!({ "isRepo": is_repo, "uncommitted": uncommitted })).into_response()
-        }
+    let status = tokio::task::spawn_blocking(move || {
+        let (is_repo, uncommitted) = crate::handoff::git::status(&dir);
+        let remote = crate::handoff::git::origin(&dir).unwrap_or_default();
+        (is_repo, uncommitted, remote)
+    })
+    .await;
+    match status {
+        Ok((is_repo, uncommitted, remote)) => Json(json!({
+            "isRepo": is_repo,
+            "uncommitted": uncommitted,
+            "remote": remote,
+        }))
+        .into_response(),
         Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
     }
 }
 
-/// Home: whether a project is a git repo and how many files have uncommitted
-/// changes, asked of the code machine.
+/// Home: whether a project is a git repo, how many files have uncommitted
+/// changes and its remote, asked of the code machine. A project learns its
+/// remote from the folder's `origin`. With the code machine away (or no
+/// folder), `fromRemote` says other machines would fetch the remote instead.
 async fn project_git(State(state): State<AppState>, Path(slug): Path<String>) -> Response {
     let Some(workspace) = state.workspace.current() else {
         return error(StatusCode::CONFLICT, "Workspace not configured.");
     };
-    let project = match tokio::task::spawn_blocking(move || workspace.get_project(&slug)).await {
+    let ws = Arc::clone(&workspace);
+    let project = match tokio::task::spawn_blocking(move || ws.get_project(&slug)).await {
         Ok(Ok(project)) => project,
         Ok(Err(err)) => return error(StatusCode::NOT_FOUND, &err.to_string()),
         Err(err) => return error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
     };
+    // What's known without the code machine: other machines fetch the remote
+    let known = json!({
+        "isRepo": !project.remote.is_empty(),
+        "uncommitted": 0,
+        "remote": project.remote,
+        "fromRemote": !project.remote.is_empty(),
+    });
     if project.directory.is_empty() {
-        return Json(json!({ "isRepo": false, "uncommitted": 0 })).into_response();
+        return Json(known).into_response();
     }
-    match state.code_machine() {
+    let status = match state.code_machine() {
         CodeMachine::Here(_) => {
-            git_status(Query(GitStatusQuery {
-                dir: project.directory,
-            }))
+            let dir = crate::session::expand_home(&project.directory);
+            tokio::task::spawn_blocking(move || {
+                let (is_repo, uncommitted) = crate::handoff::git::status(&dir);
+                let remote = crate::handoff::git::origin(&dir).unwrap_or_default();
+                json!({ "isRepo": is_repo, "uncommitted": uncommitted, "remote": remote })
+            })
             .await
+            .map_err(|err| err.to_string())
         }
         CodeMachine::Device(device) => {
             let sent = state
@@ -212,20 +328,36 @@ async fn project_git(State(state): State<AppState>, Path(slug): Path<String>) ->
                 .await;
             match sent {
                 Ok(res) if res.status().is_success() => {
-                    let value: serde_json::Value = res.json().await.unwrap_or_default();
-                    Json(value).into_response()
+                    Ok(res.json::<serde_json::Value>().await.unwrap_or_default())
                 }
-                Ok(res) => error(
-                    StatusCode::BAD_GATEWAY,
-                    &format!("{} answered {}", device.name, res.status()),
-                ),
-                Err(err) => error(
-                    StatusCode::BAD_GATEWAY,
-                    &format!("{} isn't reachable: {err}", device.name),
-                ),
+                Ok(res) => Err(format!("{} answered {}", device.name, res.status())),
+                Err(err) => Err(format!("{} isn't reachable: {err}", device.name)),
             }
         }
+    };
+    let mut status = match status {
+        Ok(status) => status,
+        // The project can still start from its remote
+        Err(_) if !project.remote.is_empty() => return Json(known).into_response(),
+        Err(err) => return error(StatusCode::BAD_GATEWAY, &err),
+    };
+    let origin = status["remote"].as_str().unwrap_or_default().to_string();
+    if origin.is_empty() {
+        status["remote"] = project.remote.into();
+    } else if project.remote.is_empty() {
+        let slug = project.slug;
+        let _ = tokio::task::spawn_blocking(move || {
+            workspace.update_project(
+                &slug,
+                UpdateProject {
+                    remote: Some(origin),
+                    ..UpdateProject::default()
+                },
+            )
+        })
+        .await;
     }
+    Json(status).into_response()
 }
 
 #[derive(Deserialize)]

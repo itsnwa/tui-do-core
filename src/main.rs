@@ -240,6 +240,7 @@ async fn serve() -> anyhow::Result<()> {
         relays: Arc::clone(&relays),
         handoffs: Arc::new(Handoffs::new(
             Arc::clone(&fleet),
+            Arc::clone(&workspace),
             tui_do_core::fleet::Device {
                 id: device.device_id.clone(),
                 name: device.device_name.clone(),

@@ -155,7 +155,7 @@ Only the [home core](#the-home-role) writes the workspace. Every other core serv
 }
 ```
 
-`state` is `not-started`, `in-progress` or `completed`; `recurrence` is `daily`, `weekly`, `monthly`, `yearly` or `null`. Detail responses add `description` (the markdown body).
+`state` is `not-started`, `in-progress` or `completed`; `recurrence` is `daily`, `weekly`, `monthly`, `yearly` or `null`. Detail responses add `description` (the markdown body). A task that runs on another machine has `device`; one whose work was opened as a pull request has `pr`, its URL (see [Pull requests](#pull-requests)).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
@@ -163,7 +163,7 @@ Only the [home core](#the-home-role) writes the workspace. Every other core serv
 | `POST` | `/v0/tasks` | `{ title, project?, due?, recurrence?, description? }` | Task + `description` |
 | `GET` | `/v0/tasks/lookup?ref=58` | | Task by short ID (`58`, `#58`, `26-058`; bare numbers are this year's) or slug |
 | `GET` | `/v0/tasks/{slug}` | | Task + `description` + `content` |
-| `PATCH` | `/v0/tasks/{slug}` | any of `{ title, state, project, due, recurrence, plan, description }` (`null` clears `due`, `recurrence`, `plan`) | Task + `description`. Completing a recurring task moves it to its next due date instead. |
+| `PATCH` | `/v0/tasks/{slug}` | any of `{ title, state, project, due, recurrence, plan, description, pr }` (`null` clears `due`, `recurrence`, `plan`, `pr`) | Task + `description`. Completing a recurring task moves it to its next due date instead. |
 | `DELETE` | `/v0/tasks/{slug}` | | Undo token `{ task, planSnapshot, attachmentSnapshots }`; also deletes the task's plan and stored attachments |
 | `POST` | `/v0/tasks/restore` | the undo token | Task + `description` |
 | `POST` | `/v0/tasks/{slug}/reorder` | `{ direction: "up" \| "down", project? }` | `{ success, error? }` (moves within the same due date) |
@@ -185,14 +185,14 @@ These take a short ID or slug and answer like the TUI-DO MCP tools (business err
 
 ## Projects
 
-`{ slug, title, muted, archived, created, directory }`. `directory` is on the code machine (`codeDevice` in [`/v0/fleet`](#fleet); the home core unless the home moved away from it). A task runs on another machine with a copy of it (see [Running a task on another machine](#running-a-task-on-another-machine)).
+`{ slug, title, muted, archived, created, directory, remote }`. `directory` is on the code machine (`codeDevice` in [`/v0/fleet`](#fleet); the home core unless the home moved away from it). `remote` is a git URL the code can be fetched from (e.g. `https://github.com/owner/repo`); it's learned from the folder's `origin`, and a project can have only a remote. A task runs on another machine with a copy of it (see [Running a task on another machine](#running-a-task-on-another-machine)).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/projects` | | `[Project]` |
-| `POST` | `/v0/projects` | `{ title, directory? }` | Project |
+| `POST` | `/v0/projects` | `{ title, directory?, remote? }` | Project |
 | `GET` | `/v0/projects/{slug}` | | Project + `content` |
-| `PATCH` | `/v0/projects/{slug}` | any of `{ title, muted, archived, directory }` | Project. A new title renames the project and moves its tasks to the new slug. |
+| `PATCH` | `/v0/projects/{slug}` | any of `{ title, muted, archived, directory, remote }` (`""` clears `remote`) | Project. A new title renames the project and moves its tasks to the new slug. |
 | `DELETE` | `/v0/projects/{slug}` | | `{ deleted }`. Also deletes the project's tasks, with their plans and attachments. |
 
 ## Plans
@@ -270,11 +270,11 @@ The APNs key is an auth key (`.p8`) from the Apple Developer portal with APNs en
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/agents` | | `{ claude, codex }`: what the agents installed on this machine offer, `null` for one that isn't installed. `claude`: `{ models: [{ value, label, description, effortLevels, supportsAutoMode }], permissionModes }` (the models `/model` lists, and the `--permission-mode` choices). `codex`: `{ models: [{ slug, label, efforts }] }`. Cached for 30 minutes. Ask a fleet device through `/v0/devices/{id}/agents`. |
-| `POST` | `/v0/tasks/{ref}/agent` | `{ device?, agent?, model?, effort?, permissionMode?, yolo?, includeUncommitted?, resume?, worktree?, worktreePath?, cols?, rows? }` | `{ session, device, path, started }` |
+| `POST` | `/v0/tasks/{ref}/agent` | `{ device?, agent?, model?, effort?, permissionMode?, yolo?, includeUncommitted?, fromRemote?, resume?, worktree?, worktreePath?, cols?, rows? }` | `{ session, device, path, started }` |
 
 `POST /v0/tasks/{ref}/agent` starts a coding agent on a task the way the Mac app does, so a client only picks the options:
 
-- `device`: the machine to run on: a fleet device or the home core's own id (absent: the code machine). On the code machine the task works in the project's folder; on any other machine the task's code is handed over first, as with [`/handoff`](#running-a-task-on-another-machine) (`includeUncommitted` takes uncommitted changes along), and the task's `device` is set.
+- `device`: the machine to run on: a fleet device or the home core's own id (absent: the code machine). On the code machine the task works in the project's folder; on any other machine the task's code is handed over first, as with [`/handoff`](#running-a-task-on-another-machine) (`includeUncommitted` takes uncommitted changes along, `fromRemote` fetches the project's remote instead), and the task's `device` is set. A project with only a remote goes through a handoff on the code machine too.
 - `agent`: `claude` (default) or `codex`. `model` is Claude's `--model` value (`default` adds no flag) or a Codex model slug; `effort` is an effort level from `/v0/agents`; `permissionMode` is Claude's; `yolo` skips permission prompts (and Codex's sandbox).
 - `worktree` (Claude only): a name for a new git worktree (`--worktree`). `worktreePath`: a worktree that already exists, which Claude starts in instead. Cores before 0.3.3 ignore both.
 - The session is the task's slug, a login shell in the project's folder (or the task's folder on the machine) with `agent` set. Once the shell prints its first output (or after 5 s), the core types the agent's command with the prompt `Start working on task <id>`.
@@ -361,16 +361,29 @@ The home keeps a copy of the workspace on every device: when a device comes onli
 
 ## Running a task on another machine
 
-Starting a task on a fleet device takes the project's code along; completing the task brings the work back as a branch. Only git projects can move. The code comes from the code machine (`codeDevice`); when that's not the home core, the home core asks it for the snapshot and has it land the returned branch.
+Starting a task on a fleet device takes the project's code along; completing the task brings the work back as a branch. Only git projects can move. The code comes from the code machine (`codeDevice`); when that's not the home core, the home core asks it for the snapshot and has it land the returned branch. Or it comes from the project's `remote`: when the project has no folder, when the code machine doesn't answer, or with `fromRemote`.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/projects/{slug}/git` | | `{ isRepo, uncommitted }`: whether the project folder is a git repo and how many files have uncommitted changes |
-| `POST` | `/v0/tasks/{slug}/handoff` | `{ device, includeUncommitted? }` | `{ device, path, branch }`: the task's working folder on that device (the home core's own id works too). On the code machine itself that's the project's folder, with an empty `branch`. Otherwise the code machine snapshots the project's repo (unpushed commits always; uncommitted and untracked changes only with `includeUncommitted`; the checkout, index and branch are left alone), sends only the commits the device lacks as a `git bundle`, and the device checks it out in `~/.tui-do/work/<project>/<task>` on branch `tui-do/<task id>`, with uncommitted work still uncommitted. If the task already has a folder there, it's kept. |
+| `GET` | `/v0/projects/{slug}/git` | | `{ isRepo, uncommitted, remote, fromRemote? }`: whether the project folder is a git repo, how many files have uncommitted changes, and its `origin` (which the project takes as its `remote` if it has none). When the project has no folder or the code machine doesn't answer, it's what the project knows, with `fromRemote: true`: other machines would fetch the remote. |
+| `POST` | `/v0/tasks/{slug}/handoff` | `{ device, includeUncommitted?, fromRemote? }` | `{ device, path, branch }`: the task's working folder on that device (the home core's own id works too). On the code machine itself that's the project's folder, with an empty `branch`. Otherwise the code machine snapshots the project's repo (unpushed commits always; uncommitted and untracked changes only with `includeUncommitted`; the checkout, index and branch are left alone), sends only the commits the device lacks as a `git bundle`, and the device checks it out in `~/.tui-do/work/<project>/<task>` on branch `tui-do/<task id>`, with uncommitted work still uncommitted. If the task already has a folder there, it's kept. |
 
 Completing the task (in the app, through the API or from an MCP tool) makes the device commit what's left and send the branch back; the code machine fetches it into the project as `tui-do/<task id>` (your checkout is never touched). Uncommitted changes that came along and weren't touched there are left out, since they're still in your checkout. The device's folder, branch and the task's refs are removed; its cache of the project keeps only the committed history (`refs/tui-do/known`), so the next handoff sends just what's new. Progress goes out on `/v0/events` as `{ "type": "handoff", "task", "status": "starting" | "started" | "returned" | "failed", "branch", "message" }`.
 
-Device-side routes used by the home core: `GET /v0/handoff/{project}/commits`, `POST /v0/handoff/{project}/{task}` (bundle body), `POST /v0/handoff/{project}/{task}/collect`; on the code machine, `POST /v0/handoff/{project}/{task}/snapshot` (`{ directory, known, includeUncommitted }`; the bundle as the body, the snapshot in the `x-tui-do-snapshot` header), `POST /v0/handoff/{project}/{task}/land?repo=&branch=` (bundle body) and `GET /v0/git/status?dir=`.
+### From the remote
+
+The device fetches the remote's default branch into its cache and checks it out on `tui-do/<task id>`, as above. Unpushed commits and uncommitted changes on the code machine aren't included. The device needs access to the remote: for GitHub, `gh auth login` (with `gh auth setup-git`) or an ssh key; an ssh URL that fails is tried again over https. Completing the task commits what's left and pushes the branch to the remote; for GitHub, the home core then opens a pull request into the branch it started from, with the task's title and its completion summary, and keeps its URL as the task's `pr`. The handoff event's `message` says where the work went.
+
+### Pull requests
+
+Through `gh` on the home core, which needs to be logged in (`gh auth login`).
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/tasks/{slug}/pr` | | `{ url, number, title, state, draft, mergeable, checks }`: `state` is `OPEN`, `MERGED` or `CLOSED`; `mergeable` is `MERGEABLE`, `CONFLICTING` or `UNKNOWN`; `checks` is `passing`, `failing`, `pending` or `none` |
+| `POST` | `/v0/tasks/{slug}/pr/merge` | | The pull request, after a squash merge that deletes its branch |
+
+Device-side routes used by the home core: `GET /v0/handoff/{project}/commits`, `POST /v0/handoff/{project}/{task}` (bundle body), `POST /v0/handoff/{project}/{task}/collect`, `POST /v0/handoff/{project}/{task}/fetch` (`{ remote, branch }`; answers `{ path, commit, baseBranch }`), `POST /v0/handoff/{project}/{task}/publish?…` (`{ remote }`; answers `{ pushed }`); on the code machine, `POST /v0/handoff/{project}/{task}/snapshot` (`{ directory, known, includeUncommitted }`; the bundle as the body, the snapshot in the `x-tui-do-snapshot` header), `POST /v0/handoff/{project}/{task}/land?repo=&branch=` (bundle body) and `GET /v0/git/status?dir=`.
 
 ## Coding agents on a machine
 
