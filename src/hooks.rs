@@ -1,22 +1,25 @@
 //! Claude Code hook integration.
 //!
 //! Claude sessions are launched with `claude --settings "$TUI_DO_CLAUDE_SETTINGS"`.
-//! Each hook writes a state word (idle / working / waiting) to the session's
-//! state file (`$TUI_DO_CLAUDE_STATE_FILE`), which the session actor polls.
-//! This reports Claude's state exactly instead of guessing from output timing.
-//! The hooks that report waiting also save what Claude sent them next to the
-//! state file, so a notification can say what it's waiting for.
+//! Every hook in that file runs `tui-do-core hook`, which appends what Claude
+//! handed it to the session's log (`$TUI_DO_CLAUDE_STATE_FILE.events`) as one
+//! line, a [`Record`]. The session actor reads the log and works the
+//! session's status out of it (see `status`): exactly, not guessed from
+//! output timing, and again from the start after the core restarts.
 //!
-//! Claude has no hook for an interrupted turn (Esc) or for a permission being
-//! answered, so those two aren't reported: an interrupted turn stays
-//! `working` until the next prompt, and an approved tool `waiting` until it's done.
+//! Sessions whose Claude started under a core before 0.3.18 still have its
+//! hooks, which write a state word (idle / working / waiting) to the state
+//! file and save their input next to it. Codex's `notify` command does the
+//! same when a turn ends. Both are still read.
 
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use serde_json::json;
 
 use crate::session::AgentState;
+use crate::status::Record;
 
 pub const SETTINGS_ENV: &str = "TUI_DO_CLAUDE_SETTINGS";
 pub const STATE_FILE_ENV: &str = "TUI_DO_CLAUDE_STATE_FILE";
@@ -25,74 +28,58 @@ pub const SESSION_ENV: &str = "TUI_DO_SESSION";
 /// This core's executable, which Codex's `notify` command runs.
 pub const CORE_EXE_ENV: &str = "TUI_DO_CORE_EXE";
 
+/// The hooks Claude reports with. `PreToolUse` and `PostToolUse` say which
+/// tool calls are under way, so one finishing can't hide another's open
+/// permission prompt; `PermissionRequest` fires as a prompt opens (the
+/// `permission_prompt` notification only six seconds later).
+const EVENTS: [&str; 13] = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PermissionRequest",
+    "PermissionDenied",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "Elicitation",
+    "ElicitationResult",
+    "Notification",
+    "Stop",
+    "StopFailure",
+    "SessionEnd",
+];
+
 pub struct Hooks {
     settings_path: PathBuf,
     state_dir: PathBuf,
 }
 
-fn write_state(state: &str) -> serde_json::Value {
-    json!([{
-        "type": "command",
-        "command": format!(
-            "test -n \"${STATE_FILE_ENV}\" && printf {state} > \"${STATE_FILE_ENV}\"; true"
-        ),
-        "timeout": 5,
-    }])
-}
-
-/// Saves the hook's input before reporting waiting, so it's there when the
-/// state changes.
-fn write_waiting() -> serde_json::Value {
-    json!([{
-        "type": "command",
-        "command": format!(
-            "test -n \"${STATE_FILE_ENV}\" && {{ cat > \"${STATE_FILE_ENV}.json\"; printf waiting > \"${STATE_FILE_ENV}\"; }}; true"
-        ),
-        "timeout": 5,
-    }])
-}
-
-/// [`write_waiting`] for Claude's notifications, which follow the hook that
-/// already said why it waits: the input is only saved if nothing has.
-fn write_still_waiting() -> serde_json::Value {
-    json!([{
-        "type": "command",
-        "command": format!(
-            "test -n \"${STATE_FILE_ENV}\" && {{ test \"$(cat \"${STATE_FILE_ENV}\" 2>/dev/null)\" = waiting || cat > \"${STATE_FILE_ENV}.json\"; printf waiting > \"${STATE_FILE_ENV}\"; }}; true"
-        ),
-        "timeout": 5,
-    }])
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r"'\''"))
 }
 
 impl Hooks {
     /// Write the hook settings file under `dir` and create the state folder.
-    pub fn prepare(dir: &Path) -> anyhow::Result<Self> {
+    /// `exe` is this core's binary, which the hooks run.
+    pub fn prepare(dir: &Path, exe: &Path) -> anyhow::Result<Self> {
         let state_dir = dir.join("state");
         std::fs::create_dir_all(&state_dir)
             .with_context(|| format!("creating {}", state_dir.display()))?;
 
-        let settings = json!({
-            "hooks": {
-                "SessionStart": [{ "matcher": "startup|resume|clear", "hooks": write_state("idle") }],
-                "UserPromptSubmit": [{ "hooks": write_state("working") }],
-                "PreToolUse": [{ "matcher": "AskUserQuestion|ExitPlanMode", "hooks": write_waiting() }],
-                // Fires as the prompt opens; the notification only six seconds later
-                "PermissionRequest": [{ "hooks": write_waiting() }],
-                "PermissionDenied": [{ "hooks": write_state("working") }],
-                "PostToolUse": [{ "hooks": write_state("working") }],
-                "PostToolUseFailure": [{ "hooks": write_state("working") }],
-                "Elicitation": [{ "hooks": write_waiting() }],
-                "ElicitationResult": [{ "hooks": write_state("working") }],
-                "Notification": [{
-                    "matcher": "permission_prompt|idle_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input|worker_permission_prompt",
-                    "hooks": write_still_waiting(),
-                }],
-                "Stop": [{ "hooks": write_waiting() }],
-                // The turn ended on an API error (a rate limit, say)
-                "StopFailure": [{ "hooks": write_waiting() }],
-                "SessionEnd": [{ "hooks": write_state("idle") }],
-            }
-        });
+        // The path is written out: a shell opened by an earlier core doesn't
+        // have it in its environment. Outside a TUI-DO session, nothing runs.
+        let command = format!(
+            "test -n \"${STATE_FILE_ENV}\" && {} hook; true",
+            shell_quote(&exe.display().to_string())
+        );
+        let hooks: serde_json::Map<String, serde_json::Value> = EVENTS
+            .iter()
+            .map(|event| {
+                let run =
+                    json!([{ "hooks": [{ "type": "command", "command": command, "timeout": 5 }] }]);
+                ((*event).to_string(), run)
+            })
+            .collect();
+        let settings = json!({ "hooks": hooks });
         let settings_path = dir.join("settings.json");
         let content = serde_json::to_string_pretty(&settings)? + "\n";
         if std::fs::read_to_string(&settings_path).ok().as_deref() != Some(content.as_str()) {
@@ -113,8 +100,7 @@ impl Hooks {
     /// Env for an agent session, starting from a clean state file.
     pub fn env_for(&self, id: &str, exe: &Path) -> (Vec<(String, String)>, PathBuf) {
         let state_file = self.state_file(id);
-        let _ = std::fs::remove_file(&state_file);
-        let _ = std::fs::remove_file(detail_file(&state_file));
+        remove_state(&state_file);
         let env = vec![
             (
                 SETTINGS_ENV.to_string(),
@@ -125,6 +111,107 @@ impl Hooks {
             (CORE_EXE_ENV.to_string(), exe.display().to_string()),
         ];
         (env, state_file)
+    }
+}
+
+/// Forget what a session's agent reported.
+pub fn remove_state(state_file: &Path) {
+    let _ = std::fs::remove_file(state_file);
+    let _ = std::fs::remove_file(detail_file(state_file));
+    let _ = std::fs::remove_file(log_file(state_file));
+}
+
+/// Where a session's hooks log their events.
+pub fn log_file(state_file: &Path) -> PathBuf {
+    let mut path = state_file.as_os_str().to_owned();
+    path.push(".events");
+    path.into()
+}
+
+/// `tui-do-core hook`: what every hook of a TUI-DO session runs, with the
+/// agent's hook input on stdin. Adds its record to the session's log.
+///
+/// It prints nothing and never fails: a hook's output and exit code can
+/// change what the agent does, and reporting must not.
+pub fn run() {
+    let Some(state_file) = std::env::var_os(STATE_FILE_ENV).filter(|path| !path.is_empty()) else {
+        return;
+    };
+    let mut input = String::new();
+    if std::io::stdin().read_to_string(&mut input).is_err() {
+        return;
+    }
+    let Ok(input) = serde_json::from_str::<serde_json::Value>(&input) else {
+        return;
+    };
+    let now = crate::workspace::dates::now_millis();
+    if let Some(record) = Record::of_hook(&input, now) {
+        let _ = append(&log_file(Path::new(&state_file)), &record);
+    }
+}
+
+/// Add a record to a log as one line, in one write, so hooks that run at the
+/// same time (parallel tool calls) can't tear each other's lines.
+pub fn append(log: &Path, record: &Record) -> anyhow::Result<()> {
+    let mut line = serde_json::to_string(record)?;
+    line.push('\n');
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)?;
+    file.write_all(line.as_bytes())?;
+    Ok(())
+}
+
+/// A session's log, read as it grows.
+pub struct Log {
+    path: PathBuf,
+    /// How far it's been read.
+    position: u64,
+    /// The start of a line whose end hasn't been written yet.
+    partial: Vec<u8>,
+}
+
+impl Log {
+    pub fn new(state_file: &Path) -> Self {
+        Self {
+            path: log_file(state_file),
+            position: 0,
+            partial: Vec::new(),
+        }
+    }
+
+    /// The records added since the last call.
+    pub fn read_new(&mut self) -> Vec<Record> {
+        let Ok(size) = std::fs::metadata(&self.path).map(|meta| meta.len()) else {
+            return Vec::new();
+        };
+        if size < self.position {
+            // A new log under the same name
+            self.position = 0;
+            self.partial.clear();
+        }
+        if size == self.position {
+            return Vec::new();
+        }
+        let mut added = Vec::new();
+        let read = std::fs::File::open(&self.path).and_then(|mut file| {
+            file.seek(SeekFrom::Start(self.position))?;
+            file.read_to_end(&mut added)
+        });
+        let Ok(read) = read else {
+            return Vec::new();
+        };
+        self.position += read as u64;
+        self.partial.extend_from_slice(&added);
+        let Some(end) = self.partial.iter().rposition(|byte| *byte == b'\n') else {
+            return Vec::new();
+        };
+        let lines: Vec<u8> = self.partial.drain(..=end).collect();
+        String::from_utf8_lossy(&lines)
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect()
     }
 }
 
@@ -142,7 +229,8 @@ pub fn read_state(path: &Path) -> Option<AgentState> {
     }
 }
 
-/// Where the hook that reported waiting left its input (Codex: its notify payload).
+/// Where a hook that wrote the state word `waiting` left its input (Codex:
+/// its notify payload).
 pub fn detail_file(state_file: &Path) -> PathBuf {
     let mut path = state_file.as_os_str().to_owned();
     path.push(".json");
@@ -156,11 +244,17 @@ const DETAIL_MAX: usize = 200;
 /// permission it needs, the error its turn ended on, or the last line of its
 /// reply.
 pub fn read_detail(state_file: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(detail_file(state_file)).ok()?;
-    detail(&serde_json::from_str(&text).ok()?)
+    detail(&read_input(state_file)?)
 }
 
-fn detail(input: &serde_json::Value) -> Option<String> {
+/// The input of the hook that wrote the state word `waiting`.
+pub fn read_input(state_file: &Path) -> Option<serde_json::Value> {
+    let text = std::fs::read_to_string(detail_file(state_file)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// One line on what a hook's input says the agent waits for.
+pub(crate) fn detail(input: &serde_json::Value) -> Option<String> {
     let text = if let Some(question) = input["tool_input"]["questions"][0]["question"].as_str() {
         question.to_string()
     } else if input["tool_name"] == "ExitPlanMode" {
@@ -201,8 +295,63 @@ fn permission(input: &serde_json::Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::detail;
-    use serde_json::json;
+    use super::*;
+
+    #[test]
+    fn every_hook_should_run_the_core_with_its_path_quoted() {
+        let dir = std::env::temp_dir().join(format!("tui-do-hooks-{}", uuid::Uuid::new_v4()));
+        let hooks = Hooks::prepare(&dir, Path::new("/Users/it's me/tui-do-core")).expect("hooks");
+        let text = std::fs::read_to_string(&hooks.settings_path).expect("settings");
+        let settings: serde_json::Value = serde_json::from_str(&text).expect("json");
+        let events = settings["hooks"].as_object().expect("hooks");
+        assert_eq!(events.len(), EVENTS.len());
+        for (event, groups) in events {
+            assert_eq!(
+                groups[0]["hooks"][0]["command"],
+                r#"test -n "$TUI_DO_CLAUDE_STATE_FILE" && '/Users/it'\''s me/tui-do-core' hook; true"#,
+                "{event}"
+            );
+        }
+        std::fs::remove_dir_all(dir).expect("clean up");
+    }
+
+    #[test]
+    fn a_log_should_give_each_record_once_as_it_grows() {
+        let dir = std::env::temp_dir().join(format!("tui-do-log-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("folder");
+        let state_file = dir.join("task.state");
+        let record = |event: &str| Record {
+            t: 1,
+            event: event.into(),
+            ..Record::default()
+        };
+        let mut log = Log::new(&state_file);
+        assert!(log.read_new().is_empty());
+
+        append(&log_file(&state_file), &record("SessionStart")).expect("append");
+        append(&log_file(&state_file), &record("UserPromptSubmit")).expect("append");
+        let events =
+            |records: Vec<Record>| records.into_iter().map(|r| r.event).collect::<Vec<_>>();
+        assert_eq!(events(log.read_new()), ["SessionStart", "UserPromptSubmit"]);
+        assert!(log.read_new().is_empty());
+
+        // Half a line, a line that isn't a record, then the rest
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(log_file(&state_file))
+            .expect("open");
+        file.write_all(b"junk\n{\"t\":2,\"event\":\"St")
+            .expect("write");
+        assert!(log.read_new().is_empty());
+        file.write_all(b"op\"}\n").expect("write");
+        assert_eq!(events(log.read_new()), ["Stop"]);
+
+        // The session started over
+        remove_state(&state_file);
+        append(&log_file(&state_file), &record("SessionStart")).expect("append");
+        assert_eq!(events(log.read_new()), ["SessionStart"]);
+        std::fs::remove_dir_all(dir).expect("clean up");
+    }
 
     #[test]
     fn detail_should_say_what_the_agent_waits_for() {

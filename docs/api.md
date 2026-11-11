@@ -12,6 +12,14 @@ Every route except `/v0/health` needs a token, sent as `Authorization: Bearer <t
   "alive": true,
   "exitCode": null,
   "agent": "claude",
+  "status": {
+    "state": "blocked",
+    "reason": "question",
+    "detail": "Which approach?",
+    "since": "2026-11-12T00:31:02.123Z",
+    "seq": 1794440939049,
+    "source": "hooks"
+  },
   "agentState": "waiting",
   "agentDetail": "Which approach?",
   "pid": 12345,
@@ -23,9 +31,31 @@ Every route except `/v0/health` needs a token, sent as `Authorization: Bearer <t
 
 - `id` — chosen by the client; letters, digits, `-`, `_` and `.`, up to 200 characters.
 - `exitCode` — set once the session ended; `null` while running or when it was killed by a signal.
-- `agent` / `agentState` — for sessions started with `"agent": "claude"`: `idle`, `working` or `waiting`. Comes from Claude Code hooks when the session loads them (see below), otherwise from output timing (2 s of quiet → `waiting`; output more than 500 ms after the last input → `working`).
-- `agentDetail` — while the agent is `waiting`, one line on what it waits for, the same text as `detail` on the `agentState` event; left out when unknown or not waiting (cores 0.3.17 and later).
+- `agent` — set for sessions started with an `agent` (`"claude"`, `"codex"`).
+- `status` — what the agent is doing; see [Status](#status). Left out for a session without an agent, and by cores before 0.3.18.
+- `agentState` — `status` in three words, for clients from before it: `idle`, `working` or `waiting` (`blocked`, `failed`, and `ready` unless it just started or was interrupted, are `waiting`).
+- `agentDetail` — while `agentState` is `waiting`, the status's `detail`; left out when unknown or not waiting (cores 0.3.17 and later).
 - `labels` — free-form string tags, stored and returned as given.
+
+### Status
+
+One answer to "what is this agent doing", the same for every client. Draw it as it is; don't derive it from output or from `agentState`.
+
+| `state` | Means | `reason` |
+| --- | --- | --- |
+| `starting` | the session is up, its agent hasn't reported yet | |
+| `working` | the agent is in a turn | `turn` |
+| `blocked` | it can't go on without an answer | `permission`, `question`, `plan` |
+| `ready` | its turn is over; the next move is yours | `finished`; `interrupted` (you stopped it); `background` (it left agents of its own running and comes back by itself); `started` (no prompt yet); `quiet` (guessed: no output for 2 s); `idle` (a core or hooks from before statuses) |
+| `failed` | its turn ended on an error | the error: `rate_limit`, `overloaded`, `server_error`, … |
+| `ended` | the agent exited (the session's shell may live on), or the session did | |
+
+- `detail` — one line for a person: the question, the permission (`Allow Bash: cargo test?`), the error, or the last line of its reply. Left out when there's none.
+- `since` — when it took this status.
+- `seq` — grows with every change of a session's status, also across restarts of the core. Keep the status with the highest `seq` you've seen for a session; then a list fetched a moment ago can't undo an event that arrived since.
+- `source` — `hooks` (the agent's hooks said so), `claude` (Claude's own status did, see below), `inferred` (guessed from output, for agents without hooks) or `core` (the core knows: it started or ended the session).
+
+How it's known, for Claude: every hook in the settings file runs `tui-do-core hook`, which appends the event to the session's log; the core keeps the tool calls under way and what each asks the user, so one tool finishing doesn't hide another's open permission prompt, and a new core reads the log from the start. Claude has no hook for a turn you interrupt (Esc) or for a permission prompt being answered. For those the core reads Claude's own status file (`~/.claude/sessions/<pid>.json`: `busy`, `idle` or `waiting`) once a second, and when it has changed since the hooks last spoke and the two still disagree a second later, Claude's wins. That file isn't documented by Claude Code; without it a session goes by its hooks alone. Codex reports the end of each turn (`ready`); the rest is inferred.
 
 ## HTTP
 
@@ -60,7 +90,7 @@ Every route except `/v0/health` needs a token, sent as `Authorization: Bearer <t
 
 All fields except `id` are optional. An empty `argv` runs the user's default shell as a login shell. An empty `env` inherits the core's environment; a non-empty one replaces it. `cwd` may start with `~/`. If a live session with this id exists it's returned unchanged; a dead one is replaced.
 
-With `"agent": "claude"` the core adds `TUI_DO_CLAUDE_SETTINGS` (a Claude Code settings file with state-reporting hooks) and `TUI_DO_CLAUDE_STATE_FILE` to the environment. Start Claude with `claude --settings "$TUI_DO_CLAUDE_SETTINGS"` to get exact states. Claude has no hook for two things, which aren't reported: an interrupted turn (Esc) stays `working` until the next prompt, and an approved tool call stays `waiting` until it finishes.
+With `"agent": "claude"` the core adds `TUI_DO_CLAUDE_SETTINGS` (a Claude Code settings file with hooks that report its [status](#status)) and `TUI_DO_CLAUDE_STATE_FILE` to the environment. Start Claude with `claude --settings "$TUI_DO_CLAUDE_SETTINGS"` to get exact statuses.
 
 ### Snapshots
 
@@ -110,7 +140,8 @@ Client → server (one connection keeps keystrokes for all sessions in order):
 { "type": "output", "id": "my-task", "data": "text with VT sequences" }
 { "type": "sessionExited", "id": "my-task", "exitCode": 0 }
 { "type": "sessionRemoved", "id": "my-task" }
-{ "type": "agentState", "id": "my-task", "state": "waiting", "detail": "Which approach?" }
+{ "type": "sessionStatus", "id": "my-task", "status": { "state": "blocked", "reason": "question", "detail": "Which approach?", "since": "…", "seq": 1794440939049, "source": "hooks" } }
+{ "type": "agentState", "id": "my-task", "state": "waiting", "detail": "Which approach?", "seq": 1794440939049 }
 { "type": "sessionTyped", "id": "my-task" }
 { "type": "sessionQuiet", "id": "my-task" }
 { "type": "sessionResized", "id": "my-task", "cols": 120, "rows": 40 }
@@ -118,7 +149,7 @@ Client → server (one connection keeps keystrokes for all sessions in order):
 
 `output` data is always valid UTF-8; a character split across PTY reads is held back until it's complete. `sessionQuiet` fires when a session has produced no output for 2 seconds. `sessionResized` fires when the PTY takes another size (see [Several clients on one session](#several-clients-on-one-session)).
 
-An `agentState` that's `waiting` can carry `detail`, one line on what the agent waits for (a question it asked, a permission it needs, the error its turn ended on, or the last line of its reply); it's left out when unknown, and cores before 0.3.10 never send it. `sessionTyped` fires the first time someone types in a session after its agent started waiting (cores 0.3.12 and later).
+`sessionStatus` (cores 0.3.18 and later) carries a session's new [status](#status) whenever it changes, also when the session ends (`ended`, just before `sessionExited`). `agentState` follows it when the three-word state changed too, for clients from before statuses; its `seq` is that status's, so a client that takes `sessionStatus` ignores an `agentState` with a `seq`. An `agentState` that's `waiting` can carry `detail`; cores before 0.3.10 never send it. `sessionTyped` fires the first time someone types in a session after its status last changed, while it's `waiting` in the three-word sense (cores 0.3.12 and later).
 
 ## Notes for clients
 
@@ -264,7 +295,7 @@ The home core can tell a paired client when an agent on any machine waits for in
 | `PUT` | `/v0/notifications` | `{ enabled, deviceToken?, environment?, topic? }` | the same. Turning them on needs the APNs device token (hex), `environment` (`development` for builds signed for development, else `production`) and `topic` (the app's bundle id). Sending them again replaces the token. |
 | `POST` | `/v0/notifications/test` | | 204 once a test notification is sent; 409 without an APNs key; 502 with APNs's reason if it refused. |
 
-A session is notified when it turns `waiting` and is still waiting 15 seconds later, once each time it waits. It's skipped once someone types in it (`sessionTyped`: they're answering), and for a client that has it open (`/attach`, directly or through `/v0/devices/{id}/…`). The notification's title is the task's title (or the session id) and the machine, its body the `detail` from `agentState`. Its payload has `link`: `tuido://session/<device id>/<session id>`. If APNs answers that a device token is no longer registered, the client's notifications turn off.
+A session is notified when its [status](#status) starts calling for someone and still does 15 seconds later, once each time: `blocked`, `failed`, or `ready` because it `finished` (or went `quiet`). Not when you interrupted it, and not when it left agents of its own running. It's skipped once someone types in it (`sessionTyped`: they're answering), and for a client that has it open (`/attach`, directly or through `/v0/devices/{id}/…`). The notification's title is the task's title (or the session id) and the machine, its body the status's `detail`. A device on a core before 0.3.18 is notified for `waiting`, as before. Its payload has `link`: `tuido://session/<device id>/<session id>`. If APNs answers that a device token is no longer registered, the client's notifications turn off.
 
 The APNs key is an auth key (`.p8`) from the Apple Developer portal with APNs enabled, from the team the app is signed by. Give it to the home core with `tui-do-core apns-key <AuthKey_KEYID.p8> <team id>`, which keeps it in `apns.json` in the core's folder (`0600`). A new home gets a copy when the home moves. The core sends with `curl` over HTTP/2.
 

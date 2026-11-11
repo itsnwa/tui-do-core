@@ -144,7 +144,8 @@ async fn deliver(
     }
 }
 
-/// Watch agent states and notify clients about sessions left waiting.
+/// Watch sessions' statuses and notify clients about the ones left calling
+/// for someone.
 pub fn spawn_notifier(state: AppState) {
     let mut events = state.registry.subscribe();
     tokio::spawn(async move {
@@ -164,8 +165,8 @@ pub fn spawn_notifier(state: AppState) {
                     Err(RecvError::Closed) => return,
                 },
                 () = tokio::time::sleep_until(next.unwrap_or_else(tokio::time::Instant::now)), if next.is_some() => {
-                    for (key, detail) in waits.take_due(tokio::time::Instant::now()) {
-                        tokio::spawn(send(state.clone(), key, detail));
+                    for (key, body) in waits.take_due(tokio::time::Instant::now()) {
+                        tokio::spawn(send(state.clone(), key, body));
                     }
                 }
             }
@@ -174,7 +175,7 @@ pub fn spawn_notifier(state: AppState) {
 }
 
 /// Notify each client with notifications on that doesn't have the session open.
-async fn send(state: AppState, key: SessionKey, detail: Option<String>) {
+async fn send(state: AppState, key: SessionKey, body: String) {
     let config = state.config.get();
     // Only the home has the clients; a runner's sessions reach it as relayed events
     if !config.is_home() {
@@ -213,7 +214,7 @@ async fn send(state: AppState, key: SessionKey, detail: Option<String>) {
     .flatten();
     let alert = Alert {
         title: format!("{} · {machine}", task.as_deref().unwrap_or(session)),
-        body: detail.unwrap_or_else(|| "Waiting for input".into()),
+        body,
         link: Some(notify::session_link(device, session)),
         thread: Some(format!("{device}/{session}")),
     };
@@ -227,7 +228,7 @@ async fn send(state: AppState, key: SessionKey, detail: Option<String>) {
             Err(err) => tracing::warn!(error = %format!("{err:#}"), "couldn't send a notification"),
         }
     }
-    tracing::info!(%machine, %session, delivered, "notified about a waiting agent");
+    tracing::info!(%machine, %session, delivered, "notified about an agent");
 }
 
 impl AppState {

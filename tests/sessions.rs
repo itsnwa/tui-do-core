@@ -32,7 +32,7 @@ impl TestDir {
 
     fn registry(&self) -> Registry {
         Registry::new(
-            Hooks::prepare(&self.0.join("claude-hooks")).expect("hooks"),
+            Hooks::prepare(&self.0.join("claude-hooks"), BINARY.as_ref()).expect("hooks"),
             self.0.join("holders"),
             BINARY.into(),
         )
@@ -937,4 +937,123 @@ async fn a_silent_device_should_go_offline() {
         offline.is_ok(),
         "the relay still thinks the device is there"
     );
+}
+
+/// A Claude session whose hooks have said: a prompt, a tool call, and a
+/// permission prompt for it. Then it sits there, as Claude would.
+const ASKS_PERMISSION: &str = r#"
+hook() { printf '%s' "$1" | "$TUI_DO_CORE_EXE" hook; }
+hook '{"hook_event_name":"UserPromptSubmit","session_id":"s1"}'
+hook '{"hook_event_name":"PreToolUse","session_id":"s1","tool_name":"Bash","tool_use_id":"t1","tool_input":{"command":"make"}}'
+hook '{"hook_event_name":"PermissionRequest","session_id":"s1","tool_name":"Bash","tool_input":{"command":"make"}}'
+cat
+"#;
+
+impl Core {
+    async fn spawn_claude(&self, id: &str, script: &str) -> serde_json::Value {
+        self.post(
+            "/v0/sessions",
+            serde_json::json!({ "id": id, "argv": ["/bin/sh", "-c", script], "agent": "claude" }),
+        )
+        .await
+    }
+
+    /// Wait for a session's status to be in this state, and return it.
+    async fn status(&self, id: &str, state: &str) -> Option<serde_json::Value> {
+        let mut status = None;
+        eventually(async || {
+            status = self.session(id).await.map(|s| s["status"].clone());
+            status.as_ref().is_some_and(|s| s["state"] == state)
+        })
+        .await
+        .then_some(status)
+        .flatten()
+    }
+}
+
+#[tokio::test]
+async fn hooks_should_give_a_session_its_status_and_the_next_core_the_same() {
+    let dir = TestDir::new();
+    let mut core = Core::start(&dir).await;
+    let spawned = core.spawn_claude("agent", ASKS_PERMISSION).await;
+    assert_eq!(spawned["status"]["state"], "starting");
+
+    let blocked = core.status("agent", "blocked").await.expect("blocked");
+    assert_eq!(blocked["reason"], "permission");
+    assert_eq!(blocked["detail"], "Allow Bash: make?");
+    assert_eq!(blocked["source"], "hooks");
+    // Said the older way too
+    let session = core.session("agent").await.expect("session");
+    assert_eq!(session["agentState"], "waiting");
+    assert_eq!(session["agentDetail"], "Allow Bash: make?");
+
+    core.signal("-TERM");
+    core.wait();
+    let next = Core::start(&dir).await;
+    let again = next.session("agent").await.expect("session picked up")["status"].clone();
+    for same in ["state", "reason", "detail", "since", "source"] {
+        assert_eq!(again[same], blocked[same], "{same}");
+    }
+    // A client that has the status from before keeps the newer of the two
+    assert!(again["seq"].as_u64() >= blocked["seq"].as_u64());
+}
+
+#[tokio::test]
+async fn claude_s_own_status_should_correct_what_no_hook_reports() {
+    let dir = TestDir::new();
+    // Stands in for the Claude process, which the core checks is running
+    let mut claude = Command::new("/bin/sleep")
+        .arg("120")
+        .spawn()
+        .expect("sleep");
+    let sessions = dir.0.join("claude").join("sessions");
+    std::fs::create_dir_all(&sessions).expect("folder");
+    let file = sessions.join(format!("{}.json", claude.id()));
+    let pid = claude.id();
+    let says = |status: &str, at: u128| {
+        let entry = serde_json::json!({ "pid": pid, "sessionId": "s1", "status": status, "statusUpdatedAt": at as u64 });
+        // As Claude writes it: whole, or not there
+        let part = file.with_extension("tmp");
+        std::fs::write(&part, entry.to_string()).expect("write");
+        std::fs::rename(&part, &file).expect("rename");
+    };
+    let now = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("a clock")
+            .as_millis()
+    };
+    // Busy since long before the permission prompt: nothing to correct
+    says("busy", 1);
+
+    let mut command = Command::new(BINARY);
+    command.env("CLAUDE_CONFIG_DIR", dir.0.join("claude"));
+    let core = Core::launch(&dir, command).await;
+    core.spawn_claude("agent", ASKS_PERMISSION).await;
+    assert!(core.status("agent", "blocked").await.is_some());
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let still = core.session("agent").await.expect("session");
+    assert_eq!(
+        still["status"]["state"], "blocked",
+        "the hook was overruled"
+    );
+
+    // The prompt is answered: no hook says so, Claude's status does
+    says("busy", now());
+    let working = core.status("agent", "working").await.expect("working");
+    assert_eq!(working["source"], "claude");
+
+    // Esc: the turn is over without a Stop hook
+    says("idle", now());
+    let ready = core.status("agent", "ready").await.expect("ready");
+    assert_eq!(ready["reason"], "interrupted");
+    let session = core.session("agent").await.expect("session");
+    assert_eq!(session["agentState"], "idle");
+
+    // Claude is killed: no SessionEnd hook either
+    claude.kill().expect("kill");
+    claude.wait().expect("wait");
+    assert!(core.status("agent", "ended").await.is_some());
+    let session = core.session("agent").await.expect("session");
+    assert_eq!(session["alive"], true, "its shell is still there");
 }
