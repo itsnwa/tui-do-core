@@ -28,9 +28,12 @@ use libghostty_vt::{Terminal, TerminalOptions};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, oneshot};
 
+use crate::claude_status;
 use crate::holder::{self, Connection, Spec};
 use crate::hooks::{self, Hooks};
+use crate::status::{self, Agent, Source, State, Status, View};
 use crate::utf8::Utf8Stream;
+use crate::workspace::dates::now_millis;
 
 const MAX_SCROLLBACK_LINES: usize = 10_000;
 /// How often the actor checks quiet time and hook state.
@@ -45,6 +48,10 @@ const EVENT_CAPACITY: usize = 4096;
 const SAVE_SCREEN_EVERY: Duration = Duration::from_secs(120);
 /// How long to wait for sessions to save their screens before the core exits.
 const SAVE_SCREENS_WAIT: Duration = Duration::from_secs(3);
+/// How often a Claude session's own status is compared with its hooks'.
+const CLAUDE_CHECK: Duration = Duration::from_secs(1);
+/// How often a Claude session's own status is looked for while it's missing.
+const CLAUDE_SEARCH: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -61,6 +68,10 @@ pub struct SessionInfo {
     pub alive: bool,
     pub exit_code: Option<u32>,
     pub agent: Option<String>,
+    /// What the agent is doing (see `status`); none for a plain terminal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<Status>,
+    /// `status` in three words, for clients from before it.
     pub agent_state: Option<AgentState>,
     /// What a waiting agent waits for, in one line, when the core knows.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -70,6 +81,72 @@ pub struct SessionInfo {
     pub rows: u16,
     /// Client-defined tags, stored and returned as given.
     pub labels: BTreeMap<String, String>,
+}
+
+impl SessionInfo {
+    /// Take a status, and say it the older way too.
+    fn set_status(&mut self, status: Status) {
+        let view = status.view();
+        let state = view.agent_state();
+        self.agent_state = Some(state);
+        self.agent_detail = view.detail.filter(|_| state == AgentState::Waiting);
+        self.status = Some(status);
+    }
+}
+
+/// What a session's agent reports through, and what it reported before this
+/// core picked the session up.
+struct Reports {
+    state_file: Option<PathBuf>,
+    log: Option<hooks::Log>,
+    hooked: Option<Agent>,
+}
+
+impl Reports {
+    /// For a session that starts now.
+    fn new(state_file: Option<PathBuf>) -> Self {
+        Self {
+            log: state_file.as_deref().map(hooks::Log::new),
+            state_file,
+            hooked: None,
+        }
+    }
+
+    /// For a session that's been running: its hook log from the start.
+    fn read(state_file: Option<PathBuf>) -> Self {
+        let mut reports = Self::new(state_file);
+        let records = reports.log.as_mut().map(hooks::Log::read_new);
+        if let Some(records) = records.filter(|records| !records.is_empty()) {
+            let mut agent = Agent::default();
+            for record in &records {
+                agent.apply(record);
+            }
+            reports.hooked = Some(agent);
+        }
+        reports
+    }
+
+    /// The status they add up to, where it's from, and since when.
+    fn status(&self) -> (View, Source, i64) {
+        if let Some(agent) = &self.hooked {
+            return (agent.view(), agent.source(), agent.at);
+        }
+        let word = self.state_file.as_deref().and_then(|path| {
+            let state = hooks::read_state(path)?;
+            Some(status::of_state_word(
+                state,
+                hooks::read_input(path).as_ref(),
+            ))
+        });
+        match word {
+            Some(view) => (view, Source::Hooks, now_millis()),
+            None => (
+                View::new(State::Starting, None, None),
+                Source::Core,
+                now_millis(),
+            ),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -90,12 +167,21 @@ pub enum Event {
     SessionRemoved {
         id: Arc<str>,
     },
-    /// `detail` (what it waits for) can come with `waiting`, for notifications.
+    /// An agent session's status changed.
+    SessionStatus {
+        id: Arc<str>,
+        status: Status,
+    },
+    /// `SessionStatus` for clients from before it, sent after it when the
+    /// state changes. `detail` (what it waits for) can come with `waiting`;
+    /// `seq` is that status's.
     AgentState {
         id: Arc<str>,
         state: AgentState,
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        seq: Option<u64>,
     },
     /// Someone typed in a session whose agent is waiting (once each time it
     /// waits): they're answering, so nobody needs a notification.
@@ -161,6 +247,7 @@ impl Event {
             Event::Output { id, .. }
             | Event::SessionExited { id, .. }
             | Event::SessionRemoved { id }
+            | Event::SessionStatus { id, .. }
             | Event::AgentState { id, .. }
             | Event::SessionTyped { id }
             | Event::SessionQuiet { id }
@@ -350,25 +437,26 @@ impl Registry {
         }
         let state_file =
             hooks::reports_state(meta.agent.as_deref()).then(|| self.hooks.state_file(&meta.id));
-        let agent_state = state_file
-            .as_deref()
-            .map(|path| hooks::read_state(path).unwrap_or(AgentState::Idle));
-        let info = SessionInfo {
+        // What its agent reported so far, to the previous core or to nobody
+        let reports = Reports::read(state_file);
+        let mut info = SessionInfo {
             id: meta.id.clone(),
             alive: true,
             exit_code: None,
-            agent_state,
-            agent_detail: state_file
-                .as_deref()
-                .filter(|_| agent_state == Some(AgentState::Waiting))
-                .and_then(hooks::read_detail),
+            status: None,
+            agent_state: None,
+            agent_detail: None,
             agent: meta.agent,
             pid: connection.welcome.pid,
             cols: connection.welcome.cols,
             rows: connection.welcome.rows,
             labels: meta.labels,
         };
-        let session = self.run_session(connection, info, state_file, false)?;
+        if info.agent.is_some() {
+            let (view, source, at) = reports.status();
+            info.set_status(Status::next(view, source, at, None));
+        }
+        let session = self.run_session(connection, info, reports, false)?;
         tracing::info!(id = %meta.id, "picked up a running session");
         sessions.insert(meta.id, session);
         Ok(())
@@ -476,19 +564,25 @@ impl Registry {
         let connection = holder::connect(&socket).context("connecting to the terminal's holder")?;
         let pid = connection.welcome.pid;
 
-        let info = SessionInfo {
+        let mut info = SessionInfo {
             id: req.id.clone(),
             alive: true,
             exit_code: None,
             agent: req.agent,
-            agent_state: state_file.is_some().then_some(AgentState::Idle),
+            status: None,
+            agent_state: None,
             agent_detail: None,
             pid,
             cols: req.cols,
             rows: req.rows,
             labels: req.labels,
         };
-        let session = self.run_session(connection, info.clone(), state_file, true)?;
+        if info.agent.is_some() {
+            let starting = View::new(State::Starting, None, None);
+            info.set_status(Status::next(starting, Source::Core, now_millis(), None));
+        }
+        let reports = Reports::new(state_file);
+        let session = self.run_session(connection, info.clone(), reports, true)?;
         sessions.insert(req.id.clone(), session);
         drop(sessions);
         tracing::info!(id = %req.id, ?pid, cwd = ?cwd, "session started");
@@ -505,7 +599,7 @@ impl Registry {
         &self,
         connection: Connection,
         info: SessionInfo,
-        state_file: Option<PathBuf>,
+        reports: Reports,
         new: bool,
     ) -> anyhow::Result<Session> {
         let Connection {
@@ -539,7 +633,11 @@ impl Registry {
             position,
             unsaved: false,
             saved_at: Instant::now(),
-            state_file,
+            state_file: reports.state_file,
+            log: reports.log,
+            hooked: reports.hooked,
+            claude_file: None,
+            claude_check: Instant::now(),
             hook_seen: false,
             turn_ended: false,
             state_mtime: None,
@@ -756,7 +854,17 @@ struct Actor {
     unsaved: bool,
     saved_at: Instant,
     state_file: Option<PathBuf>,
-    /// Hooks reported at least once; stop guessing the state from output.
+    /// The session's hook log.
+    log: Option<hooks::Log>,
+    /// The agent as its hook log tells it, once the log has something.
+    hooked: Option<Agent>,
+    /// Claude's own status file for the session it has open now, and the
+    /// process it belongs to.
+    claude_file: Option<(PathBuf, u32)>,
+    /// When to compare with Claude's own status next.
+    claude_check: Instant,
+    /// A state word was reported at least once (Claude's hooks from before
+    /// the log); stop guessing the state from output.
     hook_seen: bool,
     /// Codex reported the end of a turn; what it draws until the next input
     /// isn't new work.
@@ -965,7 +1073,11 @@ impl Actor {
         self.last_output = Instant::now();
         self.quiet_sent = false;
         if self.guessing_state() && !self.turn_ended && self.last_input.elapsed() > ECHO_WINDOW {
-            self.set_state(AgentState::Working);
+            self.publish(
+                View::new(State::Working, Some("turn"), None),
+                Source::Inferred,
+                now_millis(),
+            );
         }
         let text = self.utf8.push(bytes);
         if !text.is_empty() {
@@ -980,16 +1092,112 @@ impl Actor {
         if !self.quiet_sent && self.last_output.elapsed() >= QUIET_AFTER {
             self.quiet_sent = true;
             if self.guessing_state() {
-                self.set_state(AgentState::Waiting);
+                // Finished or asking: output can't tell
+                self.publish(
+                    View::new(State::Ready, Some("quiet"), None),
+                    Source::Inferred,
+                    now_millis(),
+                );
             }
             let _ = self.events.send(Event::SessionQuiet {
                 id: Arc::clone(&self.id),
             });
         }
+        self.poll_log();
         self.poll_hook_state();
+        self.check_claude();
     }
 
+    /// Take in what the agent's hooks logged since the last look.
+    fn poll_log(&mut self) {
+        let records = self.log.as_mut().map(hooks::Log::read_new);
+        let Some(records) = records.filter(|records| !records.is_empty()) else {
+            return;
+        };
+        let agent = self.hooked.get_or_insert_with(Agent::default);
+        for record in &records {
+            agent.apply(record);
+        }
+        let (view, source, at) = (agent.view(), agent.source(), agent.at);
+        self.publish(view, source, at);
+    }
+
+    /// Let Claude's own status correct what its hooks couldn't report: a
+    /// turn that was interrupted, a permission prompt that was answered.
+    fn check_claude(&mut self) {
+        if self.claude_check > Instant::now() {
+            return;
+        }
+        self.claude_check = Instant::now() + CLAUDE_CHECK;
+        let Some(agent) = &mut self.hooked else {
+            return;
+        };
+        let Some(session) = agent.session.clone() else {
+            return;
+        };
+        if agent.view().state == State::Ended {
+            self.claude_file = None;
+            return;
+        }
+        // Its process is what says whether it's still there: the file can
+        // be missing for a moment while Claude writes it
+        if let Some((_, pid)) = &self.claude_file
+            && !claude_status::running(*pid)
+        {
+            self.claude_file = None;
+            self.claude_gone();
+            return;
+        }
+        let known = self.claude_file.as_ref();
+        let entry = known.and_then(|(file, _)| claude_status::read(file));
+        let entry = match entry.filter(|entry| entry.session == session) {
+            Some(entry) => entry,
+            None => {
+                // Not looked for yet, or its process has another session
+                // open now (/clear, /resume)
+                let found = claude_status::sessions_dir()
+                    .and_then(|dir| claude_status::find(&dir, &session))
+                    .and_then(|file| Some((claude_status::read(&file)?, file)))
+                    // A file left behind by a Claude that was killed
+                    .filter(|(entry, _)| claude_status::running(entry.pid));
+                let Some((entry, file)) = found else {
+                    self.claude_check = Instant::now() + CLAUDE_SEARCH;
+                    return;
+                };
+                self.claude_file = Some((file, entry.pid));
+                entry
+            }
+        };
+        let Some(claude) = entry.status else { return };
+        let Some(agent) = &mut self.hooked else {
+            return;
+        };
+        if let Some(record) = status::correction(agent, &claude, now_millis()) {
+            agent.apply(&record);
+            let (view, source, at) = (agent.view(), agent.source(), agent.at);
+            self.publish(view, source, at);
+        }
+    }
+
+    /// Claude's process ended without its hooks saying so (it was killed).
+    fn claude_gone(&mut self) {
+        let Some(agent) = &mut self.hooked else {
+            return;
+        };
+        agent.apply(&status::Record {
+            t: now_millis(),
+            event: status::CLAUDE_GONE.into(),
+            ..status::Record::default()
+        });
+        let (view, source, at) = (agent.view(), agent.source(), agent.at);
+        self.publish(view, source, at);
+    }
+
+    /// The state word of hooks from before the log, and of Codex.
     fn poll_hook_state(&mut self) {
+        if self.hooked.is_some() {
+            return;
+        }
         let Some(path) = &self.state_file else { return };
         let Some(mtime) = std::fs::metadata(path).and_then(|m| m.modified()).ok() else {
             return;
@@ -1003,35 +1211,44 @@ impl Actor {
             let claude = lock(&self.info).agent.as_deref() == Some("claude");
             self.hook_seen = claude;
             self.turn_ended = !claude;
-            self.set_state(state);
+            let view = status::of_state_word(state, hooks::read_input(path).as_ref());
+            self.publish(view, Source::Hooks, now_millis());
         }
     }
 
     /// Agent sessions without hook reports (remote, or hooks not loaded) fall
-    /// back to output timing: quiet means waiting, fresh output means working.
+    /// back to output timing: quiet means its turn is over, fresh output
+    /// means working.
     fn guessing_state(&self) -> bool {
-        !self.hook_seen && lock(&self.info).agent.is_some()
+        self.hooked.is_none() && !self.hook_seen && lock(&self.info).agent.is_some()
     }
 
-    fn set_state(&mut self, state: AgentState) {
-        if lock(&self.info).agent_state == Some(state) {
+    /// Give the session a status, if it says something else than the one it
+    /// has, and tell the clients. `at` is when it took it.
+    fn publish(&mut self, view: View, source: Source, at: i64) {
+        let mut info = lock(&self.info);
+        if info.status.as_ref().is_some_and(|now| now.view() == view) {
             return;
         }
-        let detail = self
-            .state_file
-            .as_deref()
-            .filter(|_| state == AgentState::Waiting)
-            .and_then(hooks::read_detail);
-        let mut info = lock(&self.info);
-        info.agent_state = Some(state);
-        info.agent_detail.clone_from(&detail);
+        let before = info.agent_state;
+        let status = Status::next(view, source, at, info.status.as_ref());
+        info.set_status(status.clone());
+        let (state, detail) = (info.agent_state, info.agent_detail.clone());
         drop(info);
         self.typed_while_waiting = false;
-        let _ = self.events.send(Event::AgentState {
+        let seq = status.seq;
+        let _ = self.events.send(Event::SessionStatus {
             id: Arc::clone(&self.id),
-            state,
-            detail,
+            status,
         });
+        if let Some(state) = state.filter(|_| state != before) {
+            let _ = self.events.send(Event::AgentState {
+                id: Arc::clone(&self.id),
+                state,
+                detail,
+                seq: Some(seq),
+            });
+        }
     }
 
     /// Say once per wait that someone is typing an answer.
@@ -1045,18 +1262,18 @@ impl Actor {
     }
 
     fn finish(&mut self, code: Option<u32>) {
+        if lock(&self.info).agent.is_some() {
+            // Said like any other status, so no client keeps an older one
+            let ended = View::new(State::Ended, None, None);
+            self.publish(ended, Source::Core, now_millis());
+        }
         {
             let mut info = lock(&self.info);
             info.alive = false;
             info.exit_code = code;
-            if info.agent.is_some() {
-                info.agent_state = Some(AgentState::Idle);
-                info.agent_detail = None;
-            }
         }
         if let Some(path) = &self.state_file {
-            let _ = std::fs::remove_file(path);
-            let _ = std::fs::remove_file(hooks::detail_file(path));
+            hooks::remove_state(path);
         }
         let _ = self.holder.send(ToHolder::Bye);
         tracing::info!(id = %self.id, ?code, "session exited");

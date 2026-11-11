@@ -77,6 +77,11 @@ fn main() -> anyhow::Result<()> {
             };
             holder::run(socket)
         }
+        // An agent's hook: on every tool call, so it skips the runtime too
+        Some("hook") => {
+            hooks::run();
+            Ok(())
+        }
         Some("watch-update") => {
             let [_, core_dir, previous, version, health] = &args[..] else {
                 anyhow::bail!("usage: tui-do-core watch-update <dir> <previous> <version> <url>");
@@ -201,8 +206,8 @@ async fn serve() -> anyhow::Result<()> {
             tracing::warn!(error = %format!("{err:#}"), "sessions won't survive a service restart");
         }
     }
-    let hooks = hooks::Hooks::prepare(&dir.join("claude-hooks"))?;
     let exe = update::own_path(&dir)?;
+    let hooks = hooks::Hooks::prepare(&dir.join("claude-hooks"), &exe)?;
     let registry = Arc::new(session::Registry::new(hooks, dir.join("holders"), exe)?);
     let config = Arc::new(ConfigStore::load(dir.join("config.json"))?);
     let default_workspace = dir
