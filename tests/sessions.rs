@@ -758,3 +758,90 @@ async fn a_waiting_agent_should_say_what_it_asks_and_when_someone_answers() {
     assert_eq!(waiting, Some(Some("Which one?".to_string())));
     assert_eq!(typed, 1);
 }
+
+fn relayed_device(id: &str, address: String, token: String) -> tui_do_core::fleet::Device {
+    tui_do_core::fleet::Device {
+        id: id.into(),
+        name: id.into(),
+        address,
+        token,
+        platform: "test".into(),
+        added_at: String::new(),
+        ssh_host: None,
+        mcp_token: String::new(),
+    }
+}
+
+#[tokio::test]
+async fn a_device_s_removed_session_should_be_relayed() {
+    use tui_do_core::relay::Relays;
+    use tui_do_core::session::Event;
+    let dir = TestDir::new();
+    let core = Core::start(&dir).await;
+    let (tx, mut rx) = tokio::sync::broadcast::channel(256);
+    let relays = Relays::new(tx);
+    relays.start(relayed_device(
+        "mac",
+        core.endpoint.clone(),
+        core.token.trim().to_string(),
+    ));
+    core.spawn("gone", "sleep 60").await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let res = core
+        .http
+        .delete(format!("{}/v0/sessions/gone", core.endpoint))
+        .bearer_auth(&core.token)
+        .send()
+        .await
+        .expect("delete");
+    assert!(res.status().is_success());
+    let found = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match rx.recv().await {
+                Ok(Event::DeviceEvent { device, event }) if event["type"] == "sessionRemoved" => {
+                    break (device, event);
+                }
+                Ok(_) => {}
+                Err(err) => panic!("{err}"),
+            }
+        }
+    })
+    .await
+    .expect("the removal is relayed");
+    assert_eq!(found.0, "mac");
+    assert_eq!(found.1["id"], "gone");
+}
+
+#[tokio::test]
+async fn a_silent_device_should_go_offline() {
+    use tui_do_core::relay::Relays;
+    use tui_do_core::session::Event;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("binds");
+    let address = format!("http://{}", listener.local_addr().expect("address"));
+    // Accepts, then never reads again: a peer that vanished without closing
+    let _server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accepts");
+        let socket = tokio_tungstenite::accept_async(stream)
+            .await
+            .expect("upgrades");
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+        drop(socket);
+    });
+    let (tx, mut rx) = tokio::sync::broadcast::channel(256);
+    let relays = Relays::new(tx);
+    relays.start(relayed_device("mac", address, "t".into()));
+    let offline = tokio::time::timeout(Duration::from_secs(90), async {
+        loop {
+            if let Ok(Event::DeviceStatus { online: false, .. }) = rx.recv().await {
+                break;
+            }
+        }
+    })
+    .await;
+    assert!(
+        offline.is_ok(),
+        "the relay still thinks the device is there"
+    );
+}
