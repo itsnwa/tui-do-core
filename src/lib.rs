@@ -22,5 +22,6 @@ pub mod relay;
 pub mod replica;
 pub mod session;
 pub mod update;
+pub mod uploads;
 mod utf8;
 pub mod workspace;

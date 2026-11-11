@@ -35,10 +35,11 @@ Every route except `/v0/health` needs a token, sent as `Authorization: Bearer <t
 | `GET` | `/v0/sessions` | | `[Session]` |
 | `POST` | `/v0/sessions` | Spawn request | `Session` |
 | `GET` | `/v0/sessions/{id}` | | `Session` or 404 |
-| `DELETE` | `/v0/sessions/{id}` | | 204; kills the process and forgets the session |
+| `DELETE` | `/v0/sessions/{id}` | | 204; kills the process, forgets the session and deletes its uploads |
 | `POST` | `/v0/sessions/{id}/input` | `{ "data": "ls\n" }` | 204 |
 | `POST` | `/v0/sessions/{id}/resize` | `{ "cols": 120, "rows": 40 }` | 204 |
 | `GET` | `/v0/sessions/{id}/snapshot` | | `{ data, alive, exitCode, session }` |
+| `POST` | `/v0/sessions/{id}/files` | `{ "fileName": "shot.png", "dataBase64": "…" }` (up to 32 MB) | `{ path }`: where it's saved on this machine, in `uploads/<id>/`, for the session's program to read. A taken name gets a number. Uploads are deleted with the session, or after 7 days |
 
 ### Spawn request
 
