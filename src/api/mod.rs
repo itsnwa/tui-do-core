@@ -9,6 +9,7 @@
 //! client fell too far behind to receive every output event. A client that
 //! attaches with `?paced=1` acknowledges what it gets (see `pace`).
 
+mod activity;
 mod agent;
 mod clients;
 mod fleet;
@@ -41,6 +42,7 @@ use crate::pace::{self, Pacer};
 use crate::session::{ClientId, Event, Registry, SpawnRequest};
 use crate::workspace::shared::SharedWorkspace;
 
+pub use activity::spawn_board;
 pub use home::spawn_background;
 pub use notifications::spawn_notifier;
 
@@ -76,6 +78,8 @@ pub struct AppState {
     pub app_tokens: Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
     /// The sessions paired clients have open, which they aren't notified about.
     pub watching: Arc<crate::notify::Watching>,
+    /// The other machines' sessions, and what each task shows.
+    pub activity: Arc<crate::activity::Board>,
 }
 
 impl AppState {
@@ -106,6 +110,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v0/events", get(events))
         .route("/v0/device", get(get_device).patch(update_device))
         .merge(workspace::routes())
+        .merge(activity::routes())
         .merge(agent::routes())
         .merge(clients::routes())
         .merge(fleet::routes())

@@ -294,28 +294,11 @@ async fn setup_agents_on(state: &AppState, device: &Device, instructions: &str) 
     }
 }
 
-/// Sessions on this core and every reachable device, each with a `device` id.
+/// Sessions on this core and every reachable device, each with a `device`
+/// id. The devices' are the ones their events told this core about, so
+/// nothing is asked and the list is as current as the events.
 async fn fleet_sessions(State(state): State<AppState>) -> Response {
     let own_id = state.config.get().device_id;
-    let remote = state.fleet.devices().into_iter().map(|device| {
-        let client = state.fleet.client().clone();
-        async move {
-            let res = client
-                .get(format!("{}/v0/sessions", device.address))
-                .bearer_auth(&device.token)
-                .timeout(std::time::Duration::from_secs(5))
-                .send()
-                .await
-                .ok()?;
-            let sessions: Vec<serde_json::Value> = res.json().await.ok()?;
-            Some(sessions.into_iter().map(move |mut s| {
-                s["device"] = device.id.clone().into();
-                s
-            }))
-        }
-    });
-    let remote = futures_util::future::join_all(remote).await;
-    // Listed after the devices answered, so this core's are as they are now
     let mut all: Vec<serde_json::Value> = state
         .registry
         .list()
@@ -326,9 +309,7 @@ async fn fleet_sessions(State(state): State<AppState>) -> Response {
             s
         })
         .collect();
-    for sessions in remote.into_iter().flatten() {
-        all.extend(sessions);
-    }
+    all.extend(state.activity.fleet_sessions());
     Json(all).into_response()
 }
 

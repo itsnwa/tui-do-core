@@ -271,10 +271,13 @@ async fn serve() -> anyhow::Result<()> {
         linking: Arc::default(),
         app_tokens: Arc::default(),
         watching: Arc::default(),
+        activity: Arc::default(),
     };
     // Devices are linked and given the workspace as their relays come online
     api::spawn_background(state.clone());
     api::spawn_notifier(state.clone());
+    // Before the relays start: each machine's first event lists its sessions
+    api::spawn_board(state.clone());
     for device in fleet.devices() {
         relays.start(device);
     }

@@ -207,6 +207,43 @@ Only the [home core](#the-home-role) writes the workspace. Every other core serv
 
 Stored attachments are kept as absolute paths into the workspace of the home that stored them (`…/attachments/<task>/<file>`). Every core has a copy of that folder. So the MCP tools answer with this machine's path to the same file, `/attachments/{index}` serves it from the home's copy, and `/attachments/remove` takes any machine's path to it.
 
+### Activity
+
+What each task shows, worked out by the home core so every client shows the same: one word from the task's `state` and the [status](#status) of its agent's session, wherever in the fleet that runs (cores 0.3.19 and later).
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/activity` | | `{ "<task slug>": Activity }` for every task that isn't simply completed. A task that's missing shows `done` if it's completed, else `not-started`. Empty on a core that isn't the home. |
+
+```json
+{
+  "state": "needs-you",
+  "seq": 1794440939050,
+  "device": "<device id>",
+  "agent": "claude",
+  "status": { "state": "blocked", "reason": "permission", "detail": "Allow Bash: cargo test?", "since": "…", "seq": 1794440939049, "source": "hooks" },
+  "reachable": true
+}
+```
+
+`state` is the first of these that applies:
+
+| `state` | When |
+| --- | --- |
+| `done` | the task is `completed` |
+| `needs-you` | its agent is `blocked` |
+| `error` | its agent `failed` |
+| `working` | its agent is `working` or `starting` |
+| `ready` | its agent is `ready`: its turn is over, the next move is yours |
+| `paused` | the task is `in-progress` and no agent runs for it |
+| `not-started` | otherwise |
+
+`device`, `agent`, `status` and `reachable` are there when the task has a running agent session: the one named after the task, on the machine the task runs on if it has one there, else wherever it runs. `reachable` is `false` when that machine has dropped off; `status` is then the last one heard. A completed task keeps an activity (`done`) for as long as its agent's session is still open.
+
+`seq` grows with every change to a task's activity, also across restarts of the core. Keep the activity with the highest `seq` you've seen for a task, so a list fetched a moment ago can't undo an event. Changes arrive on `/v0/events` as `{ "type": "taskActivity", "task": "<slug>", "activity": Activity }`; `activity` is `null` when the task was deleted, or completed with no session left.
+
+`docs/status-cases.json` has the rule as a table of cases, and the label and sort order the apps give each word.
+
 ### Agent workflow
 
 These take a short ID or slug and answer like the TUI-DO MCP tools (business errors are `200` with an `error` or `warning` field).
@@ -255,7 +292,7 @@ These take a short ID or slug and answer like the TUI-DO MCP tools (business err
 
 ## Events
 
-`/v0/events` also carries `{ "type": "workspaceChanged", "areas": ["tasks", "plans"] }` when workspace files change, from the core or from outside (an editor, iCloud). Changes are coalesced over 150 ms.
+`/v0/events` also carries `{ "type": "workspaceChanged", "areas": ["tasks", "plans"] }` when workspace files change, from the core or from outside (an editor, iCloud). Changes are coalesced over 150 ms. When a core opens another workspace folder, it sends one with every area (cores 0.3.19 and later).
 
 # MCP (for coding agents)
 
@@ -324,7 +361,7 @@ A home core can know other machines' cores (devices) and forward requests to the
 | `GET` | `/v0/fleet` | | `{ generation, home: { id, name, platform, version }, codeDevice, devices: [{ id, name, address, platform, addedAt, online, version }] }` (reachability is checked live). `codeDevice` is the machine the projects' folders are on. |
 | `POST` | `/v0/fleet/devices` | `{ address, token }` (e.g. `http://100.79.154.110:47821` and that core's token) | the device; it's asked who it is with the token first, so a wrong token or address is rejected. Adding a known device updates it. |
 | `DELETE` | `/v0/fleet/devices/{id}` | | 204. The code machine can't be removed (`409`). |
-| `GET` | `/v0/fleet/sessions` | | sessions on this core and every reachable device, each with a `device` id |
+| `GET` | `/v0/fleet/sessions` | | sessions on this core and every reachable device, each with a `device` id. The devices' sessions are the ones their events told the home about, so nothing is asked and the answer is as current as `/v0/events` (cores before 0.3.19 asked each device, waiting up to 5 s). |
 | any | `/v0/devices/{id}/…` | | forwarded to that device's `/v0/…` with its token, including WebSockets (`/v0/devices/{id}/sessions/{sid}/attach`, `/v0/devices/{id}/events`). `{id}` may also be the home core's own id. `502` if the device isn't reachable. |
 
 ## Installing on another machine

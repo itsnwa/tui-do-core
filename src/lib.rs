@@ -1,6 +1,7 @@
 //! TUI-DO core: a background service that owns terminal sessions and the
 //! task workspace, and serves them to clients over HTTP + WebSocket.
 
+pub mod activity;
 pub mod agent_models;
 pub mod agents;
 pub mod api;

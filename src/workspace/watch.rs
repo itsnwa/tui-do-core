@@ -36,6 +36,9 @@ pub fn watch(
     on_change: impl Fn(Vec<String>) + Send + 'static,
 ) -> notify::Result<RecommendedWatcher> {
     let (tx, rx) = mpsc::channel::<Vec<&'static str>>();
+    // Events name files by their real path, which a root reached through a
+    // link (/tmp on macOS) isn't
+    let real_root = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
     let event_root = root.clone();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let areas = match res {
@@ -44,7 +47,7 @@ pub fn watch(
             Ok(event) => event
                 .paths
                 .iter()
-                .filter_map(|p| area_of(&event_root, p))
+                .filter_map(|p| area_of(&event_root, p).or_else(|| area_of(&real_root, p)))
                 .collect(),
             Err(err) => {
                 tracing::warn!(%err, "workspace watcher error");
