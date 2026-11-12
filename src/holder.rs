@@ -355,6 +355,9 @@ fn start(socket: &Path, spec: Spec) -> anyhow::Result<(Arc<Holder>, UnixListener
     for (key, value) in &spec.env {
         cmd.env(key, value);
     }
+    // Everything the session runs descends from this process, which is how
+    // a hook tells it's in the session its environment names
+    cmd.env(crate::hooks::HOLDER_ENV, std::process::id().to_string());
     if cmd.get_env("TERM").is_none() {
         cmd.env("TERM", "xterm-256color");
     }

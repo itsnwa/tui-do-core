@@ -32,6 +32,8 @@ pub const STATE_FILE_ENV: &str = "TUI_DO_CLAUDE_STATE_FILE";
 pub const SESSION_ENV: &str = "TUI_DO_SESSION";
 /// This core's executable, which Codex's `notify` command runs.
 pub const CORE_EXE_ENV: &str = "TUI_DO_CORE_EXE";
+/// The process id of the session's holder, set by the holder itself.
+pub const HOLDER_ENV: &str = "TUI_DO_SESSION_HOLDER";
 
 /// The hooks Claude reports with. `PreToolUse` and `PostToolUse` say which
 /// tool calls are under way, so one finishing can't hide another's open
@@ -239,6 +241,9 @@ pub fn run() {
     let Some(state_file) = std::env::var_os(STATE_FILE_ENV).filter(|path| !path.is_empty()) else {
         return;
     };
+    if !in_its_session() {
+        return;
+    }
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
         return;
@@ -250,6 +255,72 @@ pub fn run() {
     if let Some(record) = Record::of_hook(&input, now) {
         let _ = append(&log_file(Path::new(&state_file)), &record);
     }
+}
+
+/// Whether this process runs in the session its environment names. An agent
+/// can hand its sessions to a background server that outlives them (Codex
+/// does): started from inside a TUI-DO session, the server keeps that
+/// session's environment, and the hooks of every session it runs afterwards
+/// would report for it. Those don't descend from the session's holder.
+fn in_its_session() -> bool {
+    let holder = std::env::var(HOLDER_ENV)
+        .ok()
+        .and_then(|pid| pid.parse().ok());
+    match holder {
+        Some(holder) => descends_from(holder),
+        // A session started by a core before 0.3.23 doesn't say
+        None => true,
+    }
+}
+
+/// Whether `ancestor` is this process or one it descends from. True also
+/// when the system won't say whose child a process is: better a report too
+/// many than none.
+fn descends_from(ancestor: u32) -> bool {
+    let mut pid = std::process::id();
+    // Far deeper than any process tree; ends a loop if the system reports one
+    for _ in 0..64 {
+        if pid == ancestor {
+            return true;
+        }
+        match parent_of(pid) {
+            Some(parent) if parent > 1 && parent != pid => pid = parent,
+            // The top: a process whose parent is gone belongs to init
+            Some(_) => return false,
+            None => return true,
+        }
+    }
+    false
+}
+
+#[cfg(target_os = "linux")]
+fn parent_of(pid: u32) -> Option<u32> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // `pid (name) state ppid …`; the name can have spaces and brackets itself
+    let after_name = &stat[stat.rfind(')')? + 1..];
+    after_name.split_whitespace().nth(1)?.parse().ok()
+}
+
+#[cfg(target_os = "macos")]
+fn parent_of(pid: u32) -> Option<u32> {
+    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+    // Fills `info` with what the kernel knows about the process, or fails
+    let filled = unsafe {
+        libc::proc_pidinfo(
+            libc::c_int::try_from(pid).ok()?,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    (filled == size).then(|| unsafe { info.assume_init() }.pbi_ppid)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn parent_of(_pid: u32) -> Option<u32> {
+    None
 }
 
 /// Add a record to a log as one line, in one write, so hooks that run at the
@@ -464,6 +535,16 @@ mod tests {
         assert!(install_codex(&file, Path::new("/tui-do-core")).is_err());
         assert_eq!(std::fs::read_to_string(&file).expect("read"), "{ not json");
         std::fs::remove_dir_all(dir).expect("clean up");
+    }
+
+    #[test]
+    fn a_process_should_descend_from_its_parent_and_not_from_a_stranger() {
+        let parent = std::os::unix::process::parent_id();
+        assert_eq!(parent_of(std::process::id()), Some(parent));
+        assert!(descends_from(std::process::id()));
+        assert!(descends_from(parent));
+        // Far above any pid the system hands out
+        assert!(!descends_from(0x3fff_fff0));
     }
 
     #[test]
