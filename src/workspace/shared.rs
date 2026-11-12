@@ -126,6 +126,13 @@ impl SharedWorkspace {
         *lock(&self.watcher) = Some(watcher);
         *self.current.write().unwrap_or_else(|p| p.into_inner()) = Some(workspace);
         tracing::info!(path = %path.display(), "workspace open");
+        // Another folder: everything in it is news
+        let areas = super::store::Dir::ALL
+            .iter()
+            .map(|dir| dir.name().to_string());
+        let _ = self.events.send(Event::WorkspaceChanged {
+            areas: areas.collect(),
+        });
         Ok(())
     }
 

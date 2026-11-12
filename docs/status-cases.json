@@ -1,0 +1,30 @@
+{
+  "about": "What a task shows, for the core and both apps to agree on. `activity`: the task's own state and its agent session's status state (null: no running agent session) give the word the home core sends as the task's activity. `words`: what the apps call each word, and the order they sort tasks in by it. tui-do-core tests `activity` against its rule; each app tests `words` against its status module.",
+  "activity": [
+    { "task": "completed", "session": null, "shows": "done" },
+    { "task": "completed", "session": "blocked", "shows": "done" },
+    { "task": "completed", "session": "working", "shows": "done" },
+    { "task": "in-progress", "session": "blocked", "shows": "needs-you" },
+    { "task": "not-started", "session": "blocked", "shows": "needs-you" },
+    { "task": "in-progress", "session": "failed", "shows": "error" },
+    { "task": "not-started", "session": "failed", "shows": "error" },
+    { "task": "in-progress", "session": "working", "shows": "working" },
+    { "task": "not-started", "session": "working", "shows": "working" },
+    { "task": "in-progress", "session": "starting", "shows": "working" },
+    { "task": "in-progress", "session": "ready", "shows": "ready" },
+    { "task": "not-started", "session": "ready", "shows": "ready" },
+    { "task": "in-progress", "session": "ended", "shows": "paused" },
+    { "task": "in-progress", "session": null, "shows": "paused" },
+    { "task": "not-started", "session": "ended", "shows": "not-started" },
+    { "task": "not-started", "session": null, "shows": "not-started" }
+  ],
+  "words": [
+    { "shows": "needs-you", "label": "needs you", "order": 0 },
+    { "shows": "error", "label": "error", "order": 1 },
+    { "shows": "ready", "label": "ready", "order": 2 },
+    { "shows": "working", "label": "working", "order": 3 },
+    { "shows": "paused", "label": "paused", "order": 4 },
+    { "shows": "not-started", "label": "not started", "order": 5 },
+    { "shows": "done", "label": "done", "order": 6 }
+  ]
+}

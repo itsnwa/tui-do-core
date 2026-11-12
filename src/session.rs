@@ -225,6 +225,12 @@ pub enum Event {
         branch: Option<String>,
         message: Option<String>,
     },
+    /// What a task shows changed (see `activity`); none when the task is
+    /// gone, or completed with no agent session left.
+    TaskActivity {
+        task: String,
+        activity: Option<crate::activity::Activity>,
+    },
     /// The home role moved: this core took it, gave it away, or was linked
     /// to another home (`GET /v0/home` says where it is now).
     HomeChanged {
@@ -242,6 +248,7 @@ impl Event {
             | Event::DeviceEvent { .. }
             | Event::DeviceStatus { .. }
             | Event::Handoff { .. }
+            | Event::TaskActivity { .. }
             | Event::HomeChanged { .. } => "",
             Event::SessionCreated { session } => &session.id,
             Event::Output { id, .. }
