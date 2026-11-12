@@ -1101,3 +1101,44 @@ cat
     assert_eq!(ended.reason.as_deref(), Some("finished"));
     assert_eq!(ended.detail.as_deref(), Some("All set"));
 }
+
+#[tokio::test]
+async fn a_hook_run_outside_its_session_should_not_report_for_it() {
+    use tui_do_core::status::State;
+    let dir = TestDir::new();
+    let registry = dir.registry();
+    // An agent's background server, started from inside the session, keeps
+    // the session's environment but not its place in the process tree: it
+    // carries on when what started it has exited. Its hooks are another
+    // session's. Then the session's own agent reports a prompt
+    let script = r#"
+(sh -c 'sleep 0.3; printf "%s" "{\"hook_event_name\":\"PermissionRequest\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"rm x\"}}" | "$TUI_DO_CORE_EXE" hook; touch "$TUI_DO_CLAUDE_STATE_FILE.other-ran"' &)
+sleep 1
+printf '%s' '{"hook_event_name":"UserPromptSubmit","session_id":"s1"}' | "$TUI_DO_CORE_EXE" hook
+cat
+"#;
+    registry
+        .spawn(agent_request("agent", "claude", script))
+        .expect("spawns");
+    let status = || registry.info("agent").and_then(|session| session.status);
+    let mut blocked = false;
+    let working = eventually(async || {
+        let now = status();
+        blocked |= now.as_ref().is_some_and(|s| s.state == State::Blocked);
+        now.is_some_and(|s| {
+            s.state == State::Working && s.source == tui_do_core::status::Source::Hooks
+        })
+    })
+    .await;
+    let state_dir = dir.0.join("claude-hooks").join("state");
+    let other_ran = state_dir.join("agent.state.other-ran").exists();
+    let log = std::fs::read_to_string(state_dir.join("agent.state.events")).unwrap_or_default();
+    registry.kill_all();
+    assert!(other_ran, "the other session's hook never ran");
+    assert!(working, "the session's own hook wasn't taken");
+    assert!(
+        !blocked,
+        "another session's permission prompt was taken for this one's"
+    );
+    assert_eq!(log.lines().count(), 1, "{log}");
+}
