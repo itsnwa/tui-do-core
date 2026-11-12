@@ -13,14 +13,18 @@ use std::path::{Path, PathBuf};
 
 use crate::status::{ClaudeStatus, Says};
 
+/// Claude's own folder: `$CLAUDE_CONFIG_DIR`, else `~/.claude`.
+pub fn config_dir() -> Option<PathBuf> {
+    match std::env::var_os("CLAUDE_CONFIG_DIR").filter(|dir| !dir.is_empty()) {
+        Some(dir) => Some(PathBuf::from(dir)),
+        None => Some(PathBuf::from(std::env::var_os("HOME")?).join(".claude")),
+    }
+}
+
 /// Where Claude keeps the files: `$CLAUDE_CONFIG_DIR/sessions`, else
 /// `~/.claude/sessions`.
 pub fn sessions_dir() -> Option<PathBuf> {
-    let config = match std::env::var_os("CLAUDE_CONFIG_DIR").filter(|dir| !dir.is_empty()) {
-        Some(dir) => PathBuf::from(dir),
-        None => PathBuf::from(std::env::var_os("HOME")?).join(".claude"),
-    };
-    Some(config.join("sessions"))
+    Some(config_dir()?.join("sessions"))
 }
 
 /// What a session's file says.

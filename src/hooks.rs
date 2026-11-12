@@ -5,7 +5,8 @@
 //! handed it to the session's log (`$TUI_DO_CLAUDE_STATE_FILE.events`) as one
 //! line, a [`Record`]. The session actor reads the log and works the
 //! session's status out of it (see `status`): exactly, not guessed from
-//! output timing, and again from the start after the core restarts.
+//! output timing, and again from the start after the core restarts. The
+//! file's status line runs `tui-do-core statusline` (see `usage`).
 //!
 //! Codex has hooks of the same shape. It reads them from its own
 //! `hooks.json`, where [`install_codex`] puts the same command, and only
@@ -183,7 +184,12 @@ impl Hooks {
                 ((*event).to_string(), run)
             })
             .collect();
-        let settings = json!({ "hooks": hooks });
+        // Claude hands its status line the plan's limits (see `usage`)
+        let status_line = format!("{} statusline", shell_quote(&exe.display().to_string()));
+        let settings = json!({
+            "hooks": hooks,
+            "statusLine": { "type": "command", "command": status_line },
+        });
         let settings_path = dir.join("settings.json");
         let content = serde_json::to_string_pretty(&settings)? + "\n";
         if std::fs::read_to_string(&settings_path).ok().as_deref() != Some(content.as_str()) {

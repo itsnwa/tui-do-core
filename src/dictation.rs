@@ -230,7 +230,7 @@ fn terms(text: &str) -> Vec<String> {
 }
 
 /// Run curl with a config (holding the key) on stdin; its status and body.
-async fn curl(config: &[String], max_time: Duration) -> anyhow::Result<(u16, String)> {
+pub(crate) async fn curl(config: &[String], max_time: Duration) -> anyhow::Result<(u16, String)> {
     let mut child = tokio::process::Command::new("curl")
         .args([
             "-sS",
@@ -260,7 +260,7 @@ async fn curl(config: &[String], max_time: Duration) -> anyhow::Result<(u16, Str
 }
 
 /// The error message in an API's error body, or the body itself.
-fn reason(body: &str) -> String {
+pub(crate) fn reason(body: &str) -> String {
     serde_json::from_str::<serde_json::Value>(body)
         .ok()
         .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
