@@ -401,11 +401,13 @@ async fn a_core_that_moved_into_the_versions_folder_should_use_the_link() {
     let script = format!("#!/bin/sh\necho \"$@\" >> {}\n", calls.display());
     std::fs::write(&claude, script).expect("fake claude");
     std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).expect("runnable");
+    std::fs::copy(&claude, tools.join("codex")).expect("fake codex");
 
     let mut command = Command::new(&installed);
     command
         .env("INVOCATION_ID", "test") // what makes it count as the service
         .env("HOME", &dir.0)
+        .env_remove("CODEX_HOME")
         .env("PATH", format!("{}:/usr/bin:/bin", tools.display()));
     let core = Core::launch(&dir, command).await;
 
@@ -429,9 +431,22 @@ async fn a_core_that_moved_into_the_versions_folder_should_use_the_link() {
         .await
         .expect("put");
     assert!(setup.status().is_success(), "{}", setup.status());
+    let done: serde_json::Value = setup.json().await.expect("json");
     let calls = std::fs::read_to_string(&calls).expect("claude was called");
     let registered = format!("tui-do -- {} mcp", installed.display());
     assert!(calls.contains(&registered), "{calls}");
+
+    // Codex gets the hook its sessions report with, to review before it runs
+    assert_eq!(done["codexHookToReview"], true);
+    let hooks = std::fs::read_to_string(dir.0.join(".codex/hooks.json")).expect("Codex's hooks");
+    let hooks: serde_json::Value = serde_json::from_str(&hooks).expect("json");
+    let command = hooks["hooks"]["Stop"][0]["hooks"][0]["command"]
+        .as_str()
+        .expect("a command");
+    assert!(
+        command.ends_with(&format!("'{}' hook; true", installed.display())),
+        "{command}"
+    );
 }
 
 async fn survives(stop: &str) {

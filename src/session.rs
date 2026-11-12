@@ -1136,6 +1136,9 @@ impl Actor {
             return;
         }
         self.claude_check = Instant::now() + CLAUDE_CHECK;
+        if lock(&self.info).agent.as_deref() != Some("claude") {
+            return;
+        }
         let Some(agent) = &mut self.hooked else {
             return;
         };

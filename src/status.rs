@@ -297,6 +297,8 @@ struct Ask {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Tool {
     id: Option<String>,
+    /// The subagent that made it; none for the session's own agent.
+    agent: Option<String>,
     name: String,
     input: Option<u64>,
     ask: Option<Ask>,
@@ -383,6 +385,7 @@ impl Agent {
                 };
                 self.tools.push(Tool {
                     id: record.id.clone(),
+                    agent: record.agent.clone(),
                     name: record.tool.clone().unwrap_or_default(),
                     input: record.input,
                     ask: ask.map(|reason| Ask {
@@ -403,8 +406,20 @@ impl Agent {
                     self.wake();
                 }
             }
+            // The model is asked again (Claude says the batch is done; Codex
+            // that it asks): every tool call of that agent's last batch is
+            // over, also one whose permission prompt was refused
+            "PostToolBatch" | "PreModelRequest" => {
+                self.tools.retain(|tool| tool.agent != record.agent);
+            }
+            // Codex says when the user stops a turn; Claude doesn't
+            "Interrupt" => {
+                self.tools.clear();
+                self.base = interrupted();
+            }
             "Elicitation" => self.tools.push(Tool {
                 id: Some("elicitation".into()),
+                agent: record.agent.clone(),
                 name: "elicitation".into(),
                 input: None,
                 ask: Some(Ask {
@@ -514,6 +529,7 @@ impl Agent {
         if !self.asks() {
             self.tools.push(Tool {
                 id: None,
+                agent: record.agent.clone(),
                 name: String::new(),
                 input: None,
                 ask: Some(Ask {
@@ -547,6 +563,7 @@ impl Agent {
             Some(tool) => tool.ask = ask,
             None => self.tools.push(Tool {
                 id: None,
+                agent: record.agent.clone(),
                 name,
                 input: record.input,
                 ask,
@@ -793,6 +810,53 @@ mod tests {
             tool("PermissionDenied", "Bash", "t1", bash("rm x")),
         ]);
         assert_eq!(agent.view(), view(State::Working, "turn", None));
+    }
+
+    #[test]
+    fn a_refused_permission_should_end_with_its_batch() {
+        let asked = [
+            hook("UserPromptSubmit"),
+            tool("PreToolUse", "Bash", "t1", bash("rm x")),
+            permission("Bash", bash("rm x")),
+        ];
+        // No hook says the user refused; the batch being over does
+        for over in ["PostToolBatch", "PreModelRequest"] {
+            let mut done = asked.to_vec();
+            done.push(hook(over));
+            assert_eq!(
+                after(&done).view(),
+                view(State::Working, "turn", None),
+                "{over}"
+            );
+        }
+
+        // A background agent's batch isn't the session's own
+        let mut theirs = asked.to_vec();
+        let mut batch = hook("PostToolBatch");
+        batch["agent_id"] = json!("agent-1");
+        theirs.push(batch);
+        assert_eq!(after(&theirs).view().state, State::Blocked);
+
+        // A model request after the turn (a summary, say) isn't work
+        let finished = after(&[
+            hook("UserPromptSubmit"),
+            stop("Done."),
+            hook("PreModelRequest"),
+        ]);
+        assert_eq!(finished.view().state, State::Ready);
+    }
+
+    #[test]
+    fn codex_should_say_when_a_turn_is_interrupted() {
+        let agent = after(&[
+            hook("UserPromptSubmit"),
+            tool("PreToolUse", "shell", "t1", bash("make")),
+            permission("shell", bash("make")),
+            hook("Interrupt"),
+        ]);
+        assert_eq!(agent.view(), view(State::Ready, "interrupted", None));
+        assert!(!agent.view().calls_for_attention());
+        assert_eq!(agent.source(), Source::Hooks);
     }
 
     #[test]
