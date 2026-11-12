@@ -1,6 +1,6 @@
 //! Dictation (see `crate::dictation`): a client sends what it recorded and
-//! gets it back as text, transcribed and tidied with the home core's keys,
-//! which a client sets but never reads.
+//! gets it back as text, transcribed and tidied with the home core's OpenAI
+//! key, which a client sets but never reads.
 
 use std::time::Instant;
 
@@ -13,7 +13,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{AppState, error};
-use crate::dictation::{self, Context, Keys, Service};
+use crate::dictation::{self, Context, Keys};
 
 /// Largest recording: minutes of speech as AAC, as base64 in JSON.
 const MAX_RECORDING: usize = 16 * 1024 * 1024;
@@ -21,7 +21,7 @@ const MAX_RECORDING: usize = 16 * 1024 * 1024;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v0/dictation", get(status))
-        .route("/v0/dictation/keys", put(set_keys))
+        .route("/v0/dictation/key", put(set_key))
         .route(
             "/v0/dictation/text",
             post(dictate).layer(DefaultBodyLimit::max(MAX_RECORDING)),
@@ -29,37 +29,22 @@ pub fn routes() -> Router<AppState> {
 }
 
 fn describe(keys: &Keys) -> Response {
-    Json(json!({
-        "transcribe": keys.openai.is_some(),
-        "tidy": keys.anthropic.is_some(),
-    }))
-    .into_response()
+    Json(json!({ "available": keys.openai.is_some() })).into_response()
 }
 
 async fn status(State(state): State<AppState>) -> Response {
     describe(&dictation::load(&state.core_dir))
 }
 
-/// A key to keep (checked first), or `""` to remove it; absent leaves it.
+/// OpenAI's key to keep (checked first), or `""` to remove it.
 #[derive(Deserialize)]
-struct KeysChange {
-    openai: Option<String>,
-    anthropic: Option<String>,
+struct KeyChange {
+    openai: String,
 }
 
-async fn set_keys(State(state): State<AppState>, Json(change): Json<KeysChange>) -> Response {
-    let mut keys = dictation::load(&state.core_dir);
-    for (service, given, kept) in [
-        (Service::OpenAi, change.openai, &mut keys.openai),
-        (Service::Anthropic, change.anthropic, &mut keys.anthropic),
-    ] {
-        let Some(given) = given.map(|k| k.trim().to_string()) else {
-            continue;
-        };
-        if given.is_empty() {
-            *kept = None;
-            continue;
-        }
+async fn set_key(State(state): State<AppState>, Json(change): Json<KeyChange>) -> Response {
+    let given = change.openai.trim().to_string();
+    if !given.is_empty() {
         // Keys are tokens; anything else in one is a mistake
         let valid = (8..=512).contains(&given.len())
             && given
@@ -68,21 +53,19 @@ async fn set_keys(State(state): State<AppState>, Json(change): Json<KeysChange>)
         if !valid {
             return error(
                 StatusCode::BAD_REQUEST,
-                &format!("that doesn't look like an {} key", service.name()),
+                "that doesn't look like an OpenAI key",
             );
         }
-        if let Err(err) = dictation::check(service, &given).await {
+        if let Err(err) = dictation::check(&given).await {
             return error(StatusCode::BAD_REQUEST, &format!("{err:#}"));
         }
-        *kept = Some(given);
     }
+    let keys = Keys {
+        openai: Some(given).filter(|k| !k.is_empty()),
+    };
     match dictation::save(&state.core_dir, &keys) {
         Ok(()) => {
-            tracing::info!(
-                transcribe = keys.openai.is_some(),
-                tidy = keys.anthropic.is_some(),
-                "dictation keys changed"
-            );
+            tracing::info!(available = keys.openai.is_some(), "dictation key changed");
             describe(&keys)
         }
         Err(err) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{err:#}")),
@@ -94,8 +77,8 @@ async fn set_keys(State(state): State<AppState>, Json(change): Json<KeysChange>)
 struct Recording {
     /// What was recorded, as an m4a (AAC), base64.
     audio_base64: Option<String>,
-    /// What the client heard itself; used when there's no recording or no
-    /// OpenAI key, or OpenAI fails.
+    /// What the client heard itself; used when there's no recording or
+    /// transcribing it fails.
     #[serde(default)]
     heard: String,
     /// The language spoken, as a code (`en`).
@@ -124,9 +107,9 @@ fn context(state: &AppState, recording: &Recording) -> Context {
     context
 }
 
-/// The recording as text: `{ transcript, text }`. `transcript` is what was
-/// said (OpenAI's, or else what the client heard); `text` is it tidied by
-/// Claude, `null` without an Anthropic key or when Claude failed.
+/// The recording as text: `{ transcript, transcribed, text }`. `transcript`
+/// is what was said (OpenAI's, or else what the client heard); `text` is it
+/// tidied, `null` without a key or when tidying failed.
 async fn dictate(State(state): State<AppState>, Json(recording): Json<Recording>) -> Response {
     use base64::Engine;
     let keys = dictation::load(&state.core_dir);
@@ -164,7 +147,7 @@ async fn dictate(State(state): State<AppState>, Json(recording): Json<Recording>
     let transcribe_ms = started.elapsed().as_millis();
 
     let mut text = None;
-    if let Some(key) = &keys.anthropic
+    if let Some(key) = &keys.openai
         && !transcript.is_empty()
     {
         match dictation::tidy(key, &transcript, &context).await {

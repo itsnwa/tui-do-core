@@ -443,7 +443,7 @@ struct Handover {
     /// The key phone notifications are sent with (homes before 0.3.11 have none).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     apns: Option<crate::apns::Key>,
-    /// The keys dictation is done with (homes before 0.3.24 have none).
+    /// The key dictation is done with (homes before 0.3.24 have none).
     #[serde(default, skip_serializing_if = "crate::dictation::Keys::is_empty")]
     dictation: crate::dictation::Keys,
     /// The old home's device id.

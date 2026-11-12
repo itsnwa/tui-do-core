@@ -338,15 +338,15 @@ The APNs key is an auth key (`.p8`) from the Apple Developer portal with APNs en
 
 ## Dictation
 
-A client records what's said and the home core turns it into text with its own keys: OpenAI's `gpt-transcribe` transcribes, Claude (`claude-haiku-5-5`) tidies it (filler out, punctuation, self-corrections applied, never an answer). Both are told what the session is about: its task's title and description, the project, and what the terminal shows, which also become the transcriber's `keywords`. Each step is skipped without its key, so a client keeps its own transcript and tidying to fall back on.
+A client records what's said and the home core turns it into text with its OpenAI key: `gpt-transcribe` transcribes, then `gpt-6-luna` (no reasoning) tidies it: filler out, punctuation, self-corrections applied, never an answer. Both are told what the session is about: its task's title and description, the project, and what the terminal shows, which also become the transcriber's `keywords`. A client keeps its own transcript and tidying to fall back on.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/dictation` | | `{ transcribe, tidy }`: whether the core has an OpenAI and an Anthropic key. |
-| `PUT` | `/v0/dictation/keys` | `{ openai?, anthropic? }` | the same. A key is checked with its service first (`400` with the reason if it's refused); `""` removes one, absent leaves it. Keys are never sent back. |
-| `POST` | `/v0/dictation/text` | `{ audioBase64?, heard, language?, session?, screen? }` | `{ transcript, transcribed, text }`. `audioBase64`: the recording as m4a (AAC), up to about 12 MB. `heard`: the client's own transcript, the `transcript` when there's no recording, no OpenAI key or OpenAI failed (`transcribed: false`). `session`: the session's id (its task's slug). `text`: `transcript` tidied, `null` without an Anthropic key or when Claude failed. |
+| `GET` | `/v0/dictation` | | `{ available }`: the core has an OpenAI key. |
+| `PUT` | `/v0/dictation/key` | `{ openai }` | the same. The key is checked with OpenAI first (`400` with the reason if it's refused); `""` removes it. It's never sent back. |
+| `POST` | `/v0/dictation/text` | `{ audioBase64?, heard, language?, session?, screen? }` | `{ transcript, transcribed, text }`. `audioBase64`: the recording as m4a (AAC), up to about 12 MB. `heard`: the client's own transcript, the `transcript` when there's no recording or no key, or transcribing failed (`transcribed: false`). `session`: the session's id (its task's slug). `text`: `transcript` tidied, `null` without a key or when tidying failed. |
 
-The keys are kept in `dictation.json` in the core's folder (`0600`); a new home gets a copy when the home moves. Requests go through `curl`. The core logs how long each step took.
+The key is kept in `dictation.json` in the core's folder (`0600`); a new home gets a copy when the home moves. Requests go through `curl`. The core logs how long each step took.
 
 # Coding agents
 
