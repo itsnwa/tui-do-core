@@ -109,8 +109,14 @@ pub fn install_codex(hooks_json: &Path, exe: &Path) -> anyhow::Result<bool> {
         .or_insert_with(|| json!({}))
         .as_object_mut()
         .context("hooks isn't an object")?;
-    let ours = json!({ "type": "command", "command": command(exe), "timeout": 5 });
     for event in CODEX_EVENTS {
+        // Codex gives these two three seconds at most, and says so if asked for more
+        let timeout = if matches!(event, "SessionEnd" | "Interrupt") {
+            3
+        } else {
+            5
+        };
+        let ours = json!({ "type": "command", "command": command(exe), "timeout": timeout });
         let groups = events
             .entry(event)
             .or_insert_with(|| json!([]))
@@ -443,6 +449,8 @@ mod tests {
         let ours = r#"test -n "$TUI_DO_CLAUDE_STATE_FILE" && '/new/tui-do-core' hook; true"#;
         assert_eq!(commands("SessionStart"), ["bash their-hook.sh", ours]);
         assert_eq!(commands("Interrupt"), [ours]);
+        assert_eq!(events["Interrupt"][0]["hooks"][0]["timeout"], 3);
+        assert_eq!(events["Stop"][0]["hooks"][0]["timeout"], 5);
         assert!(!text.contains("/old/"));
         std::fs::remove_dir_all(dir).expect("clean up");
     }

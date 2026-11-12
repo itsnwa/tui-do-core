@@ -1072,3 +1072,32 @@ async fn claude_s_own_status_should_correct_what_no_hook_reports() {
     let session = core.session("agent").await.expect("session");
     assert_eq!(session["alive"], true, "its shell is still there");
 }
+
+#[tokio::test]
+async fn codex_s_notice_should_end_a_turn_its_stop_hook_didn_t() {
+    use tui_do_core::status::State;
+    let dir = TestDir::new();
+    let registry = dir.registry();
+    // Only some of Codex's hooks are trusted: a tool call is reported, the
+    // end of the turn isn't. Its `notify` command says that, as it always did
+    let script = r#"
+printf '%s' '{"hook_event_name":"PreToolUse","session_id":"s1","tool_name":"Bash","tool_use_id":"t1","tool_input":{"command":"make"}}' | "$TUI_DO_CORE_EXE" hook
+sleep 1.2
+printf '{"last-assistant-message":"All set"}' > "$TUI_DO_CLAUDE_STATE_FILE.json"
+printf waiting > "$TUI_DO_CLAUDE_STATE_FILE"
+cat
+"#;
+    registry
+        .spawn(agent_request("agent", "codex", script))
+        .expect("spawns");
+    let status = || registry.info("agent").and_then(|session| session.status);
+    let working = eventually(async || status().is_some_and(|s| s.state == State::Working)).await;
+    let ready = eventually(async || status().is_some_and(|s| s.state == State::Ready)).await;
+    let ended = status();
+    registry.kill_all();
+    assert!(working, "the tool call wasn't reported");
+    assert!(ready, "the turn never ended");
+    let ended = ended.expect("a status");
+    assert_eq!(ended.reason.as_deref(), Some("finished"));
+    assert_eq!(ended.detail.as_deref(), Some("All set"));
+}
