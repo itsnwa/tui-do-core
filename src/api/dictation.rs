@@ -13,7 +13,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{AppState, error};
-use crate::dictation::{self, Context, Keys};
+use crate::dictation::{self, Context, Keys, Writing};
+use crate::workspace::tasks::TaskFilter;
 
 /// Largest recording: minutes of speech as AAC, as base64 in JSON.
 const MAX_RECORDING: usize = 16 * 1024 * 1024;
@@ -87,22 +88,49 @@ struct Recording {
     session: Option<String>,
     /// What the session's terminal shows.
     screen: Option<String>,
+    /// What's being dictated: a message (the default), a new task, or
+    /// more of a task's description.
+    #[serde(default)]
+    writing: Writing,
+    /// For a task: the project it goes in, whose other open tasks give the
+    /// context.
+    project: Option<String>,
 }
 
-/// The session's task and project, from the workspace.
+/// The session's task and project, or the new task's project and its open
+/// tasks, from the workspace.
 fn context(state: &AppState, recording: &Recording) -> Context {
     let mut context = Context {
+        writing: recording.writing,
         screen: recording.screen.clone(),
         ..Context::default()
     };
-    let (Some(workspace), Some(session)) = (state.workspace.current(), &recording.session) else {
+    let Some(workspace) = state.workspace.current() else {
         return context;
     };
-    if let Ok(detail) = workspace.get_task(session) {
-        let project = workspace.get_project(&detail.task.project).ok();
-        context.project = Some(project.map_or(detail.task.project.clone(), |p| p.title));
-        context.task = Some(detail.task.title);
-        context.description = Some(detail.description);
+    if let Some(session) = &recording.session {
+        if let Ok(detail) = workspace.get_task(session) {
+            let project = workspace.get_project(&detail.task.project).ok();
+            context.project = Some(project.map_or(detail.task.project.clone(), |p| p.title));
+            context.task = Some(detail.task.title);
+            context.description = Some(detail.description);
+        }
+    } else if let Some(slug) = recording.project.as_deref().filter(|p| !p.is_empty())
+        && let Ok(project) = workspace.get_project(slug)
+    {
+        context.project = Some(project.title);
+        let filter = TaskFilter {
+            project: Some(slug.to_string()),
+            ..TaskFilter::default()
+        };
+        context.open_tasks = workspace
+            .list_tasks(&filter)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| t.state != "completed")
+            .take(dictation::OPEN_TASKS)
+            .map(|t| t.title)
+            .collect();
     }
     context
 }
@@ -110,7 +138,8 @@ fn context(state: &AppState, recording: &Recording) -> Context {
 /// The recording as text: `{ transcript, transcribed, text }`. `transcript`
 /// is what was said (OpenAI's, or else what the client heard); `text` is it
 /// tidied (or as it is, when it was clean already), `null` without a key or
-/// when tidying failed.
+/// when tidying failed. A new task also has `title` and `description`
+/// (`""` when the title says it all), and `text` is the two together.
 async fn dictate(State(state): State<AppState>, Json(recording): Json<Recording>) -> Response {
     use base64::Engine;
     let keys = dictation::load(&state.core_dir);
@@ -148,8 +177,35 @@ async fn dictate(State(state): State<AppState>, Json(recording): Json<Recording>
     let transcribe_ms = started.elapsed().as_millis();
 
     let mut text = None;
+    let mut task = None;
     let mut tidied = false;
     if let Some(key) = &keys.openai
+        && !transcript.is_empty()
+        && recording.writing == Writing::Task
+    {
+        let short = dictation::as_title(&transcript).filter(|_| transcribed);
+        if let Some(title) = short {
+            task = Some(dictation::Said {
+                title,
+                description: String::new(),
+            });
+        } else {
+            match dictation::split(key, &transcript, &context).await {
+                Ok(said) => {
+                    task = Some(said);
+                    tidied = true;
+                }
+                Err(err) => tracing::warn!("dictation: splitting the task failed: {err:#}"),
+            }
+        }
+        text = task.as_ref().map(|t| {
+            [t.title.as_str(), t.description.as_str()]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        });
+    } else if let Some(key) = &keys.openai
         && !transcript.is_empty()
     {
         // The client's own transcript always needs it; OpenAI's punctuates
@@ -167,6 +223,7 @@ async fn dictate(State(state): State<AppState>, Json(recording): Json<Recording>
     }
     let total_ms = started.elapsed().as_millis();
     tracing::info!(
+        writing = ?recording.writing,
         transcribed,
         tidied,
         transcribe_ms,
@@ -178,6 +235,8 @@ async fn dictate(State(state): State<AppState>, Json(recording): Json<Recording>
         "transcript": transcript,
         "transcribed": transcribed,
         "text": text,
+        "title": task.as_ref().map(|t| &t.title),
+        "description": task.as_ref().map(|t| &t.description),
     }))
     .into_response()
 }
