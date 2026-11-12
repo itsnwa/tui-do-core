@@ -322,6 +322,8 @@ pub async fn tidy(key: &str, said: &str, context: &Context) -> anyhow::Result<St
         "input": format!("<transcript>\n{said}\n</transcript>"),
         "max_output_tokens": 4096,
         "store": false,
+        // Faster, for a little more
+        "service_tier": "priority",
     });
     let config = [
         format!("url = {}", quoted("https://api.openai.com/v1/responses")),
@@ -364,6 +366,28 @@ pub async fn tidy(key: &str, said: &str, context: &Context) -> anyhow::Result<St
         bail!("the answer doesn't look like the message");
     }
     Ok(tidied)
+}
+
+/// Whether a transcript has anything for tidying to do: filler words, the
+/// speaker correcting themselves, a word said twice, or code spelled out
+/// in words. The transcriber already punctuates, so a clean one is used as
+/// it is, a second sooner.
+pub fn needs_tidying(transcript: &str) -> bool {
+    static SPOKEN: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r"(?i)\b(u+h+m*|u+m+|e+r+m*|h+m+|mm+|you know|i mean|i guess|actually|scratch that|no wait|wait no|sorry|or rather|let me rephrase|dot|slash|dash|underscore|backtick|colon|tilde)\b|\blike,",
+        )
+        .expect("valid regex")
+    });
+    let words: Vec<String> = transcript
+        .split_whitespace()
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
+        .collect();
+    let repeated = words.windows(2).any(|w| !w[0].is_empty() && w[0] == w[1]);
+    repeated || SPOKEN.is_match(transcript)
 }
 
 /// An answer instead of a rewrite tends to be far off the length.
@@ -459,6 +483,30 @@ mod tests {
         assert!(!looks_like_a_rewrite(said, &"Yes, they do. ".repeat(20)));
         assert!(looks_like_a_rewrite("ok", "OK."));
         assert!(!looks_like_a_rewrite("ok", ""));
+    }
+
+    #[test]
+    fn clean_transcripts_skip_tidying() {
+        for clean in [
+            "Okay, testing dictation now.",
+            "Can you create a task for bringing this dictation into the Create Task form?",
+            "Run the tests in core and tell me what fails.",
+            "Umbrella terms are fine, and so is Ummah or a hummingbird.",
+        ] {
+            assert!(!needs_tidying(clean), "{clean}");
+        }
+        for messy in [
+            "Um, can you run the tests?",
+            "Run the tests in, uh, core.",
+            "Open the the README.",
+            "Edit main dot rs.",
+            "Use the old one, I mean the new one.",
+            "Run it on cube. Actually, run it here.",
+            "Hmm, let's see.",
+            "It's, like, slow.",
+        ] {
+            assert!(needs_tidying(messy), "{messy}");
+        }
     }
 
     #[test]

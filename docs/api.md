@@ -338,15 +338,15 @@ The APNs key is an auth key (`.p8`) from the Apple Developer portal with APNs en
 
 ## Dictation
 
-A client records what's said and the home core turns it into text with its OpenAI key: `gpt-transcribe` transcribes, then `gpt-6-luna` (no reasoning) tidies it: filler out, punctuation, self-corrections applied, never an answer. Both are told what the session is about: its task's title and description, the project, and what the terminal shows, which also become the transcriber's `keywords`. A client keeps its own transcript and tidying to fall back on.
+A client records what's said and the home core turns it into text with its OpenAI key: `gpt-transcribe` transcribes, then `gpt-6-luna` (no reasoning, priority tier) tidies it: filler out, self-corrections applied, code spelled out in words written as code, never an answer. A transcript with none of those (no filler words, corrections, repeated words or spoken `dot`, `slash` and the like) is already punctuated and is used as it is, without tidying. Both are told what the session is about: its task's title and description, the project, and what the terminal shows, which also become the transcriber's `keywords`. A client keeps its own transcript and tidying to fall back on.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/dictation` | | `{ available }`: the core has an OpenAI key. |
 | `PUT` | `/v0/dictation/key` | `{ openai }` | the same. The key is checked with OpenAI first (`400` with the reason if it's refused); `""` removes it. It's never sent back. |
-| `POST` | `/v0/dictation/text` | `{ audioBase64?, heard, language?, session?, screen? }` | `{ transcript, transcribed, text }`. `audioBase64`: the recording as m4a (AAC), up to about 12 MB. `heard`: the client's own transcript, the `transcript` when there's no recording or no key, or transcribing failed (`transcribed: false`). `session`: the session's id (its task's slug). `text`: `transcript` tidied, `null` without a key or when tidying failed. |
+| `POST` | `/v0/dictation/text` | `{ audioBase64?, heard, language?, session?, screen? }` | `{ transcript, transcribed, text }`. `audioBase64`: the recording as m4a (AAC), up to about 12 MB. `heard`: the client's own transcript, the `transcript` when there's no recording or no key, or transcribing failed (`transcribed: false`). `session`: the session's id (its task's slug). `text`: `transcript` tidied (or as it is, when it's clean already), `null` without a key or when tidying failed. |
 
-The key is kept in `dictation.json` in the core's folder (`0600`); a new home gets a copy when the home moves. Requests go through `curl`. The core logs how long each step took.
+The key is kept in `dictation.json` in the core's folder (`0600`); a new home gets a copy when the home moves. Requests go through `curl`. The core logs how long each step took (`transcribe_ms`, `tidy_ms`).
 
 # Coding agents
 
