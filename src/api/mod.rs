@@ -19,6 +19,7 @@ mod home;
 pub(crate) mod mcp;
 mod notifications;
 mod update;
+mod usage;
 mod workspace;
 
 use std::collections::HashSet;
@@ -119,6 +120,7 @@ pub fn router(state: AppState) -> Router {
         .merge(home::routes())
         .merge(handoff::routes())
         .merge(update::routes())
+        .merge(usage::routes())
         .merge(notifications::routes())
         .merge(mcp::routes(&state))
         .route_layer(middleware::from_fn_with_state(state.clone(), guard_writes))

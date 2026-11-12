@@ -27,5 +27,6 @@ pub mod session;
 pub mod status;
 pub mod update;
 pub mod uploads;
+pub mod usage;
 mod utf8;
 pub mod workspace;

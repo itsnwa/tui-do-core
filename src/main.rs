@@ -22,7 +22,7 @@ use tui_do_core::mcp::TuiDoMcp;
 use tui_do_core::relay::Relays;
 use tui_do_core::replica::Replicas;
 use tui_do_core::workspace::shared::SharedWorkspace;
-use tui_do_core::{api, holder, hooks, net, session, update};
+use tui_do_core::{api, holder, hooks, net, session, update, usage};
 
 use std::io::IsTerminal;
 use std::os::unix::fs::PermissionsExt;
@@ -80,6 +80,11 @@ fn main() -> anyhow::Result<()> {
         // An agent's hook: on every tool call, so it skips the runtime too
         Some("hook") => {
             hooks::run();
+            Ok(())
+        }
+        // Claude's status line: after every response, so it skips the runtime too
+        Some("statusline") => {
+            usage::run_status_line(core_dir().ok().as_deref());
             Ok(())
         }
         Some("watch-update") => {
