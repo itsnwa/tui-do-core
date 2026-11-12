@@ -443,6 +443,9 @@ struct Handover {
     /// The key phone notifications are sent with (homes before 0.3.11 have none).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     apns: Option<crate::apns::Key>,
+    /// The keys dictation is done with (homes before 0.3.24 have none).
+    #[serde(default, skip_serializing_if = "crate::dictation::Keys::is_empty")]
+    dictation: crate::dictation::Keys,
     /// The old home's device id.
     from: String,
 }
@@ -558,6 +561,7 @@ async fn move_to(state: &AppState, target: &Device) -> anyhow::Result<Value> {
             })
             .collect(),
         apns: crate::apns::load(&state.core_dir),
+        dictation: crate::dictation::load(&state.core_dir),
         from: own.device_id.clone(),
     };
     let adopted = match send_adopt(client, target, &handover).await {
@@ -731,6 +735,9 @@ fn take_over(state: &AppState, handover: Handover) -> anyhow::Result<()> {
     state.handoffs.replace_records(&handover.handoffs)?;
     if let Some(key) = &handover.apns {
         crate::apns::save(&state.core_dir, key)?;
+    }
+    if !handover.dictation.is_empty() {
+        crate::dictation::save(&state.core_dir, &handover.dictation)?;
     }
     state.config.update(|c| {
         c.home = None;

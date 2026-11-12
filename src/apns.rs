@@ -187,7 +187,7 @@ fn provider_token(key: &Key) -> anyhow::Result<String> {
 }
 
 /// A value in a curl config file: quoted, with `\` and `"` escaped.
-fn quoted(value: &str) -> String {
+pub(crate) fn quoted(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
