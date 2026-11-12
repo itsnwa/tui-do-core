@@ -12,6 +12,7 @@
 mod activity;
 mod agent;
 mod clients;
+mod dictation;
 mod fleet;
 mod handoff;
 mod home;
@@ -113,6 +114,7 @@ pub fn router(state: AppState) -> Router {
         .merge(activity::routes())
         .merge(agent::routes())
         .merge(clients::routes())
+        .merge(dictation::routes())
         .merge(fleet::routes())
         .merge(home::routes())
         .merge(handoff::routes())

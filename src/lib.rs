@@ -9,6 +9,7 @@ pub mod apns;
 pub mod claude_status;
 pub mod clients;
 pub mod config;
+pub mod dictation;
 pub mod fleet;
 pub mod format;
 pub mod handoff;

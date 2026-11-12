@@ -186,9 +186,25 @@ fn provider_token(key: &Key) -> anyhow::Result<String> {
     Ok(token)
 }
 
-/// A value in a curl config file: quoted, with `\` and `"` escaped.
-fn quoted(value: &str) -> String {
-    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+/// A value in a curl config file: quoted, with `\`, `"` and line breaks
+/// escaped and other control characters left out, so it stays one line and
+/// one value.
+pub(crate) fn quoted(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for c in value.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn payload(alert: &Alert) -> serde_json::Value {
@@ -403,5 +419,7 @@ mod tests {
     #[test]
     fn config_values_should_be_quoted() {
         assert_eq!(quoted(r#"{"a":"b\c"}"#), r#""{\"a\":\"b\\c\"}""#);
+        // A line break can't start another option
+        assert_eq!(quoted("a\nurl = x\r\t\u{7}b"), r#""a\nurl = x\r\tb""#);
     }
 }
