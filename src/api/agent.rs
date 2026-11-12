@@ -32,6 +32,13 @@ const CODEX_MACHINE_TOOLS: &str = concat!(
     r#" -c 'mcp_servers.tui-do.args=["-c", "exec \"$HOME/.tui-do/bin/tui-do-core\" mcp"]'"#,
 );
 
+/// How Codex is started: without its shared background server, where it has
+/// that. The server runs every session's hooks and `notify` command in its
+/// own environment (whichever shell started it first), not the session's,
+/// so they couldn't tell which session they report for. A Codex from before
+/// the server doesn't know the flag, hence the look at its help.
+const CODEX: &str = "codex $(codex --help 2>&1 | grep -qe --no-daemon && echo --no-daemon)";
+
 /// Reports each finished turn to `tui-do-core codex-notify`, which Codex runs
 /// with the turn's details as the last argument. `$TUI_DO_CORE_EXE` comes from
 /// the session.
@@ -187,7 +194,7 @@ fn command(
             format!("{enter}{cmd} -n \"{slug}\" {prompt}")
         }
         Agent::Codex => {
-            let mut cmd = String::from("codex");
+            let mut cmd = String::from(CODEX);
             if remote {
                 cmd += CODEX_MACHINE_TOOLS;
             }
@@ -585,7 +592,7 @@ mod tests {
         req.worktree_path = Some("/somewhere".into());
         assert_eq!(
             command(&Agent::Codex, &req, "t", "26-001", false, None),
-            format!("codex{CODEX_NOTIFY} --model 'gpt-6' \"Start working on task 26-001\"")
+            format!("{CODEX}{CODEX_NOTIFY} --model 'gpt-6' \"Start working on task 26-001\"")
         );
     }
 
@@ -615,10 +622,22 @@ mod tests {
     }
 
     #[test]
+    fn codex_should_start_without_its_shared_server_where_it_has_one() {
+        let req = request(None, None, None, false);
+        let cmd = command(&Agent::Codex, &req, "t", "26-001", false, None);
+        assert!(
+            cmd.starts_with(
+                "codex $(codex --help 2>&1 | grep -qe --no-daemon && echo --no-daemon) -c 'notify="
+            ),
+            "{cmd}"
+        );
+    }
+
+    #[test]
     fn codex_on_a_machine_should_get_the_tools_and_effort() {
         let req = request(Some("gpt-6"), Some("high"), None, false);
         let cmd = command(&Agent::Codex, &req, "t", "26-001", true, None);
-        assert!(cmd.starts_with("codex -c 'mcp_servers.tui-do.command=\"sh\"'"));
+        assert!(cmd.starts_with(&format!("{CODEX} -c 'mcp_servers.tui-do.command=\"sh\"'")));
         assert!(cmd.ends_with(
             " --model 'gpt-6' -c 'model_reasoning_effort=\"high\"' \"Start working on task 26-001\""
         ));
@@ -635,7 +654,7 @@ mod tests {
         assert_eq!(
             command(&Agent::Codex, &req, "t", "26-001", false, Some(&link)),
             format!(
-                "cd '/code/it'\\''s' && codex{CODEX_NOTIFY} \
+                "cd '/code/it'\\''s' && {CODEX}{CODEX_NOTIFY} \
                  resume '01a1c173-979a-70e0-bbe0-b83e52032d3f'"
             )
         );
