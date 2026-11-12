@@ -60,6 +60,17 @@ async fn set_keys(State(state): State<AppState>, Json(change): Json<KeysChange>)
             *kept = None;
             continue;
         }
+        // Keys are tokens; anything else in one is a mistake
+        let valid = (8..=512).contains(&given.len())
+            && given
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+        if !valid {
+            return error(
+                StatusCode::BAD_REQUEST,
+                &format!("that doesn't look like an {} key", service.name()),
+            );
+        }
         if let Err(err) = dictation::check(service, &given).await {
             return error(StatusCode::BAD_REQUEST, &format!("{err:#}"));
         }
