@@ -109,7 +109,8 @@ fn context(state: &AppState, recording: &Recording) -> Context {
 
 /// The recording as text: `{ transcript, transcribed, text }`. `transcript`
 /// is what was said (OpenAI's, or else what the client heard); `text` is it
-/// tidied, `null` without a key or when tidying failed.
+/// tidied (or as it is, when it was clean already), `null` without a key or
+/// when tidying failed.
 async fn dictate(State(state): State<AppState>, Json(recording): Json<Recording>) -> Response {
     use base64::Engine;
     let keys = dictation::load(&state.core_dir);
@@ -147,19 +148,30 @@ async fn dictate(State(state): State<AppState>, Json(recording): Json<Recording>
     let transcribe_ms = started.elapsed().as_millis();
 
     let mut text = None;
+    let mut tidied = false;
     if let Some(key) = &keys.openai
         && !transcript.is_empty()
     {
-        match dictation::tidy(key, &transcript, &context).await {
-            Ok(tidied) => text = Some(tidied),
-            Err(err) => tracing::warn!("dictation: tidying failed: {err:#}"),
+        // The client's own transcript always needs it; OpenAI's punctuates
+        if !transcribed || dictation::needs_tidying(&transcript) {
+            match dictation::tidy(key, &transcript, &context).await {
+                Ok(done) => {
+                    text = Some(done);
+                    tidied = true;
+                }
+                Err(err) => tracing::warn!("dictation: tidying failed: {err:#}"),
+            }
+        } else {
+            text = Some(transcript.clone());
         }
     }
+    let total_ms = started.elapsed().as_millis();
     tracing::info!(
         transcribed,
-        tidied = text.is_some(),
+        tidied,
         transcribe_ms,
-        total_ms = started.elapsed().as_millis(),
+        tidy_ms = total_ms - transcribe_ms,
+        total_ms,
         "dictation"
     );
     Json(json!({
