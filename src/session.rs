@@ -1203,27 +1203,47 @@ impl Actor {
         self.publish(view, source, at);
     }
 
-    /// The state word of hooks from before the log, and of Codex.
+    /// The state word of hooks from before the log, and of Codex's `notify`.
     fn poll_hook_state(&mut self) {
-        if self.hooked.is_some() {
+        let Some(path) = self.state_file.clone() else {
             return;
-        }
-        let Some(path) = &self.state_file else { return };
-        let Some(mtime) = std::fs::metadata(path).and_then(|m| m.modified()).ok() else {
+        };
+        let Some(mtime) = std::fs::metadata(&path).and_then(|m| m.modified()).ok() else {
             return;
         };
         if self.state_mtime == Some(mtime) {
             return;
         }
         self.state_mtime = Some(mtime);
-        if let Some(state) = hooks::read_state(path) {
-            // Claude's hooks report every change; Codex only says when a turn ends
-            let claude = lock(&self.info).agent.as_deref() == Some("claude");
-            self.hook_seen = claude;
-            self.turn_ended = !claude;
-            let view = status::of_state_word(state, hooks::read_input(path).as_ref());
-            self.publish(view, Source::Hooks, now_millis());
+        let Some(state) = hooks::read_state(&path) else {
+            return;
+        };
+        // Claude's hooks report every change; Codex only says when a turn ends
+        let claude = lock(&self.info).agent.as_deref() == Some("claude");
+        if let Some(agent) = &mut self.hooked {
+            // Hooks report through the log. Codex's `notify` still says when
+            // a turn ends, and that has to count where its Stop hook doesn't
+            // run: the user trusts each of Codex's hooks by itself. Not when
+            // a hook spoke since (a core picking the session up reads both)
+            let written = mtime
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |since| since.as_millis() as i64);
+            if !claude && state == AgentState::Waiting && written > agent.at {
+                agent.apply(&status::Record {
+                    t: written,
+                    event: "Stop".into(),
+                    detail: hooks::read_detail(&path),
+                    ..status::Record::default()
+                });
+                let (view, source, at) = (agent.view(), agent.source(), agent.at);
+                self.publish(view, source, at);
+            }
+            return;
         }
+        self.hook_seen = claude;
+        self.turn_ended = !claude;
+        let view = status::of_state_word(state, hooks::read_input(&path).as_ref());
+        self.publish(view, Source::Hooks, now_millis());
     }
 
     /// Agent sessions without hook reports (remote, or hooks not loaded) fall
