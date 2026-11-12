@@ -7,10 +7,15 @@
 //! session's status out of it (see `status`): exactly, not guessed from
 //! output timing, and again from the start after the core restarts.
 //!
+//! Codex has hooks of the same shape. It reads them from its own
+//! `hooks.json`, where [`install_codex`] puts the same command, and only
+//! runs one the user has reviewed (`/hooks` in Codex).
+//!
 //! Sessions whose Claude started under a core before 0.3.18 still have its
 //! hooks, which write a state word (idle / working / waiting) to the state
 //! file and save their input next to it. Codex's `notify` command does the
-//! same when a turn ends. Both are still read.
+//! same when a turn ends, for a Codex whose hook isn't trusted yet. Both
+//! are still read.
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -31,8 +36,9 @@ pub const CORE_EXE_ENV: &str = "TUI_DO_CORE_EXE";
 /// The hooks Claude reports with. `PreToolUse` and `PostToolUse` say which
 /// tool calls are under way, so one finishing can't hide another's open
 /// permission prompt; `PermissionRequest` fires as a prompt opens (the
-/// `permission_prompt` notification only six seconds later).
-const EVENTS: [&str; 13] = [
+/// `permission_prompt` notification only six seconds later); `PostToolBatch`
+/// says every call of a batch is done, also one whose prompt was refused.
+const EVENTS: [&str; 14] = [
     "SessionStart",
     "UserPromptSubmit",
     "PreToolUse",
@@ -40,6 +46,7 @@ const EVENTS: [&str; 13] = [
     "PermissionDenied",
     "PostToolUse",
     "PostToolUseFailure",
+    "PostToolBatch",
     "Elicitation",
     "ElicitationResult",
     "Notification",
@@ -48,9 +55,103 @@ const EVENTS: [&str; 13] = [
     "SessionEnd",
 ];
 
+/// The hooks Codex reports with. It has one for an interrupted turn, which
+/// Claude lacks; `PreModelRequest` is its sign that a batch of tool calls is
+/// done.
+const CODEX_EVENTS: [&str; 9] = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PermissionRequest",
+    "PostToolUse",
+    "PreModelRequest",
+    "Stop",
+    "Interrupt",
+    "SessionEnd",
+];
+
 pub struct Hooks {
     settings_path: PathBuf,
     state_dir: PathBuf,
+}
+
+/// What every hook runs. The path is written out: a shell opened by an
+/// earlier core doesn't have it in its environment. Outside a TUI-DO
+/// session, nothing runs.
+fn command(exe: &Path) -> String {
+    format!(
+        "test -n \"${STATE_FILE_ENV}\" && {} hook; true",
+        shell_quote(&exe.display().to_string())
+    )
+}
+
+/// Whether a hook's command is one of TUI-DO's, from this core or an earlier one.
+fn is_ours(hook: &serde_json::Value) -> bool {
+    let command = hook["command"].as_str().unwrap_or_default();
+    command.contains(STATE_FILE_ENV) && command.ends_with(" hook; true")
+}
+
+/// Put TUI-DO's hook into Codex's `hooks.json`, next to whatever else is
+/// there, for every event Codex reports with. True if the file changed:
+/// Codex then asks the user to review the hook before it runs it.
+pub fn install_codex(hooks_json: &Path, exe: &Path) -> anyhow::Result<bool> {
+    let current = std::fs::read_to_string(hooks_json).ok();
+    let mut json: serde_json::Value = match &current {
+        Some(text) => serde_json::from_str(text)
+            .with_context(|| format!("{} isn't valid JSON", hooks_json.display()))?,
+        None => json!({}),
+    };
+    let root = json
+        .as_object_mut()
+        .context("Codex's hooks.json isn't a JSON object")?;
+    let events = root
+        .entry("hooks")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .context("hooks isn't an object")?;
+    let ours = json!({ "type": "command", "command": command(exe), "timeout": 5 });
+    for event in CODEX_EVENTS {
+        let groups = events
+            .entry(event)
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+            .with_context(|| format!("hooks.{event} isn't a list"))?;
+        // An earlier core's, at another path: this one takes its place
+        for group in groups.iter_mut() {
+            if let Some(hooks) = group["hooks"].as_array_mut() {
+                hooks.retain(|hook| !is_ours(hook));
+            }
+        }
+        groups.retain(|group| {
+            group["hooks"]
+                .as_array()
+                .is_none_or(|hooks| !hooks.is_empty())
+        });
+        groups.push(json!({ "hooks": [ours] }));
+    }
+    let updated = serde_json::to_string_pretty(&json)? + "\n";
+    // The same hooks, however the file was laid out
+    let same = current
+        .as_deref()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+        .is_some_and(|before| before == json);
+    if same {
+        return Ok(false);
+    }
+    if let Some(dir) = hooks_json.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(hooks_json, updated)
+        .with_context(|| format!("writing {}", hooks_json.display()))?;
+    Ok(true)
+}
+
+/// Where Codex keeps its own files: `$CODEX_HOME`, else `~/.codex`.
+pub fn codex_home() -> Option<PathBuf> {
+    match std::env::var_os("CODEX_HOME").filter(|dir| !dir.is_empty()) {
+        Some(dir) => Some(PathBuf::from(dir)),
+        None => Some(PathBuf::from(std::env::var_os("HOME")?).join(".codex")),
+    }
 }
 
 fn shell_quote(value: &str) -> String {
@@ -65,12 +166,7 @@ impl Hooks {
         std::fs::create_dir_all(&state_dir)
             .with_context(|| format!("creating {}", state_dir.display()))?;
 
-        // The path is written out: a shell opened by an earlier core doesn't
-        // have it in its environment. Outside a TUI-DO session, nothing runs.
-        let command = format!(
-            "test -n \"${STATE_FILE_ENV}\" && {} hook; true",
-            shell_quote(&exe.display().to_string())
-        );
+        let command = command(exe);
         let hooks: serde_json::Map<String, serde_json::Value> = EVENTS
             .iter()
             .map(|event| {
@@ -312,6 +408,53 @@ mod tests {
                 "{event}"
             );
         }
+        std::fs::remove_dir_all(dir).expect("clean up");
+    }
+
+    #[test]
+    fn codex_s_hooks_should_gain_ours_and_keep_the_user_s() {
+        let dir = std::env::temp_dir().join(format!("tui-do-codex-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("folder");
+        let file = dir.join("hooks.json");
+        let theirs = json!({ "hooks": { "SessionStart": [{ "hooks": [
+            { "type": "command", "command": "bash their-hook.sh", "timeout": 10 },
+        ] }] } });
+        std::fs::write(&file, theirs.to_string()).expect("write");
+
+        assert!(install_codex(&file, Path::new("/old/tui-do-core")).expect("install"));
+        // Nothing to review again when nothing changed
+        assert!(!install_codex(&file, Path::new("/old/tui-do-core")).expect("install"));
+        // The core moved: its hook is replaced, not added to
+        assert!(install_codex(&file, Path::new("/new/tui-do-core")).expect("install"));
+
+        let text = std::fs::read_to_string(&file).expect("read");
+        let json: serde_json::Value = serde_json::from_str(&text).expect("json");
+        let events = json["hooks"].as_object().expect("hooks");
+        assert_eq!(events.len(), CODEX_EVENTS.len());
+        let commands = |event: &str| -> Vec<String> {
+            let groups = events[event].as_array().expect("groups");
+            let hooks = groups
+                .iter()
+                .flat_map(|group| group["hooks"].as_array().expect("hooks"));
+            hooks
+                .map(|hook| hook["command"].as_str().expect("command").to_string())
+                .collect()
+        };
+        let ours = r#"test -n "$TUI_DO_CLAUDE_STATE_FILE" && '/new/tui-do-core' hook; true"#;
+        assert_eq!(commands("SessionStart"), ["bash their-hook.sh", ours]);
+        assert_eq!(commands("Interrupt"), [ours]);
+        assert!(!text.contains("/old/"));
+        std::fs::remove_dir_all(dir).expect("clean up");
+    }
+
+    #[test]
+    fn codex_s_hooks_should_be_left_alone_when_they_can_t_be_read() {
+        let dir = std::env::temp_dir().join(format!("tui-do-codex-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("folder");
+        let file = dir.join("hooks.json");
+        std::fs::write(&file, "{ not json").expect("write");
+        assert!(install_codex(&file, Path::new("/tui-do-core")).is_err());
+        assert_eq!(std::fs::read_to_string(&file).expect("read"), "{ not json");
         std::fs::remove_dir_all(dir).expect("clean up");
     }
 

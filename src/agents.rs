@@ -3,6 +3,7 @@
 //! writes the workflow instructions into their global instructions file, and
 //! allows the tools in Claude Code. Registering it with the agent (rather than
 //! passing a config per session) keeps it working across `/login` and restarts.
+//! Codex also gets the hook its sessions report their status with.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -16,9 +17,13 @@ const MARKER: &str = "## TUI-DO Task Workflow (MCP Server)";
 const TOOL_PERMISSION: &str = "mcp__tui-do__*";
 
 #[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Setup {
     pub claude: bool,
     pub codex: bool,
+    /// Codex's hook was added or changed: Codex asks the user to review it
+    /// (`/hooks`) before it runs it.
+    pub codex_hook_to_review: bool,
 }
 
 fn home() -> anyhow::Result<PathBuf> {
@@ -124,6 +129,7 @@ pub fn setup(instructions: &str, core_dir: &Path) -> anyhow::Result<Setup> {
         run("codex", &["mcp", "add", "tui-do", "--", &exe, "mcp"])?;
         write_section(&home.join(".codex/AGENTS.md"), instructions)?;
         done.codex = true;
+        done.codex_hook_to_review = install_codex_hook(Path::new(&exe));
     }
     tracing::info!(
         claude = done.claude,
@@ -131,6 +137,29 @@ pub fn setup(instructions: &str, core_dir: &Path) -> anyhow::Result<Setup> {
         "agents set up for TUI-DO"
     );
     Ok(done)
+}
+
+/// Put the hook Codex sessions report with into Codex's own `hooks.json`.
+/// True if it's new or changed there. A file that can't be changed is left
+/// as it is: Codex then reports the end of each turn only, as before.
+pub fn install_codex_hook(exe: &Path) -> bool {
+    let Some(codex) = crate::hooks::codex_home() else {
+        return false;
+    };
+    match crate::hooks::install_codex(&codex.join("hooks.json"), exe) {
+        Ok(changed) => {
+            if changed {
+                tracing::info!(
+                    "Codex's hooks.json has TUI-DO's hook; review it in Codex with /hooks"
+                );
+            }
+            changed
+        }
+        Err(err) => {
+            tracing::warn!(error = %format!("{err:#}"), "couldn't add TUI-DO's hook to Codex");
+            false
+        }
+    }
 }
 
 #[cfg(test)]

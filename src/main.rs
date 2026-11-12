@@ -208,6 +208,11 @@ async fn serve() -> anyhow::Result<()> {
     }
     let exe = update::own_path(&dir)?;
     let hooks = hooks::Hooks::prepare(&dir.join("claude-hooks"), &exe)?;
+    // An installed core keeps Codex's copy of the hook pointing at itself.
+    // One run by hand (a test, a build) leaves the user's Codex alone
+    if update::restarts_itself() && hooks::codex_home().is_some_and(|codex| codex.is_dir()) {
+        tui_do_core::agents::install_codex_hook(&exe);
+    }
     let registry = Arc::new(session::Registry::new(hooks, dir.join("holders"), exe)?);
     let config = Arc::new(ConfigStore::load(dir.join("config.json"))?);
     let default_workspace = dir
