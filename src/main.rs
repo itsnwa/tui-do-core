@@ -288,6 +288,7 @@ async fn serve() -> anyhow::Result<()> {
     api::spawn_notifier(state.clone());
     // Before the relays start: each machine's first event lists its sessions
     api::spawn_board(state.clone());
+    api::spawn_scheduler(state.clone());
     for device in fleet.devices() {
         relays.start(device);
     }

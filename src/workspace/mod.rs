@@ -12,6 +12,7 @@ pub mod daily;
 pub mod dates;
 pub mod plans;
 pub mod projects;
+pub mod schedule;
 pub mod shared;
 pub mod slug;
 pub mod store;

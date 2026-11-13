@@ -1,5 +1,8 @@
 //! Plans: `plans/<slug>.md`, usually linked from a task's `plan` key.
 
+use std::sync::LazyLock;
+
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use super::store::Dir;
@@ -9,6 +12,14 @@ use crate::format::{Map, Value};
 
 const PLAN_KEYS: [&str; 3] = ["title", "task", "created"];
 const SUMMARY_HEADING: &str = "## Completion Summary\n\n";
+
+/// How many runs a recurring task's summary keeps.
+const MAX_RUNS: usize = 30;
+
+/// Where a run starts in a recurring task's summary: `### 2026-11-14 09:00`,
+/// or `### Earlier` for what was there before it kept runs.
+static RUN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^### (\d{4}-\d{2}-\d{2}|Earlier)\b").expect("valid regex"));
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Plan {
@@ -46,6 +57,33 @@ pub(super) fn new_plan_data(task_title: &str, task_slug: &str) -> Map {
     data.insert("task".into(), task_slug.into());
     data.insert("created".into(), dates::now_iso().into());
     data
+}
+
+/// The runs in a recurring task's summary, newest first, each with its
+/// heading. Text before the first run is one run of its own.
+fn runs_of(section: &str) -> Vec<String> {
+    let starts: Vec<usize> = RUN.find_iter(section).map(|m| m.start()).collect();
+    let mut runs = Vec::new();
+    let head = section[..starts.first().copied().unwrap_or(section.len())].trim();
+    if !head.is_empty() {
+        runs.push(format!("### Earlier\n\n{head}"));
+    }
+    for (i, &start) in starts.iter().enumerate() {
+        let end = starts.get(i + 1).copied().unwrap_or(section.len());
+        runs.push(section[start..end].trim().to_string());
+    }
+    runs
+}
+
+/// A plan written over `old`: a recurring task's summary of its runs stays,
+/// when the new plan doesn't have one.
+pub(super) fn keep_summary(old: &str, new: &str) -> String {
+    match old.find(SUMMARY_HEADING) {
+        Some(i) if !new.contains(SUMMARY_HEADING) => {
+            format!("{}\n\n{}", new.trim_end(), &old[i..])
+        }
+        _ => new.to_string(),
+    }
 }
 
 /// Known keys in order, then any others the file had.
@@ -129,20 +167,34 @@ impl Workspace {
     }
 
     /// Put `summary` at the end of the plan as its "## Completion Summary",
-    /// replacing an earlier one. Callers hold the write lock.
+    /// replacing an earlier one. A recurring task's `run` (the occurrence it
+    /// was for) goes first instead, under its own heading, above the runs
+    /// before it. Callers hold the write lock.
     pub(super) fn append_completion_summary(
         &self,
         plan: &str,
         task_slug: &str,
         task_title: &str,
         summary: &str,
+        run: Option<&str>,
     ) -> Result<()> {
         slug::validate(plan)?;
         let (data, body) = match self.store.read(Dir::Plans, plan)? {
             Some(doc) => (doc.data, doc.content),
             None => (new_plan_data(task_title, task_slug), String::new()),
         };
-        let section = format!("{SUMMARY_HEADING}{summary}");
+        let section = match run {
+            None => format!("{SUMMARY_HEADING}{summary}"),
+            Some(run) => {
+                let earlier = body
+                    .find(SUMMARY_HEADING)
+                    .map_or("", |i| &body[i + SUMMARY_HEADING.len()..]);
+                let mut runs = vec![format!("### {run}\n\n{}", summary.trim())];
+                runs.extend(runs_of(earlier));
+                runs.truncate(MAX_RUNS);
+                format!("{SUMMARY_HEADING}{}", runs.join("\n\n"))
+            }
+        };
         let body = match body.find(SUMMARY_HEADING) {
             Some(i) => format!("{}{section}", &body[..i]),
             None if body.is_empty() => section,
