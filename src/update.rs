@@ -4,11 +4,14 @@
 //! Sessions keep running: their programs are in holders (see `holder`), which
 //! the new core picks up.
 //!
-//! Versions sit side by side in `~/.tui-do/versions/<version>/`, and
-//! `~/.tui-do/bin/tui-do-core` is a link to the current one, so the services
-//! and the agents' MCP settings keep one path. A new version that doesn't come
-//! up can't be trusted to undo itself, so a watcher from the old version
-//! stays behind, and switches back if the new one doesn't report healthy.
+//! The current version is the file `~/.tui-do/bin/tui-do-core`, the path the
+//! services and the agents' MCP settings use, and the one before it waits
+//! beside it until the new one has come up. It used to be a link to
+//! `~/.tui-do/versions/<version>/`, but macOS keeps privacy grants (Files &
+//! Folders) for a program outside an app by the path it runs from, so every
+//! version asked again and added another "tui-do-core" to the Privacy list. A new version that doesn't come up can't be trusted to undo
+//! itself, so a watcher from the old version stays behind, and switches back
+//! if the new one doesn't report healthy.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -151,52 +154,50 @@ fn root_of(core_dir: &Path) -> anyhow::Result<&Path> {
     core_dir.parent().context("the core's folder has no parent")
 }
 
-fn current_link(root: &Path) -> PathBuf {
+fn current_binary(root: &Path) -> PathBuf {
     root.join("bin").join(BINARY)
 }
 
-/// What the current link points at for a version, relative to `bin/`.
-fn link_target(version: &str) -> PathBuf {
-    Path::new("../versions").join(version).join(BINARY)
+fn previous_binary(root: &Path) -> PathBuf {
+    root.join("bin").join(format!("{BINARY}.previous"))
 }
 
-/// Point the link at `target`, in one step.
-fn point_link(link: &Path, target: &Path) -> std::io::Result<()> {
-    let tmp = link.with_extension("link");
-    let _ = std::fs::remove_file(&tmp);
-    std::os::unix::fs::symlink(target, &tmp)?;
-    std::fs::rename(&tmp, link)
+/// Copy `from` (or what it links to) over `to`, in one step.
+fn copy_into_place(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut staged = to.as_os_str().to_owned();
+    staged.push(".new");
+    let staged = PathBuf::from(staged);
+    let _ = std::fs::remove_file(&staged);
+    std::fs::copy(from, &staged)?;
+    std::fs::rename(&staged, to)
 }
 
-/// Cores installed before versions sat side by side have a plain file at the
-/// link's path. Moving it there doesn't disturb the running core.
-pub fn use_versions_folder(core_dir: &Path, version: &str) -> anyhow::Result<()> {
-    let root = root_of(core_dir)?;
-    let link = current_link(root);
-    let Ok(meta) = std::fs::symlink_metadata(&link) else {
+/// Cores before 0.3.31 left a link to the version's folder at the current
+/// binary's path. Putting the file itself there doesn't disturb the running
+/// core, and the service starts the next one from the path that stays.
+pub fn settle_binary(core_dir: &Path) -> anyhow::Result<()> {
+    let binary = current_binary(root_of(core_dir)?);
+    let Ok(meta) = std::fs::symlink_metadata(&binary) else {
         return Ok(());
     };
-    if !meta.file_type().is_file() {
+    if !meta.file_type().is_symlink() {
         return Ok(());
     }
-    let binary = root.join("versions").join(version).join(BINARY);
-    std::fs::create_dir_all(binary.parent().context("the version's folder")?)?;
-    let _ = std::fs::remove_file(&binary);
-    std::fs::hard_link(&link, &binary)?;
-    point_link(&link, &link_target(version))?;
-    tracing::info!(version, "moved the core into its versions folder");
+    // The folder stays until the next update: the watcher of the version
+    // that installed this one may still switch back to its own
+    copy_into_place(&binary, &binary)?;
+    tracing::info!("the current version is now a file instead of a link");
     Ok(())
 }
 
 /// This program's path, for starting it again later. An installed core uses
-/// the current link: on Linux `current_exe` gives the file behind it, which a
-/// later update deletes, or a path that's already gone if
-/// [`use_versions_folder`] replaced the file this core started from.
+/// the current binary's: `current_exe` can give the file it started from,
+/// which a later update replaces or deletes.
 pub fn own_path(core_dir: &Path) -> anyhow::Result<PathBuf> {
     if restarts_itself() {
-        let link = current_link(root_of(core_dir)?);
-        if link.exists() {
-            return Ok(link);
+        let binary = current_binary(root_of(core_dir)?);
+        if binary.exists() {
+            return Ok(binary);
         }
     }
     std::env::current_exe().context("finding tui-do-core's own path")
@@ -263,24 +264,45 @@ async fn install_version(
 ) -> anyhow::Result<()> {
     let _ = std::fs::remove_file(core_dir.join(ROLLBACK_FILE));
     let root = root_of(core_dir)?;
-    let versions = root.join("versions");
-    // Beside the versions, so the final rename stays on one filesystem
-    let tmp = versions.join(format!(".update-{}", uuid::Uuid::new_v4()));
+    // Beside the binary, so the final rename stays on one filesystem
+    let tmp = root
+        .join("bin")
+        .join(format!(".update-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp)?;
-    let result = download_into(&tmp, version, target, &versions).await;
+    let result = download_and_switch(&tmp, version, target, root).await;
     let _ = std::fs::remove_dir_all(&tmp);
     result?;
-    check_runs(&versions.join(version).join(BINARY), version).await?;
 
-    let link = current_link(root);
-    let previous = std::fs::read_link(&link).context("the current version isn't a link")?;
-    point_link(&link, &link_target(version)).context("switching to the new version")?;
-    if let Err(err) = start_watcher(&link, &previous, core_dir, version, endpoint) {
-        let _ = point_link(&link, &previous);
+    let previous = previous_binary(root);
+    if let Err(err) = start_watcher(&previous, core_dir, version, endpoint) {
+        let _ = switch_back(root, &previous);
         return Err(err);
     }
     tracing::info!(version, "updated; restarting");
     Ok(())
+}
+
+async fn download_and_switch(
+    tmp: &Path,
+    version: &str,
+    target: &str,
+    root: &Path,
+) -> anyhow::Result<()> {
+    let new = download_into(tmp, version, target).await?;
+    check_runs(&new, version).await?;
+    switch_to(root, &new).context("switching to the new version")
+}
+
+/// Make `new` the current binary, keeping the current one as the previous.
+/// Renaming over a binary something may be running is fine on Unix.
+fn switch_to(root: &Path, new: &Path) -> std::io::Result<()> {
+    let current = current_binary(root);
+    copy_into_place(&current, &previous_binary(root))?;
+    std::fs::rename(new, current)
+}
+
+fn switch_back(root: &Path, previous: &Path) -> std::io::Result<()> {
+    std::fs::rename(previous, current_binary(root))
 }
 
 /// Where releases are downloaded from; another base lets updates be tried
@@ -291,12 +313,8 @@ fn release_base(version: &str) -> String {
     format!("{base}/v{version}")
 }
 
-async fn download_into(
-    tmp: &Path,
-    version: &str,
-    target: &str,
-    versions: &Path,
-) -> anyhow::Result<()> {
+/// Download and unpack `version` in `tmp`, and return the binary's path.
+async fn download_into(tmp: &Path, version: &str, target: &str) -> anyhow::Result<PathBuf> {
     let archive = format!("tui-do-core-{target}.tar.gz");
     let base = release_base(version);
     let archive_path = tmp.join(&archive);
@@ -335,18 +353,12 @@ async fn download_into(
     )
     .await?;
     let new = tmp.join(format!("tui-do-core-{target}")).join(BINARY);
-    let dir = versions.join(version);
-    std::fs::create_dir_all(&dir)?;
-    let staged = dir.join(format!("{BINARY}.new"));
-    std::fs::copy(&new, &staged)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))?;
+        std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755))?;
     }
-    // Replacing a binary something may be running by renaming over it is fine on Unix
-    std::fs::rename(&staged, dir.join(BINARY))?;
-    Ok(())
+    Ok(new)
 }
 
 /// A build that can't even say its version never gets switched to.
@@ -370,14 +382,17 @@ async fn check_runs(binary: &Path, version: &str) -> anyhow::Result<()> {
 
 /// Start the old version's watcher, detached from this core.
 fn start_watcher(
-    link: &Path,
     previous: &Path,
     core_dir: &Path,
     version: &str,
     endpoint: &str,
 ) -> anyhow::Result<()> {
-    let bin = link.parent().context("the link's folder")?;
-    std::process::Command::new(bin.join(previous))
+    use std::os::unix::process::CommandExt;
+    std::process::Command::new(previous)
+        // Out of the core's process group from the start, which launchd ends
+        // with the core: the first run of a new copy can take longer to get
+        // going than the core takes to exit
+        .process_group(0)
         .arg("watch-update")
         .arg(core_dir)
         .arg(previous)
@@ -398,8 +413,6 @@ pub fn watch(
     version: &str,
     health_url: &str,
 ) -> anyhow::Result<()> {
-    // Out of the core's process group, as a holder is
-    unsafe { libc::setsid() };
     let root = root_of(core_dir)?;
     let started = Instant::now();
     let mut steady = 0;
@@ -411,12 +424,13 @@ pub fn watch(
             0
         };
         if steady >= STEADY_CHECKS {
-            prune_versions(root, previous);
+            let _ = std::fs::remove_file(previous);
+            prune_versions(root);
             return Ok(());
         }
     }
     eprintln!("tui-do-core {version} didn't come up; going back to the previous version");
-    point_link(&current_link(root), previous).context("switching back")?;
+    switch_back(root, previous).context("switching back")?;
     std::fs::write(
         core_dir.join(ROLLBACK_FILE),
         json!({ "version": version, "at": chrono::Utc::now().to_rfc3339() }).to_string(),
@@ -436,31 +450,25 @@ fn reports_version(health_url: &str, version: &str) -> bool {
             .is_ok_and(|health| health["version"] == version)
 }
 
-/// Keep the current version and the one before it. A holder still running an
-/// older one doesn't need its file.
-fn prune_versions(root: &Path, previous: &Path) {
-    let folder = |target: &Path| {
-        target
-            .parent()
-            .and_then(Path::file_name)
-            .map(ToOwned::to_owned)
-    };
-    let keep = [
-        std::fs::read_link(current_link(root))
-            .ok()
-            .as_deref()
-            .and_then(folder),
-        folder(previous),
-    ];
-    let Ok(entries) = std::fs::read_dir(root.join("versions")) else {
+/// Remove the versions folders cores before 0.3.31 left, except the one the
+/// current binary links to: going back to one of those cores makes it a link
+/// again. A holder still running an older version doesn't need its file.
+fn prune_versions(root: &Path) {
+    let keep = std::fs::read_link(current_binary(root))
+        .ok()
+        .and_then(|target| target.parent()?.file_name().map(ToOwned::to_owned));
+    let versions = root.join("versions");
+    let Ok(entries) = std::fs::read_dir(&versions) else {
         return;
     };
     for entry in entries.flatten() {
         let name = entry.file_name();
-        if !name.to_string_lossy().starts_with('.') && !keep.iter().flatten().any(|k| *k == name) {
+        if !name.to_string_lossy().starts_with('.') && keep.as_ref() != Some(&name) {
             let _ = std::fs::remove_dir_all(entry.path());
         }
     }
+    // Only goes once it's empty
+    let _ = std::fs::remove_dir(versions);
 }
 
 fn restart_service() -> anyhow::Result<()> {
@@ -530,67 +538,113 @@ mod tests {
         assert_eq!(version_in_url(odd), None);
     }
 
+    /// The current binary as cores before 0.3.31 left it: a link to `version`.
+    fn link_to(root: &Path, version: &str) {
+        let target = Path::new("../versions").join(version).join(BINARY);
+        std::os::unix::fs::symlink(target, current_binary(root)).expect("links");
+    }
+
+    fn read(path: &Path) -> String {
+        std::fs::read_to_string(path).expect("reads")
+    }
+
     #[test]
-    fn a_plain_binary_should_move_into_the_versions_folder() {
+    fn a_link_should_become_the_file_it_points_at() {
         let (root, core_dir) = install_root();
-        let link = current_link(&root);
-        std::fs::write(&link, "old build").expect("binary");
+        add_version(&root, "0.3.30");
+        link_to(&root, "0.3.30");
 
-        use_versions_folder(&core_dir, "0.2.2").expect("moves");
+        settle_binary(&core_dir).expect("settles");
 
-        assert_eq!(
-            std::fs::read_link(&link).expect("link"),
-            link_target("0.2.2")
-        );
-        assert_eq!(std::fs::read_to_string(&link).expect("reads"), "old build");
+        let binary = current_binary(&root);
+        assert!(std::fs::symlink_metadata(&binary).expect("meta").is_file());
+        assert_eq!(read(&binary), "0.3.30");
+        // The installing version's watcher may still switch back to its link
+        assert!(root.join("versions/0.3.30").exists());
         std::fs::remove_dir_all(root).expect("cleans up");
     }
 
     #[test]
-    fn a_link_should_be_left_alone() {
+    fn a_binary_in_place_should_be_left_alone() {
         let (root, core_dir) = install_root();
-        add_version(&root, "0.3.0");
-        let link = current_link(&root);
-        point_link(&link, &link_target("0.3.0")).expect("links");
+        std::fs::write(current_binary(&root), "build").expect("binary");
 
-        use_versions_folder(&core_dir, "9.9.9").expect("does nothing");
+        settle_binary(&core_dir).expect("does nothing");
 
-        assert_eq!(
-            std::fs::read_link(&link).expect("link"),
-            link_target("0.3.0")
-        );
-        assert!(!root.join("versions/9.9.9").exists());
+        assert_eq!(read(&current_binary(&root)), "build");
         std::fs::remove_dir_all(root).expect("cleans up");
     }
 
     #[test]
-    fn switching_should_replace_the_link_in_place() {
+    fn switching_should_keep_the_previous_binary_to_go_back_to() {
+        let (root, _) = install_root();
+        let new = root.join("bin/.update-x/tui-do-core");
+        std::fs::create_dir_all(new.parent().expect("folder")).expect("folder");
+        std::fs::write(current_binary(&root), "1.0.0").expect("binary");
+        std::fs::write(&new, "1.1.0").expect("download");
+
+        switch_to(&root, &new).expect("switches");
+        assert_eq!(read(&current_binary(&root)), "1.1.0");
+        assert_eq!(read(&previous_binary(&root)), "1.0.0");
+
+        switch_back(&root, &previous_binary(&root)).expect("switches back");
+        assert_eq!(read(&current_binary(&root)), "1.0.0");
+        assert!(!previous_binary(&root).exists());
+        std::fs::remove_dir_all(root).expect("cleans up");
+    }
+
+    #[test]
+    fn switching_from_a_link_should_put_a_file_in_its_place() {
         let (root, _) = install_root();
         add_version(&root, "1.0.0");
-        add_version(&root, "1.1.0");
-        let link = current_link(&root);
-        point_link(&link, &link_target("1.0.0")).expect("links");
-        point_link(&link, &link_target("1.1.0")).expect("switches");
-        assert_eq!(std::fs::read_to_string(&link).expect("reads"), "1.1.0");
+        link_to(&root, "1.0.0");
+        let new = root.join("bin/.update-x/tui-do-core");
+        std::fs::create_dir_all(new.parent().expect("folder")).expect("folder");
+        std::fs::write(&new, "1.1.0").expect("download");
+
+        switch_to(&root, &new).expect("switches");
+
+        let binary = current_binary(&root);
+        assert!(std::fs::symlink_metadata(&binary).expect("meta").is_file());
+        assert_eq!(read(&binary), "1.1.0");
+        assert_eq!(read(&previous_binary(&root)), "1.0.0");
+        assert_eq!(read(&root.join("versions/1.0.0/tui-do-core")), "1.0.0");
         std::fs::remove_dir_all(root).expect("cleans up");
     }
 
     #[test]
-    fn pruning_should_keep_the_current_and_previous_versions() {
+    fn pruning_should_remove_the_versions_folders() {
         let (root, _) = install_root();
-        for version in ["1.0.0", "1.1.0", "1.2.0"] {
+        for version in ["1.0.0", "1.1.0"] {
             add_version(&root, version);
         }
         std::fs::create_dir_all(root.join("versions/.update-x")).expect("in progress");
-        let link = current_link(&root);
-        point_link(&link, &link_target("1.2.0")).expect("links");
+        std::fs::write(current_binary(&root), "1.2.0").expect("binary");
 
-        prune_versions(&root, &link_target("1.1.0"));
+        prune_versions(&root);
 
         assert!(!root.join("versions/1.0.0").exists());
-        assert!(root.join("versions/1.1.0").exists());
-        assert!(root.join("versions/1.2.0").exists());
+        assert!(!root.join("versions/1.1.0").exists());
         assert!(root.join("versions/.update-x").exists());
+
+        std::fs::remove_dir(root.join("versions/.update-x")).expect("removes");
+        prune_versions(&root);
+        assert!(!root.join("versions").exists());
+        std::fs::remove_dir_all(root).expect("cleans up");
+    }
+
+    #[test]
+    fn pruning_should_keep_the_version_an_older_core_links_to() {
+        let (root, _) = install_root();
+        for version in ["1.0.0", "1.1.0"] {
+            add_version(&root, version);
+        }
+        link_to(&root, "1.0.0");
+
+        prune_versions(&root);
+
+        assert!(root.join("versions/1.0.0").exists());
+        assert!(!root.join("versions/1.1.0").exists());
         std::fs::remove_dir_all(root).expect("cleans up");
     }
 

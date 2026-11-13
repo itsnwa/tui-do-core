@@ -7,7 +7,7 @@
 # Uninstall (sessions outlive the agent, so end them too):
 #   launchctl bootout "gui/$(id -u)/dev.tui-do.core"
 #   pkill -f 'tui-do-core hold'
-#   rm -r ~/Library/LaunchAgents/dev.tui-do.core.plist ~/.tui-do/bin ~/.tui-do/versions
+#   rm -r ~/Library/LaunchAgents/dev.tui-do.core.plist ~/.tui-do/bin
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -24,12 +24,10 @@ fi
 
 bin_dir="$HOME/.tui-do/bin"
 core_dir="$HOME/.tui-do/core"
-version_dir="$HOME/.tui-do/versions/dev"
-mkdir -p "$bin_dir" "$core_dir" "$version_dir"
-# Renamed into place, so holders running the last build are left alone
-install -m 755 target/release/tui-do-core "$version_dir/tui-do-core.new"
-mv -f "$version_dir/tui-do-core.new" "$version_dir/tui-do-core"
-ln -sfn ../versions/dev/tui-do-core "$bin_dir/tui-do-core.new"
+mkdir -p "$bin_dir" "$core_dir"
+# Renamed into place, so holders running the last build are left alone. Every
+# build runs from this one path, which macOS keeps privacy grants by.
+install -m 755 target/release/tui-do-core "$bin_dir/tui-do-core.new"
 mv -f "$bin_dir/tui-do-core.new" "$bin_dir/tui-do-core"
 
 label="dev.tui-do.core"

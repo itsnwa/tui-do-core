@@ -204,8 +204,8 @@ async fn serve() -> anyhow::Result<()> {
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
     let token = load_token(&dir)?;
     if update::restarts_itself() {
-        if let Err(err) = update::use_versions_folder(&dir, env!("CARGO_PKG_VERSION")) {
-            tracing::warn!(error = %format!("{err:#}"), "couldn't set up the versions folder");
+        if let Err(err) = update::settle_binary(&dir) {
+            tracing::warn!(error = %format!("{err:#}"), "couldn't put the current version in place");
         }
         if let Err(err) = update::keep_holders_through_restarts().await {
             tracing::warn!(error = %format!("{err:#}"), "sessions won't survive a service restart");
