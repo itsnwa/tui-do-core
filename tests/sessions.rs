@@ -383,17 +383,20 @@ async fn a_file_sent_to_a_session_should_be_saved_until_it_s_removed() {
     assert!(!path.exists());
 }
 
-/// An install from before versions sat side by side has a plain file where
-/// the current link goes, so its first start replaces the file it's running
-/// from. On Linux, that leaves the core with a deleted path as its own.
+/// A version installed by a core before 0.3.31 starts through a link to its
+/// versions folder, and puts the file in the link's place. Its own path is
+/// still the one that stays, not the folder a later update deletes.
 #[tokio::test]
-async fn a_core_that_moved_into_the_versions_folder_should_use_the_link() {
+async fn a_core_started_through_a_link_should_put_itself_in_place() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = TestDir::new();
     let installed = dir.0.join("bin").join("tui-do-core");
+    let version = dir.0.join("versions/0.3.30/tui-do-core");
     std::fs::create_dir_all(installed.parent().expect("bin")).expect("bin");
-    std::fs::copy(BINARY, &installed).expect("installs");
+    std::fs::create_dir_all(version.parent().expect("version")).expect("version");
+    std::fs::copy(BINARY, &version).expect("installs");
+    std::os::unix::fs::symlink("../versions/0.3.30/tui-do-core", &installed).expect("links");
     let tools = dir.0.join("tools");
     std::fs::create_dir_all(&tools).expect("tools");
     let calls = dir.0.join("claude-calls");
@@ -411,16 +414,20 @@ async fn a_core_that_moved_into_the_versions_folder_should_use_the_link() {
         .env("PATH", format!("{}:/usr/bin:/bin", tools.display()));
     let core = Core::launch(&dir, command).await;
 
-    let link = std::fs::symlink_metadata(&installed).expect("link");
-    assert!(link.is_symlink(), "the core didn't move");
+    let file = std::fs::symlink_metadata(&installed).expect("file");
+    assert!(file.is_file(), "the link is still there");
+    assert_eq!(
+        std::fs::read(&installed).expect("reads"),
+        std::fs::read(&version).expect("reads")
+    );
     #[cfg(target_os = "linux")]
     {
         let own = std::fs::read_link(format!("/proc/{}/exe", core.process.id())).expect("exe");
-        assert!(own.to_string_lossy().ends_with(" (deleted)"), "{own:?}");
+        assert_eq!(own, version.canonicalize().expect("canonical"));
     }
 
-    core.spawn("moved", "echo started; cat").await;
-    assert!(core.shows("moved", "started").await);
+    core.spawn("settled", "echo started; cat").await;
+    assert!(core.shows("settled", "started").await);
 
     let setup = core
         .http

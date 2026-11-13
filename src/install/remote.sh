@@ -53,12 +53,10 @@ fi
 
 say "Installing to ~/.tui-do"
 tar -xzf "$tmp/$archive" -C "$tmp"
-mkdir -p "$HOME/.tui-do/bin" "$HOME/.tui-do/core" "$HOME/.tui-do/versions/$version"
+mkdir -p "$HOME/.tui-do/bin" "$HOME/.tui-do/core"
 chmod 700 "$HOME/.tui-do/core"
-# Each version has its own folder, and bin/tui-do-core links to the current one
-install -m 755 "$tmp/tui-do-core-$target/tui-do-core" "$HOME/.tui-do/versions/$version/tui-do-core.new"
-mv -f "$HOME/.tui-do/versions/$version/tui-do-core.new" "$HOME/.tui-do/versions/$version/tui-do-core"
-ln -sfn "../versions/$version/tui-do-core" "$HOME/.tui-do/bin/tui-do-core.new"
+# Every version runs from this one path, which macOS keeps privacy grants by
+install -m 755 "$tmp/tui-do-core-$target/tui-do-core" "$HOME/.tui-do/bin/tui-do-core.new"
 mv -f "$HOME/.tui-do/bin/tui-do-core.new" "$HOME/.tui-do/bin/tui-do-core"
 
 say "Starting the service"
