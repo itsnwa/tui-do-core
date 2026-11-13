@@ -817,7 +817,8 @@ impl Workspace {
                     due: d.clone(),
                     at: at.clone(),
                 };
-                Zone::of(tz.as_deref()).advance(&slot, rec, chrono::Utc::now())
+                let zone = Zone::of(tz.as_deref());
+                zone.completed(&slot, rec, autostart.is_some(), chrono::Utc::now())
             }
             _ => None,
         };
@@ -1259,8 +1260,18 @@ impl Workspace {
                 plan
             }
         };
+        let now = chrono::Utc::now();
+        // Its agent starts by itself, and its next time hasn't come: this run was started by hand
+        let extra = task.autostart.is_some()
+            && task
+                .slot()
+                .and_then(|slot| task.zone().instant(&slot))
+                .is_some_and(|due| due > now);
         // A recurring task keeps each run's summary under the occurrence it was for
         let run = match (task.repeats(), task.slot()) {
+            (Some(_), Some(_)) if extra => {
+                Some(format!("{} · started by hand", task.zone().slot(now).key()))
+            }
             (Some(_), Some(slot)) => Some(match task.skipped {
                 0 => slot.key(),
                 1 => format!("{} · 1 run skipped", slot.key()),
@@ -1271,7 +1282,10 @@ impl Workspace {
         // The plan is written first, so the summary is visible before the state changes
         self.append_completion_summary(&plan, &slug, &task.title, summary, run.as_deref())?;
         let next = match (task.repeats(), task.slot()) {
-            (Some(rec), Some(slot)) => task.zone().advance(&slot, rec, chrono::Utc::now()),
+            (Some(rec), Some(slot)) => {
+                task.zone()
+                    .completed(&slot, rec, task.autostart.is_some(), now)
+            }
             _ => None,
         };
         if let Some(next) = next {
@@ -1494,6 +1508,16 @@ mod tests {
         .task
     }
 
+    /// A task due at 09:00 that repeats, whose agent doesn't start by itself.
+    fn repeating(ws: &Workspace, due: &str, recurrence: &str) -> Task {
+        let task = scheduled(ws, due, recurrence);
+        let off = UpdateTask {
+            autostart: Some(None),
+            ..UpdateTask::default()
+        };
+        ws.update_task(&task.slug, off).expect("update").task
+    }
+
     #[test]
     fn a_schedule_should_be_kept_in_the_frontmatter() {
         let (ws, root) = workspace("schedule");
@@ -1587,7 +1611,7 @@ mod tests {
     #[test]
     fn completing_a_recurring_task_should_keep_each_run() {
         let (ws, root) = workspace("runs");
-        let task = scheduled(&ws, "2099-01-05", "weekdays");
+        let task = repeating(&ws, "2099-01-05", "weekdays");
         ws.write_task_plan(&task.slug, "Check the reports and file tasks.")
             .expect("plan");
         let monday = Slot::from_key("2099-01-05 09:00").expect("a key");
@@ -1622,9 +1646,50 @@ mod tests {
     }
 
     #[test]
+    fn a_run_by_hand_should_leave_the_scheduled_one_where_it_is() {
+        let (ws, root) = workspace("by-hand");
+        let task = scheduled(&ws, "2099-01-05", "daily");
+        let done = ws
+            .complete_task(&task.slug, Some("Two new reports."))
+            .expect("complete");
+        assert_eq!(done["task"]["nextDue"], "2099-01-05");
+        assert_eq!(done["task"]["nextAt"], "09:00");
+        let plan = ws
+            .get_task(&task.slug)
+            .expect("get")
+            .task
+            .plan
+            .expect("a plan");
+        let content = ws
+            .get_plan(&plan)
+            .expect("plan")
+            .content
+            .unwrap_or_default();
+        assert!(
+            content.contains(" · started by hand\n\nTwo new reports."),
+            "{content}"
+        );
+        // Completed in the app, too
+        ws.update_task(
+            &task.slug,
+            UpdateTask {
+                state: Some("completed".into()),
+                ..UpdateTask::default()
+            },
+        )
+        .expect("complete");
+        let after = ws.get_task(&task.slug).expect("get").task;
+        assert_eq!(
+            (after.due.as_deref(), after.state.as_str()),
+            (Some("2099-01-05"), "not-started")
+        );
+        std::fs::remove_dir_all(root).expect("clean up");
+    }
+
+    #[test]
     fn a_summary_from_before_runs_should_become_the_earliest_run() {
         let (ws, root) = workspace("earlier");
-        let task = scheduled(&ws, "2099-01-05", "daily");
+        let task = repeating(&ws, "2099-01-05", "daily");
         let plan = ws
             .write_task_plan(&task.slug, "Plan.\n\n## Completion Summary\n\nOld summary.")
             .expect("plan")["plan"]["slug"]
@@ -1646,7 +1711,7 @@ mod tests {
     #[test]
     fn a_run_should_keep_the_last_thirty() {
         let (ws, root) = workspace("thirty");
-        let task = scheduled(&ws, "2099-01-01", "daily");
+        let task = repeating(&ws, "2099-01-01", "daily");
         for _ in 0..32 {
             ws.complete_task(&task.slug, Some("Done."))
                 .expect("complete");
