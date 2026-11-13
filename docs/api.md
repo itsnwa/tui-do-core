@@ -189,15 +189,15 @@ Only the [home core](#the-home-role) writes the workspace. Every other core serv
 }
 ```
 
-`state` is `not-started`, `in-progress` or `completed`; `recurrence` is `daily`, `weekly`, `monthly`, `yearly` or `null`. Detail responses add `description` (the markdown body). A task that runs on another machine has `device`; one whose work was opened as a pull request has `pr`, its URL (see [Pull requests](#pull-requests)).
+`state` is `not-started`, `in-progress` or `completed`; `recurrence` is `daily`, `weekly`, `monthly`, `yearly`, `weekdays` (Monday to Friday), `days:mon,wed,fri` (those days of the week, any of `mon` to `sun`), `hours:N` (every N hours from `at`, N from 1 to 24) or `null`. Detail responses add `description` (the markdown body). A task that runs on another machine has `device`; one whose work was opened as a pull request has `pr`, its URL (see [Pull requests](#pull-requests)). A task with a time or a schedule has the fields in [Scheduled tasks](#scheduled-tasks).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/tasks?project=&state=&due=&completedWithin=` | | `[Task]`, sorted: open tasks by due date then position, then completed tasks, most recent first. `due` also matches recurring tasks that fall on that date. `completedWithin` is a number of days: tasks completed longer ago are left out. |
-| `POST` | `/v0/tasks` | `{ title, project?, due?, recurrence?, description? }` | Task + `description` |
+| `POST` | `/v0/tasks` | `{ title, project?, due?, recurrence?, description?, at?, tz?, autostart? }` | Task + `description`. An unknown `recurrence`, an `at` that isn't `HH:MM` or an unknown `tz` is refused with `400`. |
 | `GET` | `/v0/tasks/lookup?ref=58` | | Task by short ID (`58`, `#58`, `26-058`; bare numbers are this year's) or slug |
 | `GET` | `/v0/tasks/{slug}` | | Task + `description` + `content` |
-| `PATCH` | `/v0/tasks/{slug}` | any of `{ title, state, project, due, recurrence, plan, description, pr }` (`null` clears `due`, `recurrence`, `plan`, `pr`) | Task + `description`. Completing a recurring task moves it to its next due date instead. A `state` that isn't one of the three is refused with `400` (cores 0.3.17 and later). |
+| `PATCH` | `/v0/tasks/{slug}` | any of `{ title, state, project, due, recurrence, plan, description, pr, at, tz, autostart }` (`null` clears `due`, `recurrence`, `plan`, `pr`, `at`, `tz`, `autostart`) | Task + `description`. Completing a recurring task moves it to its next occurrence still to come instead. A `state` that isn't one of the three is refused with `400` (cores 0.3.17 and later). |
 | `DELETE` | `/v0/tasks/{slug}` | | Undo token `{ task, planSnapshot, attachmentSnapshots }`; also deletes the task's plan and stored attachments |
 | `POST` | `/v0/tasks/restore` | the undo token | Task + `description` |
 | `POST` | `/v0/tasks/{slug}/reorder` | `{ direction: "up" \| "down", project? }` | `{ success, error? }` (moves within the same due date) |
@@ -206,6 +206,28 @@ Only the [home core](#the-home-role) writes the workspace. Every other core serv
 | `GET` | `/v0/tasks/{slug}/attachments/{index}` | | the file at that position in the task's `attachments`, with a `Content-Type` from its extension. Files stored with the task (under `attachments/`) are in the workspace on every machine; an attachment that's a path elsewhere is only found on the machine it's on. |
 
 Stored attachments are kept as absolute paths into the workspace of the home that stored them (`…/attachments/<task>/<file>`). Every core has a copy of that folder. So the MCP tools answer with this machine's path to the same file, `/attachments/{index}` serves it from the home's copy, and `/attachments/remove` takes any machine's path to it.
+
+### Scheduled tasks
+
+A task can be due at a time of day and start its agent by itself when it comes due (cores 0.3.28 and later):
+
+```json
+{
+  "due": "2026-11-16", "at": "09:00", "tz": "Europe/Oslo", "recurrence": "weekdays",
+  "autostart": { "agent": "claude", "model": "default", "effort": "high", "permissionMode": "auto", "device": "<device id>", "completeOnItsOwn": true },
+  "lastRun": "2026-11-13 09:00", "skipped": 1, "nextRun": "2026-11-16T08:00:00.000Z"
+}
+```
+
+- `at`: the time of day it's due, `HH:MM`, in `tz`, an IANA time zone (the home machine's when it has none). Clients set `tz` to their own along with `at`.
+- `autostart`: the home core starts a coding agent on the task at each occurrence (`due` at `at`, or midnight without one), with these choices of [`POST /v0/tasks/{ref}/agent`](#coding-agents): `agent`, `model`, `effort`, `permissionMode` and `yolo`, on `device` (absent: the code machine). The agent is asked to `Start working on task <id>. This is its scheduled run for 2026-11-16 09:00`. With `completeOnItsOwn`, it's also told to complete the task with a summary itself instead of asking you first.
+- Occurrences that have already passed when a schedule is set or changed (`due`, `at`, `tz`, `recurrence` or turning `autostart` on) don't start a run.
+- A run doesn't start while the previous one is still open (the task is `in-progress`, or its agent is working or needs you). That occurrence is skipped: `skipped` counts it, until the task is next completed.
+- An idle session left from a finished run (its agent's turn is over, or it has exited) is closed before the next run starts.
+- Occurrences that pass while the home core or the task's machine is down come to one run, for the latest of them: the task moves there (`due`, `at`), and `skipped` counts the others. A run whose machine can't be reached is tried again when the machine comes back, and every 5 minutes.
+- `lastRun` is the occurrence the home core last started or skipped, so an occurrence is handled once, also after a restart or a move of the home. `nextRun` (computed, read-only) is when the next run starts, for a task with `autostart` that isn't completed.
+
+Completing a recurring task (through `PATCH`, `/complete` or the MCP tool) moves it to the first occurrence after its current one that's still to come, so one finished late isn't due again right away. `/complete` and `complete_task` keep each run's summary: the plan's `## Completion Summary` lists the runs newest first, each under `### <occurrence>` (with how many were skipped), and keeps the last 30. A new plan written with `update_plan` that leaves that section out keeps it.
 
 ### Activity
 
@@ -252,7 +274,7 @@ These take a short ID or slug and answer like the TUI-DO MCP tools (business err
 | --- | --- | --- | --- |
 | `POST` | `/v0/tasks/{ref}/start` | `{ expectedProject? }` | `{ status: "started", task, plan: { slug, content } }`, or a `PROJECT_MISMATCH` warning with alternatives. Reserves a plan slug. |
 | `PUT` | `/v0/tasks/{ref}/plan` | `{ content }` | `{ status: "updated", plan: { slug, task } }` |
-| `POST` | `/v0/tasks/{ref}/complete` | `{ summary }` | `{ status: "completed" \| "recurring_advanced", task }`; the summary is stored in the plan as `## Completion Summary`. Without a summary: `SUMMARY_REQUIRED`. |
+| `POST` | `/v0/tasks/{ref}/complete` | `{ summary }` | `{ status: "completed" \| "recurring_advanced", task }`; the summary is stored in the plan as `## Completion Summary` (a recurring task's under its run, see [Scheduled tasks](#scheduled-tasks)). A recurring task's `task` has `nextDue`, and `nextAt` when it has a time. Without a summary: `SUMMARY_REQUIRED`. |
 
 ## Projects
 
@@ -296,7 +318,7 @@ These take a short ID or slug and answer like the TUI-DO MCP tools (business err
 
 # MCP (for coding agents)
 
-The core is also the TUI-DO MCP server: 22 tools (`start_task`, `update_plan`, `complete_task`, `list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task`, projects, plans, daily notes, weekly updates) with the same names, descriptions and parameters as the original Node server, so existing agent instructions keep working. Results are JSON text; business errors (unknown task, `PROJECT_MISMATCH`, `SUMMARY_REQUIRED`) are normal results with an `error` or `warning` field.
+The core is also the TUI-DO MCP server: 22 tools (`start_task`, `update_plan`, `complete_task`, `list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task`, projects, plans, daily notes, weekly updates) with the same names, descriptions and parameters as the original Node server, so existing agent instructions keep working. Results are JSON text; business errors (unknown task, `PROJECT_MISMATCH`, `SUMMARY_REQUIRED`) are normal results with an `error` or `warning` field. `create_task` and `update_task` also take a schedule: `at`, `timezone` and `autostart` (with snake_case keys: `agent`, `model`, `effort`, `permission_mode`, `device`, `complete_on_its_own`), as in [Scheduled tasks](#scheduled-tasks). An agent can't schedule runs that ask for less permission than it does: `permission_mode` is `default` or `plan`, and `yolo` is refused. You set those in the app (`POST`/`PATCH /v0/tasks`).
 
 Two ways in:
 

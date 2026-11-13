@@ -10,17 +10,20 @@ use rand::RngExt;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::json;
 
-use super::dates;
+use super::dates::{self, Recurrence};
+use super::schedule::{Autostart, Slot, Zone};
 use super::store::{Dir, Entry};
-use super::{Error, Result, Workspace, slug};
+use super::{Error, Result, Workspace, schedule, slug};
 use crate::format::{Document, Map, Value};
 
-const TASK_KEYS: [&str; 13] = [
+const TASK_KEYS: [&str; 18] = [
     "id",
     "title",
     "state",
     "project",
     "due",
+    "at",
+    "tz",
     "recurrence",
     "plan",
     "position",
@@ -29,6 +32,9 @@ const TASK_KEYS: [&str; 13] = [
     "attachments",
     "device",
     "pr",
+    "autostart",
+    "lastRun",
+    "skipped",
 ];
 pub const STATES: [&str; 3] = ["not-started", "in-progress", "completed"];
 
@@ -55,6 +61,59 @@ pub struct Task {
     /// The pull request the task's work was opened as.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pr: Option<String>,
+    /// The time of day it's due, `HH:MM`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+    /// The IANA time zone `at` is in; absent = the home machine's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tz: Option<String>,
+    /// Start an agent on the task when it comes due.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub autostart: Option<Autostart>,
+    /// The occurrence the scheduler last ran or skipped: `2026-11-14 09:00`.
+    #[serde(rename = "lastRun", skip_serializing_if = "Option::is_none")]
+    pub last_run: Option<String>,
+    /// Occurrences that came and went without a run of their own since the
+    /// task was last completed.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub skipped: u32,
+    /// When the scheduler starts its agent next (ISO 8601), for a task with
+    /// `autostart`.
+    #[serde(rename = "nextRun", skip_serializing_if = "Option::is_none")]
+    pub next_run: Option<String>,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+impl Task {
+    /// The occurrence it's due at.
+    pub fn slot(&self) -> Option<Slot> {
+        Some(Slot {
+            due: self.due.clone()?,
+            at: self.at.clone(),
+        })
+    }
+
+    pub fn zone(&self) -> Zone {
+        Zone::of(self.tz.as_deref())
+    }
+
+    pub fn repeats(&self) -> Option<Recurrence> {
+        self.recurrence.as_deref().and_then(Recurrence::parse)
+    }
+
+    /// When the scheduler starts its agent next.
+    fn next_run(&self, now: chrono::DateTime<chrono::Utc>) -> Option<String> {
+        if self.autostart.is_none() || self.state == "completed" {
+            return None;
+        }
+        let zone = self.zone();
+        let next = zone.upcoming(&self.slot()?, self.repeats(), now)?;
+        let millis = zone.instant(&next)?.timestamp_millis();
+        Some(crate::format::js::iso_string(millis))
+    }
 }
 
 /// A task with its description (and, from `get`, the same text as `content`).
@@ -104,6 +163,9 @@ pub struct CreateTask {
     pub due: Option<String>,
     pub recurrence: Option<String>,
     pub description: Option<String>,
+    pub at: Option<String>,
+    pub tz: Option<String>,
+    pub autostart: Option<Autostart>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -125,6 +187,12 @@ pub struct UpdateTask {
     /// The pull request's URL; `null` = none.
     #[serde(deserialize_with = "double_option")]
     pub pr: Option<Option<String>>,
+    #[serde(deserialize_with = "double_option")]
+    pub at: Option<Option<String>>,
+    #[serde(deserialize_with = "double_option")]
+    pub tz: Option<Option<String>>,
+    #[serde(deserialize_with = "double_option")]
+    pub autostart: Option<Option<Autostart>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -179,14 +247,14 @@ pub(super) fn opt_text(v: Option<&Value>) -> Option<String> {
 }
 
 fn summarize(slug: &str, data: &Map) -> Task {
-    Task {
+    let mut task = Task {
         slug: slug.to_string(),
         id: text_or(data.get("id"), ""),
         title: text_or(data.get("title"), slug),
         state: text_or(data.get("state"), "not-started"),
         project: text_or(data.get("project"), ""),
         due: dates::due_of(data.get("due")),
-        recurrence: dates::valid_recurrence(data.get("recurrence")).map(str::to_string),
+        recurrence: dates::valid_recurrence(data.get("recurrence")),
         plan: opt_text(data.get("plan")),
         position: match data.get("position") {
             Some(Value::Number(n)) => *n,
@@ -200,7 +268,83 @@ fn summarize(slug: &str, data: &Map) -> Task {
         },
         device: opt_text(data.get("device")).filter(|d| !d.is_empty()),
         pr: opt_text(data.get("pr")).filter(|p| !p.is_empty()),
+        at: opt_text(data.get("at")).filter(|at| schedule::parse_at(at).is_some()),
+        tz: opt_text(data.get("tz")).filter(|tz| schedule::valid_tz(tz)),
+        autostart: data.get("autostart").and_then(Autostart::from_value),
+        last_run: match data.get("lastRun") {
+            // A date without quotes reads as a date
+            Some(Value::Date(ms)) => Some(crate::format::js::iso_date(*ms)),
+            other => opt_text(other),
+        }
+        .filter(|key| Slot::from_key(key).is_some()),
+        skipped: match data.get("skipped") {
+            Some(Value::Number(n)) if *n > 0.0 => *n as u32,
+            _ => 0,
+        },
+        next_run: None,
+    };
+    task.next_run = task.next_run(chrono::Utc::now());
+    task
+}
+
+/// Check the parts of a schedule a request sets.
+fn validate_schedule(
+    recurrence: Option<&str>,
+    at: Option<&str>,
+    tz: Option<&str>,
+    autostart: Option<&Autostart>,
+) -> Result<()> {
+    if let Some(r) = recurrence
+        && Recurrence::parse(r).is_none()
+    {
+        return Err(Error::Invalid(format!(
+            "recurrence must be one of {}, days:mon,wed,fri or hours:N (1 to 24), got {r:?}",
+            dates::RECURRENCES.join(", ")
+        )));
     }
+    if let Some(at) = at
+        && schedule::parse_at(at).is_none()
+    {
+        return Err(Error::Invalid(format!("at must be HH:MM, got {at:?}")));
+    }
+    if let Some(tz) = tz
+        && !schedule::valid_tz(tz)
+    {
+        return Err(Error::Invalid(format!(
+            "tz must be an IANA time zone such as Europe/Oslo, got {tz:?}"
+        )));
+    }
+    if let Some(autostart) = autostart {
+        autostart.validate().map_err(Error::Invalid)?;
+    }
+    Ok(())
+}
+
+/// Set a frontmatter key, or remove it for `None`.
+fn set_or_remove(data: &mut Map, key: &str, value: Option<Value>) {
+    match value {
+        Some(value) => {
+            data.insert(key.into(), value);
+        }
+        None => {
+            data.shift_remove(key);
+        }
+    }
+}
+
+/// A task's schedule was set up or changed: the occurrences that have
+/// already come count as handled, so only the ones still to come start its
+/// agent.
+fn mark_passed_occurrences(data: &mut Map) {
+    let task = summarize("", data);
+    let passed = match (task.autostart.is_some(), task.slot()) {
+        (true, Some(slot)) => task
+            .zone()
+            .came(&slot, task.repeats(), None, chrono::Utc::now()),
+        _ => None,
+    };
+    let last_run = passed.map(|(slot, _)| slot.key().into());
+    set_or_remove(data, "lastRun", last_run);
 }
 
 const MS_PER_DAY: i64 = 24 * 60 * 60 * 1000;
@@ -571,12 +715,25 @@ impl Workspace {
         {
             return Err(Error::Invalid(format!("due must be YYYY-MM-DD, got {d:?}")));
         }
+        let non_empty = |s: Option<String>| s.filter(|s| !s.is_empty());
+        let (recurrence, at, tz) = (
+            non_empty(req.recurrence),
+            non_empty(req.at),
+            non_empty(req.tz),
+        );
+        validate_schedule(
+            recurrence.as_deref(),
+            at.as_deref(),
+            tz.as_deref(),
+            req.autostart.as_ref(),
+        )?;
+        let recurrence = recurrence
+            .as_deref()
+            .and_then(Recurrence::parse)
+            .map(|r| r.to_string());
         let _guard = self.writing();
         let entries = self.task_entries()?;
         let slug = slug::unique(&self.store, Dir::Tasks, &slug::slugify(&req.title));
-        let recurrence = req
-            .recurrence
-            .filter(|r| dates::RECURRENCES.contains(&r.as_str()));
         let mut data = Map::new();
         data.insert("id".into(), self.next_id(&entries).into());
         data.insert("title".into(), req.title.into());
@@ -589,6 +746,10 @@ impl Workspace {
         data.insert("completed".into(), Value::Null);
         data.insert("created".into(), dates::now_iso().into());
         data.insert("attachments".into(), Value::Seq(Vec::new()));
+        set_or_remove(&mut data, "at", at.map(Value::String));
+        set_or_remove(&mut data, "tz", tz.map(Value::String));
+        set_or_remove(&mut data, "autostart", req.autostart.map(|a| a.to_value()));
+        mark_passed_occurrences(&mut data);
         let body = req.description.unwrap_or_default();
         self.write_task(&slug, &data, &body)?;
         Ok(TaskDetail {
@@ -602,13 +763,31 @@ impl Workspace {
         let _guard = self.writing();
         let doc = self.task_doc(slug)?;
         let mut data = doc.data.clone();
-        let current_recurrence = dates::valid_recurrence(data.get("recurrence"));
+        let before = summarize(slug, &data);
+        let non_empty = |s: &Option<String>| s.clone().filter(|s| !s.is_empty());
         let new_recurrence = match &req.recurrence {
-            Some(r) => r
-                .as_deref()
-                .and_then(|r| dates::RECURRENCES.iter().copied().find(|x| *x == r)),
-            None => current_recurrence,
+            Some(r) => non_empty(r),
+            None => before.recurrence.clone(),
         };
+        let mut at = match &req.at {
+            Some(at) => non_empty(at),
+            None => before.at.clone(),
+        };
+        let tz = match &req.tz {
+            Some(tz) => non_empty(tz),
+            None => before.tz.clone(),
+        };
+        let autostart = match &req.autostart {
+            Some(autostart) => autostart.clone(),
+            None => before.autostart.clone(),
+        };
+        validate_schedule(
+            new_recurrence.as_deref(),
+            at.as_deref(),
+            tz.as_deref(),
+            autostart.as_ref(),
+        )?;
+        let new_recurrence = new_recurrence.as_deref().and_then(Recurrence::parse);
         if let Some(state) = &req.state
             && !STATES.contains(&state.as_str())
         {
@@ -632,13 +811,21 @@ impl Workspace {
             return Err(Error::Invalid(format!("due must be YYYY-MM-DD, got {d:?}")));
         }
         let completing = req.state.as_deref() == Some("completed") && old_state != "completed";
-        let next_due = match (completing, new_recurrence, &old_due) {
-            (true, Some(rec), Some(d)) => dates::next_occurrence(d, rec),
+        let next = match (completing, new_recurrence, &old_due) {
+            (true, Some(rec), Some(d)) => {
+                let slot = Slot {
+                    due: d.clone(),
+                    at: at.clone(),
+                };
+                Zone::of(tz.as_deref()).advance(&slot, rec, chrono::Utc::now())
+            }
             _ => None,
         };
-        if let Some(next) = next_due {
-            // A recurring task moves to its next date instead of completing
-            due = Some(next);
+        let advanced = next.is_some();
+        if let Some(next) = next {
+            // A recurring task moves to its next occurrence instead of completing
+            due = Some(next.due);
+            at = next.at;
             state = "not-started".into();
             completed = Value::Null;
         } else if completing {
@@ -662,11 +849,24 @@ impl Workspace {
             .project
             .unwrap_or_else(|| text_or(data.get("project"), ""));
         data.insert("project".into(), project.into());
+        let schedule_changed = due != old_due
+            || at != before.at
+            || tz != before.tz
+            || new_recurrence != before.repeats()
+            || autostart.is_some() != before.autostart.is_some();
         data.insert("due".into(), due.into());
         data.insert(
             "recurrence".into(),
-            new_recurrence.map(str::to_string).into(),
+            new_recurrence.map(|r| r.to_string()).into(),
         );
+        set_or_remove(&mut data, "at", at.map(Value::String));
+        set_or_remove(&mut data, "tz", tz.map(Value::String));
+        set_or_remove(&mut data, "autostart", autostart.map(|a| a.to_value()));
+        if advanced {
+            data.shift_remove("skipped");
+        } else if schedule_changed {
+            mark_passed_occurrences(&mut data);
+        }
         let plan = match req.plan {
             Some(p) => p.into(),
             None => data.get("plan").cloned().unwrap_or(Value::Null),
@@ -900,6 +1100,17 @@ impl Workspace {
             "attachments".into(),
             Value::Seq(t.attachments.iter().cloned().map(Value::String).collect()),
         );
+        set_or_remove(&mut data, "at", t.at.clone().map(Value::String));
+        set_or_remove(&mut data, "tz", t.tz.clone().map(Value::String));
+        set_or_remove(
+            &mut data,
+            "autostart",
+            t.autostart.as_ref().map(Autostart::to_value),
+        );
+        set_or_remove(&mut data, "lastRun", t.last_run.clone().map(Value::String));
+        if t.skipped > 0 {
+            data.insert("skipped".into(), f64::from(t.skipped).into());
+        }
         let body = deleted
             .task
             .content
@@ -1048,24 +1259,36 @@ impl Workspace {
                 plan
             }
         };
-        // The plan is written first, so the summary is visible before the state changes
-        self.append_completion_summary(&plan, &slug, &task.title, summary)?;
-        let next_due = match (task.recurrence.as_deref(), task.due.as_deref()) {
-            (Some(rec), Some(due)) => dates::next_occurrence(due, rec),
+        // A recurring task keeps each run's summary under the occurrence it was for
+        let run = match (task.repeats(), task.slot()) {
+            (Some(_), Some(slot)) => Some(match task.skipped {
+                0 => slot.key(),
+                1 => format!("{} · 1 run skipped", slot.key()),
+                n => format!("{} · {n} runs skipped", slot.key()),
+            }),
             _ => None,
         };
-        if let Some(next) = next_due {
+        // The plan is written first, so the summary is visible before the state changes
+        self.append_completion_summary(&plan, &slug, &task.title, summary, run.as_deref())?;
+        let next = match (task.repeats(), task.slot()) {
+            (Some(rec), Some(slot)) => task.zone().advance(&slot, rec, chrono::Utc::now()),
+            _ => None,
+        };
+        if let Some(next) = next {
             data.insert("state".into(), "not-started".into());
-            data.insert("due".into(), next.clone().into());
+            data.insert("due".into(), next.due.clone().into());
+            set_or_remove(&mut data, "at", next.at.clone().map(Value::String));
             data.insert("completed".into(), Value::Null);
+            data.shift_remove("skipped");
             self.write_task(&slug, &data, &doc.content)?;
-            return Ok(json!({
-                "status": "recurring_advanced",
-                "task": {
-                    "slug": slug, "id": task.id, "title": task.title, "state": "not-started",
-                    "project": task.project, "nextDue": next, "recurrence": task.recurrence,
-                },
-            }));
+            let mut advanced = json!({
+                "slug": slug, "id": task.id, "title": task.title, "state": "not-started",
+                "project": task.project, "nextDue": next.due, "recurrence": task.recurrence,
+            });
+            if let Some(at) = next.at {
+                advanced["nextAt"] = at.into();
+            }
+            return Ok(json!({ "status": "recurring_advanced", "task": advanced }));
         }
         data.insert("state".into(), "completed".into());
         data.insert("completed".into(), dates::now_iso().into());
@@ -1096,12 +1319,48 @@ impl Workspace {
             }
         };
         slug::validate(&plan)?;
-        let data = match self.store.read(Dir::Plans, &plan)? {
-            Some(existing) => existing.data,
-            None => super::plans::new_plan_data(&title, &slug),
+        let recurring = summarize(&slug, &doc.data).repeats().is_some();
+        let (data, content) = match self.store.read(Dir::Plans, &plan)? {
+            // A recurring task's earlier runs stay, also when a new plan leaves them out
+            Some(existing) if recurring => {
+                let content = super::plans::keep_summary(&existing.content, content);
+                (existing.data, content)
+            }
+            Some(existing) => (existing.data, content.to_string()),
+            None => (
+                super::plans::new_plan_data(&title, &slug),
+                content.to_string(),
+            ),
         };
-        self.store.write(Dir::Plans, &plan, &data, content)?;
+        self.store.write(Dir::Plans, &plan, &data, &content)?;
         Ok(json!({ "status": "updated", "plan": { "slug": plan, "task": slug } }))
+    }
+
+    /// Record what the scheduler did about an occurrence that came: `run` is
+    /// handled (`lastRun`), and `skipped` more passed without a run of their
+    /// own. A run that starts (`started`) is for `run`, so the task moves there.
+    pub fn record_scheduled_run(
+        &self,
+        slug: &str,
+        run: &Slot,
+        skipped: u32,
+        started: bool,
+    ) -> Result<()> {
+        let _guard = self.writing();
+        let doc = self.task_doc(slug)?;
+        let mut data = doc.data;
+        let total = summarize(slug, &data).skipped + skipped;
+        data.insert("lastRun".into(), run.key().into());
+        if started {
+            data.insert("due".into(), run.due.clone().into());
+            set_or_remove(&mut data, "at", run.at.clone().map(Value::String));
+        }
+        set_or_remove(
+            &mut data,
+            "skipped",
+            (total > 0).then(|| f64::from(total).into()),
+        );
+        self.write_task(slug, &data, &doc.content)
     }
 }
 
@@ -1210,5 +1469,246 @@ mod tests {
     #[test]
     fn states_should_list_the_three_states() {
         assert!(STATES.contains(&"in-progress"));
+    }
+
+    fn workspace(name: &str) -> (Workspace, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!("tui-do-{name}-{}", uuid::Uuid::new_v4()));
+        (Workspace::open(root.clone()).expect("open"), root)
+    }
+
+    fn scheduled(ws: &Workspace, due: &str, recurrence: &str) -> Task {
+        ws.create_task(CreateTask {
+            title: "Check the reports".into(),
+            due: Some(due.into()),
+            recurrence: Some(recurrence.into()),
+            at: Some("09:00".into()),
+            tz: Some("Europe/Oslo".into()),
+            autostart: Some(Autostart {
+                permission_mode: Some("auto".into()),
+                complete_on_its_own: true,
+                ..Autostart::default()
+            }),
+            ..CreateTask::default()
+        })
+        .expect("create")
+        .task
+    }
+
+    #[test]
+    fn a_schedule_should_be_kept_in_the_frontmatter() {
+        let (ws, root) = workspace("schedule");
+        let task = scheduled(&ws, "2099-01-05", "days:fri,mon");
+        let raw = std::fs::read_to_string(root.join(format!("tasks/{}.md", task.slug)))
+            .expect("the file");
+        assert!(
+            raw.contains(
+                "due: '2099-01-05'\nat: '09:00'\ntz: Europe/Oslo\nrecurrence: days:mon,fri\n"
+            ),
+            "{raw}"
+        );
+        assert!(
+            raw.contains("autostart:\n  permissionMode: auto\n  completeOnItsOwn: true\n"),
+            "{raw}"
+        );
+        let read = ws.get_task(&task.slug).expect("get").task;
+        assert_eq!(read.recurrence.as_deref(), Some("days:mon,fri"));
+        assert_eq!(read.autostart, task.autostart);
+        assert_eq!(read.last_run, None);
+        assert_eq!(read.next_run.as_deref(), Some("2099-01-05T08:00:00.000Z"));
+        std::fs::remove_dir_all(root).expect("clean up");
+    }
+
+    #[test]
+    fn a_last_run_without_quotes_should_still_read() {
+        let mut data = Map::new();
+        data.insert("lastRun".into(), Value::Date(1_794_528_000_000));
+        assert_eq!(
+            summarize("t", &data).last_run.as_deref(),
+            Some("2026-11-13")
+        );
+    }
+
+    #[test]
+    fn a_bad_schedule_should_be_refused() {
+        let (ws, root) = workspace("bad-schedule");
+        let create = |recurrence: &str, at: &str, tz: &str| {
+            ws.create_task(CreateTask {
+                title: "A task".into(),
+                due: Some("2099-01-05".into()),
+                recurrence: Some(recurrence.into()),
+                at: Some(at.into()),
+                tz: Some(tz.into()),
+                ..CreateTask::default()
+            })
+        };
+        assert!(matches!(
+            create("fortnightly", "09:00", "Europe/Oslo"),
+            Err(Error::Invalid(_))
+        ));
+        assert!(matches!(
+            create("daily", "9am", "Europe/Oslo"),
+            Err(Error::Invalid(_))
+        ));
+        assert!(matches!(
+            create("daily", "09:00", "Mars/Olympus"),
+            Err(Error::Invalid(_))
+        ));
+        assert!(create("hours:4", "09:00", "Europe/Oslo").is_ok());
+        std::fs::remove_dir_all(root).expect("clean up");
+    }
+
+    #[test]
+    fn setting_up_a_schedule_should_not_run_the_times_that_passed() {
+        let (ws, root) = workspace("passed");
+        let task = scheduled(&ws, "2020-01-06", "weekdays");
+        let key = task
+            .last_run
+            .clone()
+            .expect("the passed occurrences are handled");
+        let latest = Slot::from_key(&key).expect("a key");
+        let instant = task.zone().instant(&latest).expect("an instant");
+        assert!(instant <= chrono::Utc::now());
+        assert!(chrono::Utc::now() - instant < chrono::Duration::days(4));
+        // Turning autostart off forgets it
+        let off = ws
+            .update_task(
+                &task.slug,
+                UpdateTask {
+                    autostart: Some(None),
+                    ..UpdateTask::default()
+                },
+            )
+            .expect("update")
+            .task;
+        assert_eq!((off.last_run, off.autostart), (None, None));
+        std::fs::remove_dir_all(root).expect("clean up");
+    }
+
+    #[test]
+    fn completing_a_recurring_task_should_keep_each_run() {
+        let (ws, root) = workspace("runs");
+        let task = scheduled(&ws, "2099-01-05", "weekdays");
+        ws.write_task_plan(&task.slug, "Check the reports and file tasks.")
+            .expect("plan");
+        let monday = Slot::from_key("2099-01-05 09:00").expect("a key");
+        ws.record_scheduled_run(&task.slug, &monday, 2, true)
+            .expect("record");
+        let done = ws
+            .complete_task(&task.slug, Some("Two new reports."))
+            .expect("complete");
+        assert_eq!(done["status"], "recurring_advanced");
+        assert_eq!(done["task"]["nextDue"], "2099-01-06");
+        assert_eq!(done["task"]["nextAt"], "09:00");
+        let after = ws.get_task(&task.slug).expect("get").task;
+        assert_eq!((after.state.as_str(), after.skipped), ("not-started", 0));
+
+        // A new plan that leaves the runs out keeps them
+        ws.write_task_plan(&task.slug, "Check the reports.")
+            .expect("plan");
+        ws.complete_task(&task.slug, Some("Nothing new."))
+            .expect("complete");
+        let plan = ws
+            .get_plan(after.plan.as_deref().expect("a plan"))
+            .expect("plan");
+        assert_eq!(
+            plan.content.as_deref(),
+            Some(
+                "Check the reports.\n\n## Completion Summary\n\n\
+                 ### 2099-01-06 09:00\n\nNothing new.\n\n\
+                 ### 2099-01-05 09:00 · 2 runs skipped\n\nTwo new reports."
+            )
+        );
+        std::fs::remove_dir_all(root).expect("clean up");
+    }
+
+    #[test]
+    fn a_summary_from_before_runs_should_become_the_earliest_run() {
+        let (ws, root) = workspace("earlier");
+        let task = scheduled(&ws, "2099-01-05", "daily");
+        let plan = ws
+            .write_task_plan(&task.slug, "Plan.\n\n## Completion Summary\n\nOld summary.")
+            .expect("plan")["plan"]["slug"]
+            .as_str()
+            .expect("a slug")
+            .to_string();
+        ws.complete_task(&task.slug, Some("New summary."))
+            .expect("complete");
+        assert_eq!(
+            ws.get_plan(&plan).expect("plan").content.as_deref(),
+            Some(
+                "Plan.\n\n## Completion Summary\n\n### 2099-01-05 09:00\n\nNew summary.\n\n\
+                 ### Earlier\n\nOld summary."
+            )
+        );
+        std::fs::remove_dir_all(root).expect("clean up");
+    }
+
+    #[test]
+    fn a_run_should_keep_the_last_thirty() {
+        let (ws, root) = workspace("thirty");
+        let task = scheduled(&ws, "2099-01-01", "daily");
+        for _ in 0..32 {
+            ws.complete_task(&task.slug, Some("Done."))
+                .expect("complete");
+        }
+        let plan = ws
+            .get_task(&task.slug)
+            .expect("get")
+            .task
+            .plan
+            .expect("a plan");
+        let content = ws
+            .get_plan(&plan)
+            .expect("plan")
+            .content
+            .unwrap_or_default();
+        assert_eq!(content.matches("\n### ").count(), 30, "{content}");
+        assert!(content.contains("### 2099-02-01 09:00\n\nDone."));
+        assert!(!content.contains("### 2099-01-02 "));
+        std::fs::remove_dir_all(root).expect("clean up");
+    }
+
+    #[test]
+    fn a_scheduled_run_should_move_the_task_to_its_occurrence() {
+        let (ws, root) = workspace("record");
+        let task = scheduled(&ws, "2099-01-05", "weekdays");
+        let thursday = Slot::from_key("2099-01-08 09:00").expect("a key");
+        ws.record_scheduled_run(&task.slug, &thursday, 1, false)
+            .expect("skip");
+        let skipped = ws.get_task(&task.slug).expect("get").task;
+        assert_eq!(skipped.due.as_deref(), Some("2099-01-05"));
+        assert_eq!(skipped.last_run.as_deref(), Some("2099-01-08 09:00"));
+        assert_eq!(skipped.skipped, 1);
+        ws.record_scheduled_run(&task.slug, &thursday, 2, true)
+            .expect("start");
+        let started = ws.get_task(&task.slug).expect("get").task;
+        assert_eq!(started.due.as_deref(), Some("2099-01-08"));
+        assert_eq!(started.skipped, 3);
+        std::fs::remove_dir_all(root).expect("clean up");
+    }
+
+    #[test]
+    fn completing_in_the_app_should_move_a_recurring_task_on_too() {
+        let (ws, root) = workspace("app-complete");
+        let task = scheduled(&ws, "2020-01-06", "hours:6");
+        let done = ws
+            .update_task(
+                &task.slug,
+                UpdateTask {
+                    state: Some("completed".into()),
+                    ..UpdateTask::default()
+                },
+            )
+            .expect("complete")
+            .task;
+        assert_eq!(done.state, "not-started");
+        let next = done.slot().expect("a slot");
+        let at = done.zone().instant(&next).expect("an instant");
+        let now = chrono::Utc::now();
+        assert!(
+            at > now && at <= now + chrono::Duration::hours(6),
+            "{next:?}"
+        );
+        std::fs::remove_dir_all(root).expect("clean up");
     }
 }

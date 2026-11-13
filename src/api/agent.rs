@@ -20,6 +20,7 @@ use crate::fleet::Device;
 use crate::links::SessionLink;
 use crate::session::{Event, SpawnRequest};
 use crate::workspace::Error;
+use crate::workspace::schedule::Autostart;
 use crate::workspace::tasks::{Task, UpdateTask};
 
 /// How long to wait for the shell's first output before typing anyway.
@@ -91,7 +92,7 @@ async fn codex_link(state: &AppState, device: Option<&Device>, slug: &str) -> Op
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StartAgent {
+pub(crate) struct StartAgent {
     /// The fleet device to run on (this core's id included); absent = the
     /// machine the projects' folders are on.
     #[serde(default)]
@@ -154,6 +155,49 @@ fn valid_word(value: &str) -> bool {
     !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
+impl StartAgent {
+    /// What the scheduler starts a task's agent with.
+    pub(crate) fn scheduled(autostart: &Autostart) -> Self {
+        Self {
+            device: autostart.device.clone(),
+            agent: autostart.agent.clone(),
+            model: autostart.model.clone(),
+            effort: autostart.effort.clone(),
+            permission_mode: autostart.permission_mode.clone(),
+            yolo: autostart.yolo,
+            include_uncommitted: false,
+            from_remote: false,
+            resume: false,
+            worktree: None,
+            worktree_path: None,
+            // Whoever opens the session later resizes it to their screen
+            cols: 120,
+            rows: 40,
+        }
+    }
+}
+
+/// A run the scheduler starts: the occurrence it's for (`2026-11-14 09:00`),
+/// and whether the agent completes the task itself.
+pub(crate) struct ScheduledRun {
+    pub occurrence: String,
+    pub complete_on_its_own: bool,
+}
+
+/// What the agent is asked. It's typed between double quotes, so it can't
+/// hold `"`, `$`, `` ` ``, `\` or `!`.
+fn prompt(task_id: &str, scheduled: Option<&ScheduledRun>) -> String {
+    let mut prompt = format!("Start working on task {task_id}");
+    if let Some(run) = scheduled {
+        prompt += &format!(". This is its scheduled run for {}", run.occurrence);
+        if run.complete_on_its_own {
+            prompt += ". When the work is done, complete the task with a summary yourself, \
+                       without asking the user to confirm first";
+        }
+    }
+    format!("\"{prompt}\"")
+}
+
 /// The command typed into the session's shell, as the Mac app builds it.
 fn command(
     agent: &Agent,
@@ -162,13 +206,14 @@ fn command(
     task_id: &str,
     remote: bool,
     resume: Option<&SessionLink>,
+    scheduled: Option<&ScheduledRun>,
 ) -> String {
     let model = req
         .model
         .as_deref()
         .filter(|m| !m.is_empty() && *m != "default");
     let effort = req.effort.as_deref().filter(|e| valid_word(e));
-    let prompt = format!("\"Start working on task {task_id}\"");
+    let prompt = prompt(task_id, scheduled);
     match agent {
         Agent::Claude => {
             let mut cmd = format!("claude --settings \"${}\"", crate::hooks::SETTINGS_ENV);
@@ -223,26 +268,39 @@ fn command(
     }
 }
 
-/// Start the task's agent session on the machine picked for it. A session
-/// that's already running is returned as it is (`started: false`).
 async fn start(
     State(state): State<AppState>,
     Path(reference): Path<String>,
     Json(req): Json<StartAgent>,
 ) -> Response {
+    match start_agent(&state, reference, req, None).await {
+        Ok(started) => Json(started).into_response(),
+        Err((status, message)) => error(status, &message),
+    }
+}
+
+/// Start the task's agent session on the machine picked for it. A session
+/// that's already running is returned as it is (`started: false`).
+pub(crate) async fn start_agent(
+    state: &AppState,
+    reference: String,
+    req: StartAgent,
+    scheduled: Option<ScheduledRun>,
+) -> Result<Value, (StatusCode, String)> {
+    let fail = |status: StatusCode, message: &str| Err((status, message.to_string()));
     let agent = match req.agent.as_deref() {
         None | Some("claude") => Agent::Claude,
         Some("codex") => Agent::Codex,
-        Some(other) => return error(StatusCode::BAD_REQUEST, &format!("unknown agent {other:?}")),
+        Some(other) => return fail(StatusCode::BAD_REQUEST, &format!("unknown agent {other:?}")),
     };
     if req.cols == 0 || req.rows == 0 {
-        return error(
+        return fail(
             StatusCode::BAD_REQUEST,
             "cols and rows must be greater than zero",
         );
     }
     let Some(workspace) = state.workspace.current() else {
-        return error(StatusCode::CONFLICT, "Workspace not configured.");
+        return fail(StatusCode::CONFLICT, "Workspace not configured.");
     };
     let ws = std::sync::Arc::clone(&workspace);
     let found = tokio::task::spawn_blocking(move || {
@@ -260,9 +318,9 @@ async fn start(
     .await;
     let (task, directory) = match found {
         Ok(Ok(found)) => found,
-        Ok(Err(Error::NotFound(msg))) => return error(StatusCode::NOT_FOUND, &msg),
-        Ok(Err(err)) => return error(StatusCode::BAD_REQUEST, &err.to_string()),
-        Err(err) => return error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+        Ok(Err(Error::NotFound(msg))) => return fail(StatusCode::NOT_FOUND, &msg),
+        Ok(Err(err)) => return fail(StatusCode::BAD_REQUEST, &err.to_string()),
+        Err(err) => return fail(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
     };
 
     let own_id = state.config.get().device_id;
@@ -272,8 +330,8 @@ async fn start(
         .clone()
         .filter(|d| !d.is_empty())
         .unwrap_or_else(|| code.id().to_string());
-    let Some(target) = super::fleet::target(&state, &target_id) else {
-        return error(StatusCode::NOT_FOUND, "no such machine");
+    let Some(target) = super::fleet::target(state, &target_id) else {
+        return fail(StatusCode::NOT_FOUND, "no such machine");
     };
     // Another core's sessions are reached over HTTP; this core's directly
     let device = (target.id != own_id).then(|| target.clone());
@@ -281,13 +339,12 @@ async fn start(
     // has none (only a remote) or should start from the remote
     let in_place = target.id == code.id() && !directory.is_empty() && !req.from_remote;
 
-    if let Some(running) = running_session(&state, device.as_ref(), &task.slug).await {
-        return Json(json!({
+    if let Some(running) = running_session(state, device.as_ref(), &task.slug).await {
+        return Ok(json!({
             "session": running,
             "device": device.as_ref().map_or(own_id.as_str(), |d| d.id.as_str()),
             "started": false,
-        }))
-        .into_response();
+        }));
     }
 
     // Subscribe before the session exists, so its first output isn't missed
@@ -308,14 +365,14 @@ async fn start(
             .await
         {
             Ok((path, _branch)) => path,
-            Err(err) => return error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
+            Err(err) => return fail(StatusCode::BAD_REQUEST, &format!("{err:#}")),
         }
     };
     let (session, path) = match &device {
         Some(device) => {
-            match spawn_on_device(&state, device, &task.slug, &path, &agent, &req).await {
+            match spawn_on_device(state, device, &task.slug, &path, &agent, &req).await {
                 Ok(session) => (session, path),
-                Err(err) => return error(StatusCode::BAD_GATEWAY, &format!("{err:#}")),
+                Err(err) => return fail(StatusCode::BAD_GATEWAY, &format!("{err:#}")),
             }
         }
         None => {
@@ -332,8 +389,8 @@ async fn start(
             let registry = std::sync::Arc::clone(&state.registry);
             match tokio::task::spawn_blocking(move || registry.spawn(spawn)).await {
                 Ok(Ok(info)) => (serde_json::to_value(info).unwrap_or(Value::Null), path),
-                Ok(Err(err)) => return error(StatusCode::BAD_REQUEST, &format!("{err:#}")),
-                Err(err) => return error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+                Ok(Err(err)) => return fail(StatusCode::BAD_REQUEST, &format!("{err:#}")),
+                Err(err) => return fail(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
             }
         }
     };
@@ -351,7 +408,7 @@ async fn start(
     }
 
     let resume = if req.resume && agent == Agent::Codex {
-        codex_link(&state, device.as_ref(), &task.slug).await
+        codex_link(state, device.as_ref(), &task.slug).await
     } else {
         None
     };
@@ -362,6 +419,7 @@ async fn start(
         &task.id,
         device.is_some(),
         resume.as_ref(),
+        scheduled.as_ref(),
     );
     tokio::spawn(type_when_ready(
         state.clone(),
@@ -370,14 +428,13 @@ async fn start(
         command,
         events,
     ));
-    tracing::info!(task = %task.slug, device = ?device_id, agent = agent_name(&agent), "agent session started");
-    Json(json!({
+    tracing::info!(task = %task.slug, device = ?device_id, agent = agent_name(&agent), scheduled = scheduled.is_some(), "agent session started");
+    Ok(json!({
         "session": session,
         "device": target.id,
         "path": path,
         "started": true,
     }))
-    .into_response()
 }
 
 /// What starting an agent changes on its task: it's in progress from now
@@ -566,7 +623,7 @@ mod tests {
         let mut req = request(None, None, None, false);
         req.worktree = Some("my-task".into());
         assert_eq!(
-            command(&Agent::Claude, &req, "t", "26-001", false, None),
+            command(&Agent::Claude, &req, "t", "26-001", false, None, None),
             "claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" --worktree 'my-task' \
              -n \"t\" \"Start working on task 26-001\""
         );
@@ -578,7 +635,7 @@ mod tests {
         req.worktree = Some("my-task".into());
         req.worktree_path = Some("/code/it's/.claude/worktrees/my-task".into());
         assert_eq!(
-            command(&Agent::Claude, &req, "t", "26-001", false, None),
+            command(&Agent::Claude, &req, "t", "26-001", false, None, None),
             "cd '/code/it'\\''s/.claude/worktrees/my-task' && \
              claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" \
              -n \"t\" \"Start working on task 26-001\""
@@ -591,7 +648,7 @@ mod tests {
         req.worktree = Some("my-task".into());
         req.worktree_path = Some("/somewhere".into());
         assert_eq!(
-            command(&Agent::Codex, &req, "t", "26-001", false, None),
+            command(&Agent::Codex, &req, "t", "26-001", false, None, None),
             format!("{CODEX}{CODEX_NOTIFY} --model 'gpt-6' \"Start working on task 26-001\"")
         );
     }
@@ -605,7 +662,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            command(&Agent::Claude, &req, "my-task", "26-001", false, None),
+            command(&Agent::Claude, &req, "my-task", "26-001", false, None, None),
             "claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" --permission-mode plan \
              --model 'claude-fable-5-1[1m]' --effort high --dangerously-skip-permissions \
              -n \"my-task\" \"Start working on task 26-001\""
@@ -616,7 +673,7 @@ mod tests {
     fn default_model_should_add_no_flag() {
         let req = request(Some("default"), None, None, false);
         assert_eq!(
-            command(&Agent::Claude, &req, "t", "26-001", false, None),
+            command(&Agent::Claude, &req, "t", "26-001", false, None, None),
             "claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" -n \"t\" \"Start working on task 26-001\""
         );
     }
@@ -624,7 +681,7 @@ mod tests {
     #[test]
     fn codex_should_start_without_its_shared_server_where_it_has_one() {
         let req = request(None, None, None, false);
-        let cmd = command(&Agent::Codex, &req, "t", "26-001", false, None);
+        let cmd = command(&Agent::Codex, &req, "t", "26-001", false, None, None);
         assert!(
             cmd.starts_with(
                 "codex $(codex --help 2>&1 | grep -qe --no-daemon && echo --no-daemon) -c 'notify="
@@ -636,7 +693,7 @@ mod tests {
     #[test]
     fn codex_on_a_machine_should_get_the_tools_and_effort() {
         let req = request(Some("gpt-6"), Some("high"), None, false);
-        let cmd = command(&Agent::Codex, &req, "t", "26-001", true, None);
+        let cmd = command(&Agent::Codex, &req, "t", "26-001", true, None, None);
         assert!(cmd.starts_with(&format!("{CODEX} -c 'mcp_servers.tui-do.command=\"sh\"'")));
         assert!(cmd.ends_with(
             " --model 'gpt-6' -c 'model_reasoning_effort=\"high\"' \"Start working on task 26-001\""
@@ -652,7 +709,7 @@ mod tests {
             linked_at: None,
         };
         assert_eq!(
-            command(&Agent::Codex, &req, "t", "26-001", false, Some(&link)),
+            command(&Agent::Codex, &req, "t", "26-001", false, Some(&link), None),
             format!(
                 "cd '/code/it'\\''s' && {CODEX}{CODEX_NOTIFY} \
                  resume '01a1c173-979a-70e0-bbe0-b83e52032d3f'"
@@ -661,10 +718,36 @@ mod tests {
     }
 
     #[test]
+    fn a_scheduled_run_should_say_so_in_its_prompt() {
+        let run = ScheduledRun {
+            occurrence: "2026-11-16 09:00".into(),
+            complete_on_its_own: false,
+        };
+        assert_eq!(
+            prompt("26-001", Some(&run)),
+            "\"Start working on task 26-001. This is its scheduled run for 2026-11-16 09:00\""
+        );
+        let on_its_own = ScheduledRun {
+            complete_on_its_own: true,
+            ..run
+        };
+        let typed = prompt("26-001", Some(&on_its_own));
+        assert!(
+            typed.ends_with(
+                "complete the task with a summary yourself, without asking the user to confirm first\""
+            ),
+            "{typed}"
+        );
+        // Nothing the shell would expand between the double quotes
+        assert!(!typed.contains(['$', '`', '\\', '!']));
+        assert_eq!(typed.matches('"').count(), 2);
+    }
+
+    #[test]
     fn odd_effort_and_mode_values_should_be_dropped() {
         let req = request(None, Some("high; rm -rf ~"), Some("$(x)"), false);
         assert_eq!(
-            command(&Agent::Claude, &req, "t", "26-001", false, None),
+            command(&Agent::Claude, &req, "t", "26-001", false, None, None),
             "claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" -n \"t\" \"Start working on task 26-001\""
         );
     }

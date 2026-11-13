@@ -8,8 +8,9 @@ use serde_json::{Value as Json, json};
 use crate::links::{SessionLink, TaskSessions};
 use crate::workspace::plans::SavePlan;
 use crate::workspace::projects::{CreateProject, UpdateProject};
+use crate::workspace::schedule::Autostart;
 use crate::workspace::tasks::{CreateTask, STATES, TaskFilter, UpdateTask};
-use crate::workspace::{Error, Workspace, dates};
+use crate::workspace::{Error, Workspace};
 
 const TASK_ID: &str = "Task ID — accepts any format: \"58\", \"058\", or \"26-058\". Plain numbers are auto-prefixed with the current year.";
 
@@ -36,8 +37,76 @@ It replaces the whole document, so include any existing content that still appli
 const LIST_TASKS: &str = "List tasks, optionally filtered by project, state, or due date. Completed tasks are left out unless you filter by state or due date, or set include_completed. Returns task IDs in YY-NNN format (e.g. 26-058). When the user refers to 'task 58', pass '58' to other tools — it auto-resolves to the current year ('26-058').";
 
 /// One parameter: name, JSON type, description, required. A type of
-/// `"state"` / `"recurrence"` is a string enum; `"recurrence?"` also allows null.
+/// `"state"` is a string enum, `"recurrence"` a string pattern and
+/// `"autostart"` an object; a `?` after one also allows null.
 type Param = (&'static str, &'static str, &'static str, bool);
+
+/// What a task's `recurrence` can be.
+const RECURRENCE_PATTERN: &str = "^(daily|weekly|monthly|yearly|weekdays|days:(mon|tue|wed|thu|fri|sat|sun)(,(mon|tue|wed|thu|fri|sat|sun))*|hours:([1-9]|1[0-9]|2[0-4]))$";
+
+const RECURRENCE: &str = "Recurrence pattern (requires due date): daily, weekly, monthly, yearly, weekdays (Monday to Friday), days:mon,wed,fri (those days of the week) or hours:N (every N hours from `at`, N from 1 to 24)";
+
+const AT: &str = "Time of day it's due, HH:MM (24-hour), in `timezone`. Without one, a task with autostart starts at midnight.";
+
+const TIMEZONE: &str = "IANA time zone `at` is in, e.g. Europe/Oslo (default: the home machine's)";
+
+const AUTOSTART: &str = "Start a coding agent on the task when it comes due (at `due` and `at`, and again at each recurrence). Occurrences that have already passed when this is set don't start one. A run doesn't start while the previous one is still open; it's counted as skipped instead.";
+
+/// The JSON schema of `autostart`, with snake_case keys like the other parameters.
+fn autostart_schema(description: &str) -> Json {
+    json!({
+        "type": "object",
+        "description": description,
+        "properties": {
+            "agent": { "type": "string", "enum": ["claude", "codex"], "description": "The agent (default: claude)" },
+            "model": { "type": "string", "description": "Claude's --model value, or a Codex model slug (default: the agent's)" },
+            "effort": { "type": "string", "description": "Effort level, e.g. high" },
+            "permission_mode": { "type": "string", "enum": SCHEDULED_PERMISSION_MODES, "description": "Claude's --permission-mode (default: default). A run that hits a permission prompt waits for the user. Modes that ask less, and skipping permission prompts, can only be set by the user in the TUI-DO app." },
+            "device": { "type": "string", "description": "Fleet machine id to run on (default: the machine with the projects' folders)" },
+            "complete_on_its_own": { "type": "boolean", "description": "The agent completes the task when it's done instead of asking the user first. For jobs whose result is a summary or new tasks rather than code." },
+        },
+    })
+}
+
+/// The permission modes an agent may give the runs it schedules: none that
+/// lets them do more without asking than the agent itself could.
+const SCHEDULED_PERMISSION_MODES: [&str; 2] = ["default", "plan"];
+
+/// `autostart` as the agent passed it. Skipping permission prompts or a mode
+/// that asks less is for the user to set, through the app.
+fn autostart_of(value: &Json) -> Result<Autostart, String> {
+    if value["yolo"].as_bool() == Some(true) {
+        return Err(
+            "Invalid arguments: skipping permission prompts can only be set by the user in the TUI-DO app"
+                .into(),
+        );
+    }
+    if let Some(mode) = value["permission_mode"].as_str()
+        && !mode.is_empty()
+        && !SCHEDULED_PERMISSION_MODES.contains(&mode)
+    {
+        return Err(format!(
+            "Invalid arguments: permission_mode must be one of {}; {mode:?} can only be set by the user in the TUI-DO app",
+            SCHEDULED_PERMISSION_MODES.join(", ")
+        ));
+    }
+    let text = |key: &str| {
+        value[key]
+            .as_str()
+            .filter(|t| !t.is_empty())
+            .map(str::to_string)
+    };
+    let flag = |key: &str| value[key].as_bool().unwrap_or(false);
+    Ok(Autostart {
+        agent: text("agent"),
+        model: text("model"),
+        effort: text("effort"),
+        permission_mode: text("permission_mode"),
+        yolo: false,
+        device: text("device"),
+        complete_on_its_own: flag("complete_on_its_own"),
+    })
+}
 
 fn schema(params: &[Param]) -> JsonObject {
     let mut properties = serde_json::Map::new();
@@ -46,10 +115,19 @@ fn schema(params: &[Param]) -> JsonObject {
         let prop = match kind {
             "state" => json!({ "type": "string", "enum": STATES, "description": description }),
             "recurrence" => {
-                json!({ "type": "string", "enum": dates::RECURRENCES, "description": description })
+                json!({ "type": "string", "pattern": RECURRENCE_PATTERN, "description": description })
             }
             "recurrence?" => json!({
-                "anyOf": [{ "type": "string", "enum": dates::RECURRENCES }, { "type": "null" }],
+                "anyOf": [{ "type": "string", "pattern": RECURRENCE_PATTERN }, { "type": "null" }],
+                "description": description,
+            }),
+            "string?" => json!({
+                "anyOf": [{ "type": "string" }, { "type": "null" }],
+                "description": description,
+            }),
+            "autostart" => autostart_schema(description),
+            "autostart?" => json!({
+                "anyOf": [autostart_schema(description), { "type": "null" }],
                 "description": description,
             }),
             other => json!({ "type": other, "description": description }),
@@ -201,12 +279,10 @@ pub fn definitions() -> Vec<Tool> {
                 ("title", "string", "Task title", true),
                 ("project", "string", "Project slug to associate with", false),
                 ("due", "string", "Due date (YYYY-MM-DD)", false),
-                (
-                    "recurrence",
-                    "recurrence",
-                    "Recurrence pattern (requires due date)",
-                    false,
-                ),
+                ("recurrence", "recurrence", RECURRENCE, false),
+                ("at", "string", AT, false),
+                ("timezone", "string", TIMEZONE, false),
+                ("autostart", "autostart", AUTOSTART, false),
                 (
                     "description",
                     "string",
@@ -227,7 +303,25 @@ pub fn definitions() -> Vec<Tool> {
                 (
                     "recurrence",
                     "recurrence?",
-                    "Recurrence pattern (null to remove)",
+                    "Recurrence pattern (null to remove): daily, weekly, monthly, yearly, weekdays, days:mon,wed,fri or hours:N (1 to 24)",
+                    false,
+                ),
+                (
+                    "at",
+                    "string?",
+                    "Time of day it's due, HH:MM (null to remove)",
+                    false,
+                ),
+                (
+                    "timezone",
+                    "string?",
+                    "IANA time zone `at` is in (null: the home machine's)",
+                    false,
+                ),
+                (
+                    "autostart",
+                    "autostart?",
+                    "Start a coding agent on the task when it comes due (null to stop). See create_task.",
                     false,
                 ),
                 ("plan", "string", "Associated plan slug", false),
@@ -418,22 +512,20 @@ pub fn call(
             }
         }
         "create_task" => {
-            let recurrence = args.opt("recurrence");
-            if recurrence
-                .as_deref()
-                .is_some_and(|r| !dates::RECURRENCES.contains(&r))
-            {
-                return Err(format!(
-                    "Invalid arguments: \"recurrence\" must be one of {}",
-                    dates::RECURRENCES.join(", ")
-                ));
-            }
             let req = CreateTask {
                 title: args.req("title")?,
                 project: args.opt("project"),
                 due: args.opt("due"),
-                recurrence,
+                recurrence: args.opt("recurrence"),
                 description: args.opt("description"),
+                at: args.opt("at"),
+                tz: args.opt("timezone"),
+                autostart: args
+                    .0
+                    .get("autostart")
+                    .filter(|a| a.is_object())
+                    .map(autostart_of)
+                    .transpose()?,
             };
             ws.create_task(req).and_then(to_json)
         }
@@ -453,6 +545,13 @@ pub fn call(
                 description: args.opt("description"),
                 device: None,
                 pr: None,
+                at: args.nullable("at"),
+                tz: args.nullable("timezone"),
+                autostart: match args.0.get("autostart") {
+                    Some(a) if a.is_object() => Some(Some(autostart_of(a)?)),
+                    Some(_) => Some(None),
+                    None => None,
+                },
             };
             ws.update_task(&slug, req).and_then(to_json)
         }
@@ -500,6 +599,61 @@ mod tests {
     #[test]
     fn there_should_be_the_original_22_tools() {
         assert_eq!(definitions().len(), 22);
+    }
+
+    #[test]
+    fn an_agent_should_be_able_to_schedule_a_task() {
+        let root = std::env::temp_dir().join(format!("tui-do-mcp-{}", uuid::Uuid::new_v4()));
+        let ws = Workspace::open(root.clone()).expect("open");
+        let sessions = TaskSessions::new(root.join("sessions"));
+        let call = |name: &str, args: Json| {
+            let Json::Object(args) = args else {
+                panic!("arguments must be an object")
+            };
+            call(&ws, &sessions, name, args, None)
+        };
+        let task = call(
+            "create_task",
+            json!({
+                "title": "Check the community reports",
+                "due": "2099-01-05",
+                "recurrence": "weekdays",
+                "at": "09:00",
+                "timezone": "Europe/Oslo",
+                "autostart": { "permission_mode": "plan", "complete_on_its_own": true },
+            }),
+        )
+        .expect("created");
+        assert_eq!(task["recurrence"], "weekdays");
+        assert_eq!(
+            task["autostart"],
+            json!({ "permissionMode": "plan", "completeOnItsOwn": true })
+        );
+        let off = call(
+            "update_task",
+            json!({
+                "slug": task["slug"], "autostart": null, "at": null,
+            }),
+        )
+        .expect("updated");
+        assert!(
+            off.get("autostart").is_none() && off.get("at").is_none(),
+            "{off}"
+        );
+        let odd = json!({ "title": "Odd", "due": "2099-01-05", "recurrence": "fortnightly" });
+        assert!(call("create_task", odd).is_err());
+        // An agent can't schedule a run that asks for less permission than it does
+        for autostart in [
+            json!({ "yolo": true }),
+            json!({ "permission_mode": "bypassPermissions" }),
+            json!({ "permission_mode": "acceptEdits" }),
+        ] {
+            let free = json!({ "title": "Free", "due": "2099-01-05", "autostart": autostart });
+            assert!(call("create_task", free).is_err(), "{autostart}");
+            let raise = json!({ "slug": task["slug"], "autostart": autostart });
+            assert!(call("update_task", raise).is_err(), "{autostart}");
+        }
+        std::fs::remove_dir_all(root).expect("clean up");
     }
 
     #[test]

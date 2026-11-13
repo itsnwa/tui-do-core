@@ -18,6 +18,7 @@ mod handoff;
 mod home;
 pub(crate) mod mcp;
 mod notifications;
+mod scheduler;
 mod update;
 mod usage;
 mod workspace;
@@ -47,6 +48,7 @@ use crate::workspace::shared::SharedWorkspace;
 pub use activity::spawn_board;
 pub use home::spawn_background;
 pub use notifications::spawn_notifier;
+pub use scheduler::spawn_scheduler;
 
 pub const API_VERSION: u32 = 0;
 
