@@ -61,16 +61,35 @@ fn autostart_schema(description: &str) -> Json {
             "agent": { "type": "string", "enum": ["claude", "codex"], "description": "The agent (default: claude)" },
             "model": { "type": "string", "description": "Claude's --model value, or a Codex model slug (default: the agent's)" },
             "effort": { "type": "string", "description": "Effort level, e.g. high" },
-            "permission_mode": { "type": "string", "description": "Claude's --permission-mode, e.g. auto or acceptEdits. A run that hits a permission prompt waits for the user." },
-            "yolo": { "type": "boolean", "description": "Skip permission prompts (and Codex's sandbox)" },
+            "permission_mode": { "type": "string", "enum": SCHEDULED_PERMISSION_MODES, "description": "Claude's --permission-mode (default: default). A run that hits a permission prompt waits for the user. Modes that ask less, and skipping permission prompts, can only be set by the user in the TUI-DO app." },
             "device": { "type": "string", "description": "Fleet machine id to run on (default: the machine with the projects' folders)" },
             "complete_on_its_own": { "type": "boolean", "description": "The agent completes the task when it's done instead of asking the user first. For jobs whose result is a summary or new tasks rather than code." },
         },
     })
 }
 
-/// `autostart` as the agent passed it.
-fn autostart_of(value: &Json) -> Autostart {
+/// The permission modes an agent may give the runs it schedules: none that
+/// lets them do more without asking than the agent itself could.
+const SCHEDULED_PERMISSION_MODES: [&str; 2] = ["default", "plan"];
+
+/// `autostart` as the agent passed it. Skipping permission prompts or a mode
+/// that asks less is for the user to set, through the app.
+fn autostart_of(value: &Json) -> Result<Autostart, String> {
+    if value["yolo"].as_bool() == Some(true) {
+        return Err(
+            "Invalid arguments: skipping permission prompts can only be set by the user in the TUI-DO app"
+                .into(),
+        );
+    }
+    if let Some(mode) = value["permission_mode"].as_str()
+        && !mode.is_empty()
+        && !SCHEDULED_PERMISSION_MODES.contains(&mode)
+    {
+        return Err(format!(
+            "Invalid arguments: permission_mode must be one of {}; {mode:?} can only be set by the user in the TUI-DO app",
+            SCHEDULED_PERMISSION_MODES.join(", ")
+        ));
+    }
     let text = |key: &str| {
         value[key]
             .as_str()
@@ -78,15 +97,15 @@ fn autostart_of(value: &Json) -> Autostart {
             .map(str::to_string)
     };
     let flag = |key: &str| value[key].as_bool().unwrap_or(false);
-    Autostart {
+    Ok(Autostart {
         agent: text("agent"),
         model: text("model"),
         effort: text("effort"),
         permission_mode: text("permission_mode"),
-        yolo: flag("yolo"),
+        yolo: false,
         device: text("device"),
         complete_on_its_own: flag("complete_on_its_own"),
-    }
+    })
 }
 
 fn schema(params: &[Param]) -> JsonObject {
@@ -505,7 +524,8 @@ pub fn call(
                     .0
                     .get("autostart")
                     .filter(|a| a.is_object())
-                    .map(autostart_of),
+                    .map(autostart_of)
+                    .transpose()?,
             };
             ws.create_task(req).and_then(to_json)
         }
@@ -527,10 +547,11 @@ pub fn call(
                 pr: None,
                 at: args.nullable("at"),
                 tz: args.nullable("timezone"),
-                autostart: args
-                    .0
-                    .get("autostart")
-                    .map(|a| a.is_object().then(|| autostart_of(a))),
+                autostart: match args.0.get("autostart") {
+                    Some(a) if a.is_object() => Some(Some(autostart_of(a)?)),
+                    Some(_) => Some(None),
+                    None => None,
+                },
             };
             ws.update_task(&slug, req).and_then(to_json)
         }
@@ -599,14 +620,14 @@ mod tests {
                 "recurrence": "weekdays",
                 "at": "09:00",
                 "timezone": "Europe/Oslo",
-                "autostart": { "permission_mode": "auto", "complete_on_its_own": true },
+                "autostart": { "permission_mode": "plan", "complete_on_its_own": true },
             }),
         )
         .expect("created");
         assert_eq!(task["recurrence"], "weekdays");
         assert_eq!(
             task["autostart"],
-            json!({ "permissionMode": "auto", "completeOnItsOwn": true })
+            json!({ "permissionMode": "plan", "completeOnItsOwn": true })
         );
         let off = call(
             "update_task",
@@ -621,6 +642,17 @@ mod tests {
         );
         let odd = json!({ "title": "Odd", "due": "2099-01-05", "recurrence": "fortnightly" });
         assert!(call("create_task", odd).is_err());
+        // An agent can't schedule a run that asks for less permission than it does
+        for autostart in [
+            json!({ "yolo": true }),
+            json!({ "permission_mode": "bypassPermissions" }),
+            json!({ "permission_mode": "acceptEdits" }),
+        ] {
+            let free = json!({ "title": "Free", "due": "2099-01-05", "autostart": autostart });
+            assert!(call("create_task", free).is_err(), "{autostart}");
+            let raise = json!({ "slug": task["slug"], "autostart": autostart });
+            assert!(call("update_task", raise).is_err(), "{autostart}");
+        }
         std::fs::remove_dir_all(root).expect("clean up");
     }
 

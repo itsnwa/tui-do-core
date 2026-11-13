@@ -318,7 +318,7 @@ These take a short ID or slug and answer like the TUI-DO MCP tools (business err
 
 # MCP (for coding agents)
 
-The core is also the TUI-DO MCP server: 22 tools (`start_task`, `update_plan`, `complete_task`, `list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task`, projects, plans, daily notes, weekly updates) with the same names, descriptions and parameters as the original Node server, so existing agent instructions keep working. Results are JSON text; business errors (unknown task, `PROJECT_MISMATCH`, `SUMMARY_REQUIRED`) are normal results with an `error` or `warning` field. `create_task` and `update_task` also take a schedule: `at`, `timezone` and `autostart` (with snake_case keys: `agent`, `model`, `effort`, `permission_mode`, `yolo`, `device`, `complete_on_its_own`), as in [Scheduled tasks](#scheduled-tasks).
+The core is also the TUI-DO MCP server: 22 tools (`start_task`, `update_plan`, `complete_task`, `list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task`, projects, plans, daily notes, weekly updates) with the same names, descriptions and parameters as the original Node server, so existing agent instructions keep working. Results are JSON text; business errors (unknown task, `PROJECT_MISMATCH`, `SUMMARY_REQUIRED`) are normal results with an `error` or `warning` field. `create_task` and `update_task` also take a schedule: `at`, `timezone` and `autostart` (with snake_case keys: `agent`, `model`, `effort`, `permission_mode`, `device`, `complete_on_its_own`), as in [Scheduled tasks](#scheduled-tasks). An agent can't schedule runs that ask for less permission than it does: `permission_mode` is `default` or `plan`, and `yolo` is refused. You set those in the app (`POST`/`PATCH /v0/tasks`).
 
 Two ways in:
 
