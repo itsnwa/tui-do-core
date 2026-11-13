@@ -124,6 +124,27 @@ impl Zone {
         Some(next)
     }
 
+    /// Where a recurring task goes when it's completed at `now`. One whose
+    /// agent starts by itself (`scheduled`) goes to its first occurrence
+    /// still to come, which can be the one it's at: a run started by hand
+    /// before it is an extra one, and the scheduled runs keep their times.
+    /// Any other is done with the occurrence it's at, also when that's
+    /// early, and goes on from the next.
+    pub fn completed(
+        self,
+        slot: &Slot,
+        recurrence: Recurrence,
+        scheduled: bool,
+        now: DateTime<Utc>,
+    ) -> Option<Slot> {
+        if scheduled {
+            self.upcoming(slot, Some(recurrence), now)
+                .or_else(|| self.advance(slot, recurrence, now))
+        } else {
+            self.advance(slot, recurrence, now)
+        }
+    }
+
     /// The occurrences from `slot` on that have come by `now`, leaving out
     /// the ones up to `after`: the latest, and how many there were.
     pub fn came(
@@ -355,6 +376,20 @@ mod tests {
             at("2026-11-13 08:00"),
         );
         assert_eq!(timed, Some(slot("2026-11-13", Some("09:00"))));
+    }
+
+    #[test]
+    fn a_run_by_hand_should_leave_the_next_scheduled_one_where_it_is() {
+        let tomorrow = slot("2026-11-14", Some("09:00"));
+        let by_hand = oslo().completed(&tomorrow, Recurrence::Daily, true, at("2026-11-13 11:30"));
+        assert_eq!(by_hand, Some(tomorrow.clone()));
+        // The scheduled run itself moves on
+        let today = slot("2026-11-13", Some("09:00"));
+        let scheduled = oslo().completed(&today, Recurrence::Daily, true, at("2026-11-13 09:30"));
+        assert_eq!(scheduled, Some(tomorrow.clone()));
+        // A task without a schedule of its own is done with the occurrence it's at
+        let early = oslo().completed(&tomorrow, Recurrence::Daily, false, at("2026-11-13 11:30"));
+        assert_eq!(early, Some(slot("2026-11-15", Some("09:00"))));
     }
 
     #[test]
