@@ -84,6 +84,8 @@ pub struct AppState {
     pub watching: Arc<crate::notify::Watching>,
     /// The other machines' sessions, and what each task shows.
     pub activity: Arc<crate::activity::Board>,
+    /// Whether this core listens on Tailscale.
+    pub tailscale: Arc<crate::net::TailscaleStatus>,
 }
 
 impl AppState {
@@ -245,6 +247,7 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
         "apiVersion": API_VERSION,
         "device": { "id": config.device_id, "name": config.device_name },
         "home": home::home_summary(&state),
+        "tailscale": state.tailscale.get(),
     }))
 }
 
@@ -257,6 +260,7 @@ async fn device_info(state: &AppState) -> serde_json::Value {
         "name": config.device_name,
         "remoteAccess": config.remote_access,
         "tailscaleAddress": tailscale,
+        "tailscale": state.tailscale.get(),
         "platform": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
         "version": env!("CARGO_PKG_VERSION"),
     })

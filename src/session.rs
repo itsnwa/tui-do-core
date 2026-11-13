@@ -237,6 +237,10 @@ pub enum Event {
         home: String,
         generation: u64,
     },
+    /// Whether this core listens on Tailscale changed (see `net`).
+    TailscaleStatus {
+        tailscale: crate::net::Tailscale,
+    },
 }
 
 impl Event {
@@ -249,7 +253,8 @@ impl Event {
             | Event::DeviceStatus { .. }
             | Event::Handoff { .. }
             | Event::TaskActivity { .. }
-            | Event::HomeChanged { .. } => "",
+            | Event::HomeChanged { .. }
+            | Event::TailscaleStatus { .. } => "",
             Event::SessionCreated { session } => &session.id,
             Event::Output { id, .. }
             | Event::SessionExited { id, .. }
