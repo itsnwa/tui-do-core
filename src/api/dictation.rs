@@ -14,6 +14,7 @@ use serde_json::json;
 
 use super::{AppState, error};
 use crate::dictation::{self, Context, Keys, Writing};
+use crate::workspace::schedule::Zone;
 use crate::workspace::tasks::TaskFilter;
 
 /// Largest recording: minutes of speech as AAC, as base64 in JSON.
@@ -95,10 +96,15 @@ struct Recording {
     /// For a task: the project it goes in, whose other open tasks give the
     /// context.
     project: Option<String>,
+    /// For a new task: the client's time zone (IANA). With it, the task's
+    /// date, time, recurrence and (when it has none) project are read from
+    /// what was said too, and left out of its title and description.
+    tz: Option<String>,
 }
 
 /// The session's task and project, or the new task's project and its open
-/// tasks, from the workspace.
+/// tasks, from the workspace; for a client that sends its time zone, also
+/// the time there and, without a project, the projects to pick from.
 fn context(state: &AppState, recording: &Recording) -> Context {
     let mut context = Context {
         writing: recording.writing,
@@ -115,7 +121,23 @@ fn context(state: &AppState, recording: &Recording) -> Context {
             context.task = Some(detail.task.title);
             context.description = Some(detail.description);
         }
-    } else if let Some(slug) = recording.project.as_deref().filter(|p| !p.is_empty())
+        return context;
+    }
+    let picked = recording.project.as_deref().filter(|p| !p.is_empty());
+    if recording.writing == Writing::Task
+        && let Some(tz) = &recording.tz
+    {
+        context.now = Some((Zone::of(Some(tz)), chrono::Utc::now()));
+        if picked.is_none() {
+            let projects = workspace.list_projects().unwrap_or_default();
+            context.projects = projects
+                .into_iter()
+                .filter(|p| !p.archived)
+                .map(|p| (p.slug, p.title))
+                .collect();
+        }
+    }
+    if let Some(slug) = picked
         && let Ok(project) = workspace.get_project(slug)
     {
         context.project = Some(project.title);
@@ -133,6 +155,11 @@ fn context(state: &AppState, recording: &Recording) -> Context {
             .collect();
     }
     context
+}
+
+/// A field of the task as said: null when it wasn't.
+fn said(field: Option<&String>) -> Option<&String> {
+    field.filter(|f| !f.is_empty())
 }
 
 /// The recording as text: `{ transcript, transcribed, text }`. `transcript`
@@ -183,11 +210,12 @@ async fn dictate(State(state): State<AppState>, Json(recording): Json<Recording>
         && !transcript.is_empty()
         && recording.writing == Writing::Task
     {
-        let short = dictation::as_title(&transcript).filter(|_| transcribed);
+        let short = dictation::as_title(&transcript)
+            .filter(|_| transcribed && !context.says_more(&transcript));
         if let Some(title) = short {
             task = Some(dictation::Said {
                 title,
-                description: String::new(),
+                ..dictation::Said::default()
             });
         } else {
             match dictation::split(key, &transcript, &context).await {
@@ -237,6 +265,10 @@ async fn dictate(State(state): State<AppState>, Json(recording): Json<Recording>
         "text": text,
         "title": task.as_ref().map(|t| &t.title),
         "description": task.as_ref().map(|t| &t.description),
+        "due": said(task.as_ref().map(|t| &t.due)),
+        "at": said(task.as_ref().map(|t| &t.at)),
+        "recurrence": said(task.as_ref().map(|t| &t.recurrence)),
+        "project": said(task.as_ref().map(|t| &t.project)),
     }))
     .into_response()
 }
