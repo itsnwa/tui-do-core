@@ -248,6 +248,7 @@ async fn serve() -> anyhow::Result<()> {
     let relays = Arc::new(Relays::new(registry.sender()));
     let device = config.get();
     tracing::info!(id = %device.device_id, name = %device.device_name, "device");
+    let tailscale = Arc::new(net::TailscaleStatus::new(registry.sender()));
     let state = api::AppState {
         registry: Arc::clone(&registry),
         config: Arc::clone(&config),
@@ -282,6 +283,7 @@ async fn serve() -> anyhow::Result<()> {
         app_tokens: Arc::default(),
         watching: Arc::default(),
         activity: Arc::default(),
+        tailscale: Arc::clone(&tailscale),
     };
     // Devices are linked and given the workspace as their relays come online
     api::spawn_background(state.clone());
@@ -293,7 +295,12 @@ async fn serve() -> anyhow::Result<()> {
         relays.start(device);
     }
     let app = api::router(state);
-    tokio::spawn(net::serve_tailscale(app.clone(), local.port(), config));
+    tokio::spawn(net::serve_tailscale(
+        app.clone(),
+        local.port(),
+        config,
+        tailscale,
+    ));
     let stopping = async move {
         shutdown_signal().await;
         tracing::info!("shutting down; sessions keep running");
