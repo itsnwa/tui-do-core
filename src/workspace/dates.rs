@@ -55,6 +55,16 @@ impl Recurrence {
         })
     }
 
+    /// Whether it can start on `date`: any date, except for the ones that go
+    /// by the day of the week.
+    pub fn falls_on(self, date: &str) -> bool {
+        let Some((y, m, d)) = parse_ymd(date) else {
+            return false;
+        };
+        self.on_weekday(weekday_of(js::days_from_civil(y, m, d)))
+            .unwrap_or(true)
+    }
+
     /// Whether it repeats on `weekday` (0 is Monday), for the ones that go by
     /// the day of the week.
     fn on_weekday(self, weekday: u32) -> Option<bool> {

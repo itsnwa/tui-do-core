@@ -86,7 +86,7 @@ impl Zone {
     }
 
     /// The slot an instant falls on.
-    fn slot(self, t: DateTime<Utc>) -> Slot {
+    pub fn slot(self, t: DateTime<Utc>) -> Slot {
         let local = match self {
             Self::Named(tz) => t.with_timezone(&tz).naive_local(),
             Self::Local => t.with_timezone(&Local).naive_local(),
