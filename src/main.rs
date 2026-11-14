@@ -288,6 +288,8 @@ async fn serve() -> anyhow::Result<()> {
     // Devices are linked and given the workspace as their relays come online
     api::spawn_background(state.clone());
     api::spawn_notifier(state.clone());
+    // Before the board: it hears every task's first activity
+    api::spawn_pusher(state.clone());
     // Before the relays start: each machine's first event lists its sessions
     api::spawn_board(state.clone());
     api::spawn_scheduler(state.clone());

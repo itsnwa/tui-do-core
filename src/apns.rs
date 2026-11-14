@@ -1,5 +1,5 @@
 //! Apple push notifications, sent from the home core with the app's APNs
-//! auth key.
+//! auth key: alerts, widget reloads and Live Activity updates.
 //!
 //! The key (a `.p8` file from the Apple Developer portal), its key id and
 //! the team id are kept in `apns.json` in the home core's folder, readable
@@ -73,6 +73,41 @@ impl Target {
             "https://api.push.apple.com"
         }
     }
+}
+
+/// What a push is for. Each has its own push type, and its own topic after
+/// the app's bundle id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// A notification someone sees.
+    Alert,
+    /// Have the app's widgets load again.
+    Widgets,
+    /// Start, update or end a Live Activity.
+    LiveActivity,
+}
+
+impl Kind {
+    fn push_type(self) -> &'static str {
+        match self {
+            Kind::Alert => "alert",
+            Kind::Widgets => "widgets",
+            Kind::LiveActivity => "liveactivity",
+        }
+    }
+
+    fn topic(self, app: &str) -> String {
+        match self {
+            Kind::Alert => app.to_string(),
+            Kind::Widgets => format!("{app}.push-type.widgets"),
+            Kind::LiveActivity => format!("{app}.push-type.liveactivity"),
+        }
+    }
+}
+
+/// What has a client's widgets load again.
+pub fn widgets_payload() -> serde_json::Value {
+    json!({ "aps": { "content-changed": true } })
 }
 
 pub struct Alert {
@@ -231,6 +266,18 @@ pub enum Sent {
 
 /// Send one notification.
 pub async fn send(key: &Key, target: &Target, alert: &Alert) -> anyhow::Result<Sent> {
+    push(key, target, Kind::Alert, &payload(alert), Some(10)).await
+}
+
+/// Send one push of any kind: `payload` as APNs takes it, at `priority` 10
+/// (now) or 5 (when it suits the device), or APNs's own default.
+pub async fn push(
+    key: &Key,
+    target: &Target,
+    kind: Kind,
+    payload: &serde_json::Value,
+    priority: Option<u8>,
+) -> anyhow::Result<Sent> {
     target.validate()?;
     let token = provider_token(key)?;
     // Passed on stdin, so the token doesn't show in the process list
@@ -249,12 +296,17 @@ pub async fn send(key: &Key, target: &Target, alert: &Alert) -> anyhow::Result<S
         ),
         format!(
             "header = {}",
-            quoted(&format!("apns-topic: {}", target.topic))
+            quoted(&format!("apns-topic: {}", kind.topic(&target.topic)))
         ),
-        format!("header = {}", quoted("apns-push-type: alert")),
-        format!("header = {}", quoted("apns-priority: 10")),
-        format!("data = {}", quoted(&payload(alert).to_string())),
+        format!(
+            "header = {}",
+            quoted(&format!("apns-push-type: {}", kind.push_type()))
+        ),
     ]
+    .into_iter()
+    .chain(priority.map(|p| format!("header = {}", quoted(&format!("apns-priority: {p}")))))
+    .chain([format!("data = {}", quoted(&payload.to_string()))])
+    .collect::<Vec<_>>()
     .join("\n");
     let mut child = tokio::process::Command::new("curl")
         .args([
@@ -290,7 +342,10 @@ pub async fn send(key: &Key, target: &Target, alert: &Alert) -> anyhow::Result<S
                 .ok()
                 .and_then(|v| v["reason"].as_str().map(str::to_string))
                 .unwrap_or_else(|| body.trim().to_string());
-            bail!("APNs refused the notification ({status}): {reason}")
+            bail!(
+                "APNs refused the {} push ({status}): {reason}",
+                kind.push_type()
+            )
         }
     }
 }
@@ -413,6 +468,24 @@ mod tests {
                 },
                 "link": "tuido://session/a/b",
             })
+        );
+    }
+
+    #[test]
+    fn each_kind_should_have_its_own_topic() {
+        assert_eq!(Kind::Alert.topic("com.itsnwa.tuido"), "com.itsnwa.tuido");
+        assert_eq!(
+            Kind::Widgets.topic("com.itsnwa.tuido"),
+            "com.itsnwa.tuido.push-type.widgets"
+        );
+        assert_eq!(
+            Kind::LiveActivity.topic("com.itsnwa.tuido"),
+            "com.itsnwa.tuido.push-type.liveactivity"
+        );
+        assert_eq!(Kind::LiveActivity.push_type(), "liveactivity");
+        assert_eq!(
+            widgets_payload(),
+            json!({ "aps": { "content-changed": true } })
         );
     }
 
