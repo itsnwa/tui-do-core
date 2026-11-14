@@ -5,6 +5,7 @@
 //! `clients.json` in the core's folder keeps a SHA-256 hash of each token,
 //! never the token itself; the token is only shown once, when it's made.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -39,6 +40,32 @@ struct Client {
     /// Where its notifications go, while they're on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     push: Option<crate::apns::Target>,
+    /// Where the pushes that have its widgets load again go.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    widgets: Option<crate::apns::Target>,
+    /// Its agents' Live Activities, while they're on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    live: Option<LiveTokens>,
+}
+
+/// A client's Live Activities: the token that starts one, and the token of
+/// each one running, by the session it follows (`<device>/<session>`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveTokens {
+    pub start: crate::apns::Target,
+    #[serde(default)]
+    pub activities: BTreeMap<String, String>,
+}
+
+impl LiveTokens {
+    /// Where an activity's pushes go: its token, on the start token's server.
+    pub fn target(&self, token: &str) -> crate::apns::Target {
+        crate::apns::Target {
+            device_token: token.to_string(),
+            ..self.start.clone()
+        }
+    }
 }
 
 /// A client as listed: everything but the token hash.
@@ -52,6 +79,10 @@ pub struct ClientInfo {
     pub manager: bool,
     /// Whether it gets notifications when an agent waits.
     pub notifications: bool,
+    /// Whether its widgets are told to load again.
+    pub widgets: bool,
+    /// Whether it gets agents' Live Activities.
+    pub live_activities: bool,
 }
 
 impl From<&Client> for ClientInfo {
@@ -63,6 +94,8 @@ impl From<&Client> for ClientInfo {
             last_seen_at: c.last_seen_at.clone(),
             manager: c.manager,
             notifications: c.push.is_some(),
+            widgets: c.widgets.is_some(),
+            live_activities: c.live.is_some(),
         }
     }
 }
@@ -193,6 +226,8 @@ impl Clients {
             last_seen_at: None,
             manager,
             push: None,
+            widgets: None,
+            live: None,
         };
         let mut record = self.lock();
         let mut next = record.clone();
@@ -290,21 +325,122 @@ impl Clients {
             .and_then(|c| c.push.clone())
     }
 
-    /// Turn a client's notifications on (to that device) or off. An error if
+    /// Change a client and keep it, if `change` says it changed. An error if
     /// there's no such client.
-    pub fn set_push(&self, id: &str, target: Option<crate::apns::Target>) -> anyhow::Result<()> {
+    fn change(&self, id: &str, change: impl FnOnce(&mut Client) -> bool) -> anyhow::Result<()> {
         let mut record = self.lock();
         let mut next = record.clone();
         let Some(client) = next.clients.iter_mut().find(|c| c.id == id) else {
             bail!("no such client");
         };
-        if client.push == target {
+        if !change(client) {
             return Ok(());
         }
-        client.push = target;
         self.save(&next)?;
         *record = next;
         Ok(())
+    }
+
+    /// Turn a client's notifications on (to that device) or off. An error if
+    /// there's no such client.
+    pub fn set_push(&self, id: &str, target: Option<crate::apns::Target>) -> anyhow::Result<()> {
+        self.change(id, |client| {
+            client.push != target && {
+                client.push = target;
+                true
+            }
+        })
+    }
+
+    /// Whether the client's widgets are told to load again.
+    pub fn has_widgets(&self, id: &str) -> bool {
+        self.lock()
+            .clients
+            .iter()
+            .any(|c| c.id == id && c.widgets.is_some())
+    }
+
+    /// Where a client's widget pushes go, or none.
+    pub fn set_widgets(&self, id: &str, target: Option<crate::apns::Target>) -> anyhow::Result<()> {
+        self.change(id, |client| {
+            client.widgets != target && {
+                client.widgets = target;
+                true
+            }
+        })
+    }
+
+    /// Every client's widgets.
+    pub fn widget_targets(&self) -> Vec<crate::apns::Target> {
+        self.lock()
+            .clients
+            .iter()
+            .filter_map(|c| c.widgets.clone())
+            .collect()
+    }
+
+    /// A client's Live Activities, while they're on.
+    pub fn live(&self, id: &str) -> Option<LiveTokens> {
+        self.lock()
+            .clients
+            .iter()
+            .find(|c| c.id == id)
+            .and_then(|c| c.live.clone())
+    }
+
+    /// Turn a client's Live Activities on with the token that starts them
+    /// (keeping the running ones' tokens), or off.
+    pub fn set_live(&self, id: &str, start: Option<crate::apns::Target>) -> anyhow::Result<()> {
+        self.change(id, |client| match (start, &mut client.live) {
+            (None, None) => false,
+            (None, live) => {
+                *live = None;
+                true
+            }
+            (Some(start), Some(live)) => {
+                live.start != start && {
+                    live.start = start;
+                    true
+                }
+            }
+            (Some(start), live) => {
+                *live = Some(LiveTokens {
+                    start,
+                    activities: BTreeMap::new(),
+                });
+                true
+            }
+        })
+    }
+
+    /// Keep (or forget) the token of a client's Live Activity for a session
+    /// (`<device>/<session>`). Nothing while its Live Activities are off.
+    pub fn set_activity_token(
+        &self,
+        id: &str,
+        key: &str,
+        token: Option<String>,
+    ) -> anyhow::Result<()> {
+        self.change(id, |client| {
+            let Some(live) = &mut client.live else {
+                return false;
+            };
+            match token {
+                Some(token) => {
+                    live.activities.insert(key.to_string(), token.clone()) != Some(token)
+                }
+                None => live.activities.remove(key).is_some(),
+            }
+        })
+    }
+
+    /// Each client with Live Activities on, and its tokens.
+    pub fn live_clients(&self) -> Vec<(String, LiveTokens)> {
+        self.lock()
+            .clients
+            .iter()
+            .filter_map(|c| Some((c.id.clone(), c.live.clone()?)))
+            .collect()
     }
 
     /// Each client with notifications on, and where they go.
@@ -316,19 +452,37 @@ impl Clients {
             .collect()
     }
 
-    /// Stop sending to a device token APNs no longer takes.
+    /// Stop sending to a token APNs no longer takes: a device's (its
+    /// notifications), its widgets', or its Live Activities' (one that starts
+    /// them turns them off).
     pub fn forget_device_token(&self, token: &str) -> anyhow::Result<()> {
         let mut record = self.lock();
         let mut next = record.clone();
         let mut changed = false;
+        let gone = |target: &Option<crate::apns::Target>| {
+            target.as_ref().is_some_and(|t| t.device_token == token)
+        };
         for client in &mut next.clients {
-            if client
-                .push
-                .as_ref()
-                .is_some_and(|p| p.device_token == token)
-            {
+            if gone(&client.push) {
                 client.push = None;
                 changed = true;
+            }
+            if gone(&client.widgets) {
+                client.widgets = None;
+                changed = true;
+            }
+            if client
+                .live
+                .as_ref()
+                .is_some_and(|l| l.start.device_token == token)
+            {
+                client.live = None;
+                changed = true;
+            }
+            if let Some(live) = &mut client.live {
+                let before = live.activities.len();
+                live.activities.retain(|_, t| t != token);
+                changed |= live.activities.len() != before;
             }
         }
         if changed {
@@ -498,6 +652,47 @@ mod tests {
         clients.revoke(&phone.id).expect("revokes");
         assert!(clients.push_targets().is_empty());
         assert!(clients.set_push(&phone.id, Some(target)).is_err());
+    }
+
+    #[test]
+    fn widgets_and_live_activities_should_keep_their_tokens_until_turned_off() {
+        let clients = clients();
+        let (phone, _) = clients.create("iPhone").expect("creates");
+        let target = |token: &str| crate::apns::Target {
+            device_token: token.into(),
+            environment: "development".into(),
+            topic: "com.itsnwa.tuido".into(),
+        };
+        clients
+            .set_widgets(&phone.id, Some(target("aa")))
+            .expect("on");
+        assert!(clients.has_widgets(&phone.id));
+        assert_eq!(clients.widget_targets(), vec![target("aa")]);
+
+        // An activity's token needs Live Activities on
+        clients
+            .set_activity_token(&phone.id, "cube/task", Some("cc".into()))
+            .expect("ignored");
+        assert_eq!(clients.live(&phone.id), None);
+        clients.set_live(&phone.id, Some(target("bb"))).expect("on");
+        clients
+            .set_activity_token(&phone.id, "cube/task", Some("cc".into()))
+            .expect("kept");
+        let live = clients.live(&phone.id).expect("on");
+        assert_eq!(live.activities["cube/task"], "cc");
+        assert_eq!(live.target("cc"), target("cc"));
+        // A new start token keeps the running ones
+        clients.set_live(&phone.id, Some(target("dd"))).expect("on");
+        assert_eq!(clients.live_clients()[0].1.activities.len(), 1);
+        assert!(clients.list()[0].live_activities && clients.list()[0].widgets);
+
+        // Tokens APNs no longer takes are forgotten
+        clients.forget_device_token("cc").expect("forgets");
+        assert!(clients.live(&phone.id).expect("on").activities.is_empty());
+        clients.forget_device_token("aa").expect("forgets");
+        assert!(clients.widget_targets().is_empty());
+        clients.forget_device_token("dd").expect("forgets");
+        assert!(clients.live_clients().is_empty());
     }
 
     #[tokio::test]

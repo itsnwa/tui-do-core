@@ -6,7 +6,7 @@ Sessions run inside the core, not inside a client, so they keep running when a c
 
 The core runs on every machine you work from. One of them, the home core, holds the task workspace; the others run tasks for it, reached over [Tailscale](https://tailscale.com).
 
-> Status: early, and the API (`/v0`) may still change. Sessions, the task workspace, the MCP server, machines, code handoff, self-update, paired clients and phone notifications (APNs) work.
+> Status: early, and the API (`/v0`) may still change. Sessions, the task workspace, the MCP server, machines, code handoff, self-update, paired clients and phone notifications, widget pushes and Live Activities (APNs) work.
 
 ## Build
 

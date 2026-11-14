@@ -350,11 +350,38 @@ The home core can tell a paired client when an agent on any machine waits for in
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/notifications` | | `{ enabled, available }` for the calling client. `available`: the home has an APNs key. Only a paired client's token can use these. |
+| `GET` | `/v0/notifications` | | `{ enabled, available, widgets, liveActivities }` for the calling client (the last two from cores 0.3.33). `available`: the home has an APNs key. Only a paired client's token can use these. |
 | `PUT` | `/v0/notifications` | `{ enabled, deviceToken?, environment?, topic? }` | the same. Turning them on needs the APNs device token (hex), `environment` (`development` for builds signed for development, else `production`) and `topic` (the app's bundle id). Sending them again replaces the token. |
 | `POST` | `/v0/notifications/test` | | 204 once a test notification is sent; 409 without an APNs key; 502 with APNs's reason if it refused. |
 
 A session is notified when its [status](#status) starts calling for someone and still does 15 seconds later, once each time: `blocked`, `failed`, or `ready` because it `finished` (or went `quiet`). Not when you interrupted it, and not when it left agents of its own running. It's skipped once someone types in it (`sessionTyped`: they're answering), and for a client that has it open (`/attach`, directly or through `/v0/devices/{id}/…`). The notification's title is the task's title (or the session id) and the machine, its body the status's `detail`. A device on a core before 0.3.18 is notified for `waiting`, as before. Its payload has `link`: `tuido://session/<device id>/<session id>`. If APNs answers that a device token is no longer registered, the client's notifications turn off.
+
+### Widgets and Live Activities
+
+The home core also follows agents with pushes, to the clients that gave it their tokens (cores 0.3.33 and later). Both are budgeted by iOS and come on top of what the app does itself.
+
+- **Widgets.** When what a task shows changes in a way widgets show (an agent starts, stops, asks something or finishes its turn, or a task under way is done or removed; not a task nobody started), each client's widgets are told to load again: `apns-push-type: widgets`, topic `<bundle id>.push-type.widgets`, `{ "aps": { "content-changed": true } }`. A burst of changes settles for 2 seconds first, and a client's widgets are told at most every 30 seconds.
+- **Live Activities.** Each agent at work (its task shows `working`, `needs-you`, `error` or `ready`) has a Live Activity on the clients that turned them on. The home starts it with the client's push-to-start token, updates it with the activity's own token when the word or its detail changes, and ends it, dismissed at once, when the task shows anything else or the session moves to another machine. Topic `<bundle id>.push-type.liveactivity`; priority 10, or 5 for an update to `working`. A client that has a token for the session's activity already (after the core restarted, say) gets an update instead of a second one. Turning them on starts one for each agent at work then.
+
+```json
+{ "aps": { "timestamp": 1794440939, "event": "start",
+  "content-state": { "state": "needs-you", "detail": "Allow Bash: cargo test?" },
+  "attributes-type": "AgentAttributes",
+  "attributes": { "device": "<device id>", "session": "fix-sync", "task": "26-1075", "title": "Fix the sync", "machine": "cube" },
+  "alert": { "title": "Fix the sync", "body": "needs you on cube" } } }
+```
+
+`content-state` is `{ state, detail? }`: the task's word, and the status's `detail` while it calls for someone. Updates have `event: "update"`, ends `event: "end"` and `dismissal-date`.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `PUT` | `/v0/notifications/widgets` | `{ token, environment, topic }` | the settings. `token` is the widgets' push token (hex), `topic` the app's bundle id. |
+| `DELETE` | `/v0/notifications/widgets` | | the settings |
+| `PUT` | `/v0/notifications/live-activities` | `{ enabled, startToken?, environment?, topic? }` | the settings. Turning them on needs the push-to-start token; turning them off forgets every token. |
+| `PUT` | `/v0/notifications/live-activities/{device}/{session}` | `{ token }` | 204. The token of the client's Live Activity for that session, which it gets once the activity started. What the agent shows now is pushed to it right away; if it stopped meanwhile, the activity is ended instead and the token isn't kept. 409 while Live Activities are off. |
+| `DELETE` | `/v0/notifications/live-activities/{device}/{session}` | | 204. The activity ended on the phone. |
+
+Tokens APNs answers are no longer registered are forgotten: a widget or activity token on its own, a push-to-start token along with the client's Live Activities. The tokens are kept with the client in `clients.json`, so they move with the home and go when the client is revoked.
 
 The APNs key is an auth key (`.p8`) from the Apple Developer portal with APNs enabled, from the team the app is signed by. Give it to the home core with `tui-do-core apns-key <AuthKey_KEYID.p8> <team id>`, which keeps it in `apns.json` in the core's folder (`0600`). A new home gets a copy when the home moves. The core sends with `curl` over HTTP/2.
 

@@ -17,6 +17,7 @@ pub mod holder;
 pub mod hooks;
 pub mod install;
 pub mod links;
+pub mod live;
 pub mod mcp;
 pub mod net;
 pub mod notify;
