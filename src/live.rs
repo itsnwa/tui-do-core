@@ -169,12 +169,15 @@ pub struct About {
     pub machine: String,
 }
 
-/// Start a Live Activity for an agent (sent to a push-to-start token).
+/// Start a Live Activity for an agent (sent to a push-to-start token). It
+/// asks for the activity's own token too, which the app hands back for the
+/// updates and the end: without `input-push-token`, iOS 18 gives it none.
 pub fn start_payload(agent: &Agent, about: &About, timestamp: u64) -> Value {
     json!({
         "aps": {
             "timestamp": timestamp,
             "event": "start",
+            "input-push-token": 1,
             "content-state": agent.shown.content_state(),
             "attributes-type": "AgentAttributes",
             "attributes": {
@@ -361,6 +364,7 @@ mod tests {
                 "aps": {
                     "timestamp": 1_700_000_000,
                     "event": "start",
+                    "input-push-token": 1,
                     "content-state": { "state": "needs-you", "detail": "Allow Bash?" },
                     "attributes-type": "AgentAttributes",
                     "attributes": {

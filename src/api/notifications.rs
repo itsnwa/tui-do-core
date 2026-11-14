@@ -188,7 +188,8 @@ struct LiveChange {
 }
 
 /// Turn a client's Live Activities on, with the token that starts them, or
-/// off. Turned on, the agents at work now get one too.
+/// off. Turned on, the agents at work now get one too; the app sends its
+/// token again at each launch, which changes nothing.
 async fn set_live(
     State(state): State<AppState>,
     caller: Option<Extension<Caller>>,
@@ -219,6 +220,10 @@ async fn set_live(
     } else {
         None
     };
+    let kept = state.clients.live(id).map(|live| live.start);
+    if kept == start {
+        return describe(&state, id);
+    }
     if let Err(err) = state.clients.set_live(id, start) {
         return error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{err:#}"));
     }
@@ -426,8 +431,11 @@ async fn push_widgets(state: AppState) {
     };
     let payload = apns::widgets_payload();
     for target in targets {
-        if let Err(err) = forward(&state, &key, &target, Kind::Widgets, &payload, None).await {
-            tracing::warn!(error = %format!("{err:#}"), "couldn't tell widgets to load");
+        match forward(&state, &key, &target, Kind::Widgets, &payload, None).await {
+            Ok(()) => tracing::info!("told a client's widgets to load"),
+            Err(err) => {
+                tracing::warn!(error = %format!("{err:#}"), "couldn't tell widgets to load")
+            }
         }
     }
 }
