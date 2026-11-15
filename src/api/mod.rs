@@ -14,6 +14,7 @@ mod agent;
 mod clients;
 mod dictation;
 mod fleet;
+mod folders;
 mod handoff;
 mod home;
 pub(crate) mod mcp;
@@ -88,19 +89,6 @@ pub struct AppState {
     pub tailscale: Arc<crate::net::TailscaleStatus>,
 }
 
-impl AppState {
-    /// The machine the projects' folders are on.
-    pub(crate) fn code_machine(&self) -> crate::handoff::CodeMachine {
-        use crate::handoff::CodeMachine;
-        let own = self.config.get().device_id;
-        let id = self.fleet.code_device(&own);
-        match self.fleet.device(&id) {
-            Some(device) if id != own => CodeMachine::Device(device),
-            _ => CodeMachine::Here(own),
-        }
-    }
-}
-
 pub fn router(state: AppState) -> Router {
     let authed = Router::new()
         .route("/v0/sessions", get(list_sessions).post(spawn_session))
@@ -121,6 +109,7 @@ pub fn router(state: AppState) -> Router {
         .merge(clients::routes())
         .merge(dictation::routes())
         .merge(fleet::routes())
+        .merge(folders::routes())
         .merge(home::routes())
         .merge(handoff::routes())
         .merge(update::routes())

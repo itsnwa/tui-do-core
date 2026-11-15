@@ -220,7 +220,7 @@ A task can be due at a time of day and start its agent by itself when it comes d
 ```
 
 - `at`: the time of day it's due, `HH:MM`, in `tz`, an IANA time zone (the home machine's when it has none). Clients set `tz` to their own along with `at`.
-- `autostart`: the home core starts a coding agent on the task at each occurrence (`due` at `at`, or midnight without one), with these choices of [`POST /v0/tasks/{ref}/agent`](#coding-agents): `agent`, `model`, `effort`, `permissionMode` and `yolo`, on `device` (absent: the code machine). The agent is asked to `Start working on task <id>. This is its scheduled run for 2026-11-16 09:00`. With `completeOnItsOwn`, it's also told to complete the task with a summary itself instead of asking you first.
+- `autostart`: the home core starts a coding agent on the task at each occurrence (`due` at `at`, or midnight without one), with these choices of [`POST /v0/tasks/{ref}/agent`](#coding-agents): `agent`, `model`, `effort`, `permissionMode` and `yolo`, on `device` (absent: the project's machine). The agent is asked to `Start working on task <id>. This is its scheduled run for 2026-11-16 09:00`. With `completeOnItsOwn`, it's also told to complete the task with a summary itself instead of asking you first.
 - Occurrences that have already passed when a schedule is set or changed (`due`, `at`, `tz`, `recurrence` or turning `autostart` on) don't start a run.
 - A run doesn't start while the previous one is still open (the task is `in-progress`, or its agent is working or needs you). That occurrence is skipped: `skipped` counts it, until the task is next completed.
 - An idle session left from a finished run (its agent's turn is over, or it has exited) is closed before the next run starts.
@@ -278,14 +278,14 @@ These take a short ID or slug and answer like the TUI-DO MCP tools (business err
 
 ## Projects
 
-`{ slug, title, muted, archived, created, directory, remote }`. `directory` is on the code machine (`codeDevice` in [`/v0/fleet`](#fleet); the home core unless the home moved away from it). `remote` is a git URL the code can be fetched from (e.g. `https://github.com/owner/repo`); it's learned from the folder's `origin`, and a project can have only a remote. A task runs on another machine with a copy of it (see [Running a task on another machine](#running-a-task-on-another-machine)).
+`{ slug, title, muted, archived, created, machine, directory, remote }`. `directory` is on `machine`, a fleet device's id or the home core's own (cores 0.3.35 and later). When `machine` is `""`, it's on the code machine (`codeDevice` in [`/v0/fleet`](#fleet); the home core unless the home moved away from it). A client picks the folder on another machine with [`/v0/devices/{id}/fs/dirs`](#folders-on-a-machine). `remote` is a git URL the code can be fetched from (e.g. `https://github.com/owner/repo`); it's learned from the folder's `origin`, and a project can have only a remote. A task runs on another machine with a copy of it (see [Running a task on another machine](#running-a-task-on-another-machine)).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | `GET` | `/v0/projects` | | `[Project]` |
-| `POST` | `/v0/projects` | `{ title, directory?, remote? }` | Project |
+| `POST` | `/v0/projects` | `{ title, machine?, directory?, remote? }` | Project |
 | `GET` | `/v0/projects/{slug}` | | Project + `content` |
-| `PATCH` | `/v0/projects/{slug}` | any of `{ title, muted, archived, directory, remote }` (`""` clears `remote`) | Project. A new title renames the project and moves its tasks to the new slug. |
+| `PATCH` | `/v0/projects/{slug}` | any of `{ title, muted, archived, machine, directory, remote }` (`""` clears `machine` and `remote`) | Project. A new title renames the project and moves its tasks to the new slug. |
 | `DELETE` | `/v0/projects/{slug}` | | `{ deleted }`. Also deletes the project's tasks, with their plans and attachments. |
 
 ## Plans
@@ -408,7 +408,7 @@ The key is kept in `dictation.json` in the core's folder (`0600`); a new home ge
 
 `POST /v0/tasks/{ref}/agent` starts a coding agent on a task the way the Mac app does, so a client only picks the options:
 
-- `device`: the machine to run on: a fleet device or the home core's own id (absent: the code machine). On the code machine the task works in the project's folder; on any other machine the task's code is handed over first, as with [`/handoff`](#running-a-task-on-another-machine) (`includeUncommitted` takes uncommitted changes along, `fromRemote` fetches the project's remote instead), and the task's `device` is set. A project with only a remote goes through a handoff on the code machine too.
+- `device`: the machine to run on: a fleet device or the home core's own id (absent: the project's machine). On the project's machine the task works in the project's folder; on any other machine the task's code is handed over first, as with [`/handoff`](#running-a-task-on-another-machine) (`includeUncommitted` takes uncommitted changes along, `fromRemote` fetches the project's remote instead). The task's `device` is set to the machine, unless it works in place on the fleet's `codeDevice`, so a task without a `device` runs there. A project with only a remote goes through a handoff on the project's machine too.
 - `agent`: `claude` (default) or `codex`. `model` is Claude's `--model` value (`default` adds no flag) or a Codex model slug; `effort` is an effort level from `/v0/agents`; `permissionMode` is Claude's; `yolo` skips permission prompts (and Codex's sandbox).
 - `worktree` (Claude only): a name for a new git worktree (`--worktree`). `worktreePath`: a worktree that already exists, which Claude starts in instead. Cores before 0.3.3 ignore both.
 - The session is the task's slug, a login shell in the project's folder (or the task's folder on the machine) with `agent` set. Once the shell prints its first output (or after 5 s), the core types the agent's command with the prompt `Start working on task <id>`.
@@ -421,11 +421,19 @@ A home core can know other machines' cores (devices) and forward requests to the
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/fleet` | | `{ generation, home: { id, name, platform, version }, codeDevice, devices: [{ id, name, address, platform, addedAt, online, version }] }` (reachability is checked live). `codeDevice` is the machine the projects' folders are on. |
+| `GET` | `/v0/fleet` | | `{ generation, home: { id, name, platform, version }, codeDevice, devices: [{ id, name, address, platform, addedAt, online, version }] }` (reachability is checked live). `codeDevice` is the machine the projects' folders are on, unless a project names its own `machine`. |
 | `POST` | `/v0/fleet/devices` | `{ address, token }` (e.g. `http://100.79.154.110:47821` and that core's token) | the device; it's asked who it is with the token first, so a wrong token or address is rejected. Adding a known device updates it. |
-| `DELETE` | `/v0/fleet/devices/{id}` | | 204. The code machine can't be removed (`409`). |
+| `DELETE` | `/v0/fleet/devices/{id}` | | 204. The code machine, and a machine a project's folder is on, can't be removed (`409`, naming the projects). |
 | `GET` | `/v0/fleet/sessions` | | sessions on this core and every reachable device, each with a `device` id. The devices' sessions are the ones their events told the home about, so nothing is asked and the answer is as current as `/v0/events` (cores before 0.3.19 asked each device, waiting up to 5 s). |
 | any | `/v0/devices/{id}/…` | | forwarded to that device's `/v0/…` with its token, including WebSockets (`/v0/devices/{id}/sessions/{sid}/attach`, `/v0/devices/{id}/events`). `{id}` may also be the home core's own id. `502` if the device isn't reachable. |
+
+### Folders on a machine
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/fs/dirs?path=` | | `{ path, parent, entries: [{ name, path, git }], truncated }`: the folders in `path` on this machine (default and `~`: the home folder), hidden ones left out, sorted by name. `git` says the folder is a git repo. Paths in the home folder come back as `~/…`; `parent` is `null` at `/`. At most 2,000 entries (`truncated`). `404` when there's no such folder. |
+
+Ask another machine through `/v0/devices/{id}/fs/dirs?path=`, to pick a project's folder there (cores 0.3.35 and later).
 
 ## Installing on another machine
 
@@ -496,18 +504,18 @@ The home keeps a copy of the workspace on every device: when a device comes onli
 
 ## Running a task on another machine
 
-Starting a task on a fleet device takes the project's code along; completing the task brings the work back as a branch. Only git projects can move. The code comes from the code machine (`codeDevice`); when that's not the home core, the home core asks it for the snapshot and has it land the returned branch. Or it comes from the project's `remote`: when the project has no folder, when the code machine doesn't answer, or with `fromRemote`.
+Starting a task on a fleet device takes the project's code along; completing the task brings the work back as a branch. Only git projects can move. The code comes from the project's machine (its `machine`, else `codeDevice`); when that's not the home core, the home core asks it for the snapshot and has it land the returned branch. Or it comes from the project's `remote`: when the project has no folder, when its machine doesn't answer or has left the fleet, or with `fromRemote`.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v0/projects/{slug}/git` | | `{ isRepo, uncommitted, remote, fromRemote? }`: whether the project folder is a git repo, how many files have uncommitted changes, and its `origin` (which the project takes as its `remote` if it has none). When the project has no folder or the code machine doesn't answer, it's what the project knows, with `fromRemote: true`: other machines would fetch the remote. |
-| `POST` | `/v0/tasks/{slug}/handoff` | `{ device, includeUncommitted?, fromRemote? }` | `{ device, path, branch }`: the task's working folder on that device (the home core's own id works too). On the code machine itself that's the project's folder, with an empty `branch`. Otherwise the code machine snapshots the project's repo (unpushed commits always; uncommitted and untracked changes only with `includeUncommitted`; the checkout, index and branch are left alone), sends only the commits the device lacks as a `git bundle`, and the device checks it out in `~/.tui-do/work/<project>/<task>` on branch `tui-do/<task id>`, with uncommitted work still uncommitted. If the task already has a folder there, it's kept. |
+| `GET` | `/v0/projects/{slug}/git` | | `{ isRepo, uncommitted, remote, fromRemote? }`: whether the project folder is a git repo, how many files have uncommitted changes, and its `origin` (which the project takes as its `remote` if it has none). When the project has no folder or its machine doesn't answer, it's what the project knows, with `fromRemote: true`: other machines would fetch the remote. |
+| `POST` | `/v0/tasks/{slug}/handoff` | `{ device, includeUncommitted?, fromRemote? }` | `{ device, path, branch }`: the task's working folder on that device (the home core's own id works too). On the project's machine itself that's the project's folder, with an empty `branch`. Otherwise the project's machine snapshots the project's repo (unpushed commits always; uncommitted and untracked changes only with `includeUncommitted`; the checkout, index and branch are left alone), sends only the commits the device lacks as a `git bundle`, and the device checks it out in `~/.tui-do/work/<project>/<task>` on branch `tui-do/<task id>`, with uncommitted work still uncommitted. If the task already has a folder there, it's kept. |
 
-Completing the task (in the app, through the API or from an MCP tool) makes the device commit what's left and send the branch back; the code machine fetches it into the project as `tui-do/<task id>` (your checkout is never touched). Uncommitted changes that came along and weren't touched there are left out, since they're still in your checkout. The device's folder, branch and the task's refs are removed; its cache of the project keeps only the committed history (`refs/tui-do/known`), so the next handoff sends just what's new. Progress goes out on `/v0/events` as `{ "type": "handoff", "task", "status": "starting" | "started" | "returned" | "failed", "branch", "message" }`.
+Completing the task (in the app, through the API or from an MCP tool) makes the device commit what's left and send the branch back; the project's machine fetches it into the project as `tui-do/<task id>` (your checkout is never touched). Uncommitted changes that came along and weren't touched there are left out, since they're still in your checkout. The device's folder, branch and the task's refs are removed; its cache of the project keeps only the committed history (`refs/tui-do/known`), so the next handoff sends just what's new. Progress goes out on `/v0/events` as `{ "type": "handoff", "task", "status": "starting" | "started" | "returned" | "failed", "branch", "message" }`.
 
 ### From the remote
 
-The device fetches the remote's default branch into its cache and checks it out on `tui-do/<task id>`, as above. Unpushed commits and uncommitted changes on the code machine aren't included. The device needs access to the remote: for GitHub, `gh auth login` (with `gh auth setup-git`) or an ssh key; an ssh URL that fails is tried again over https. Completing the task commits what's left and pushes the branch to the remote; for GitHub, the home core then opens a pull request into the branch it started from, with the task's title and its completion summary, and keeps its URL as the task's `pr`. The handoff event's `message` says where the work went.
+The device fetches the remote's default branch into its cache and checks it out on `tui-do/<task id>`, as above. Unpushed commits and uncommitted changes on the project's machine aren't included. The device needs access to the remote: for GitHub, `gh auth login` (with `gh auth setup-git`) or an ssh key; an ssh URL that fails is tried again over https. Completing the task commits what's left and pushes the branch to the remote; for GitHub, the home core then opens a pull request into the branch it started from, with the task's title and its completion summary, and keeps its URL as the task's `pr`. The handoff event's `message` says where the work went.
 
 ### Pull requests
 
@@ -518,7 +526,7 @@ Through `gh` on the home core, which needs to be logged in (`gh auth login`).
 | `GET` | `/v0/tasks/{slug}/pr` | | `{ url, number, title, state, draft, mergeable, checks }`: `state` is `OPEN`, `MERGED` or `CLOSED`; `mergeable` is `MERGEABLE`, `CONFLICTING` or `UNKNOWN`; `checks` is `passing`, `failing`, `pending` or `none` |
 | `POST` | `/v0/tasks/{slug}/pr/merge` | | The pull request, after a squash merge that deletes its branch |
 
-Device-side routes used by the home core: `GET /v0/handoff/{project}/commits`, `POST /v0/handoff/{project}/{task}` (bundle body), `POST /v0/handoff/{project}/{task}/collect`, `POST /v0/handoff/{project}/{task}/fetch` (`{ remote, branch }`; answers `{ path, commit, baseBranch }`), `POST /v0/handoff/{project}/{task}/publish?…` (`{ remote }`; answers `{ pushed }`); on the code machine, `POST /v0/handoff/{project}/{task}/snapshot` (`{ directory, known, includeUncommitted }`; the bundle as the body, the snapshot in the `x-tui-do-snapshot` header), `POST /v0/handoff/{project}/{task}/land?repo=&branch=` (bundle body) and `GET /v0/git/status?dir=`.
+Device-side routes used by the home core: `GET /v0/handoff/{project}/commits`, `POST /v0/handoff/{project}/{task}` (bundle body), `POST /v0/handoff/{project}/{task}/collect`, `POST /v0/handoff/{project}/{task}/fetch` (`{ remote, branch }`; answers `{ path, commit, baseBranch }`), `POST /v0/handoff/{project}/{task}/publish?…` (`{ remote }`; answers `{ pushed }`); on the project's machine, `POST /v0/handoff/{project}/{task}/snapshot` (`{ directory, known, includeUncommitted }`; the bundle as the body, the snapshot in the `x-tui-do-snapshot` header), `POST /v0/handoff/{project}/{task}/land?repo=&branch=` (bundle body) and `GET /v0/git/status?dir=`.
 
 ## Coding agents on a machine
 

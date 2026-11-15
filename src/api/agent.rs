@@ -17,6 +17,7 @@ use tokio::sync::broadcast::error::RecvError;
 
 use super::{AppState, error};
 use crate::fleet::Device;
+use crate::handoff::CodeMachine;
 use crate::links::SessionLink;
 use crate::session::{Event, SpawnRequest};
 use crate::workspace::Error;
@@ -308,15 +309,16 @@ pub(crate) async fn start_agent(
             .find_task(&reference)?
             .ok_or_else(|| Error::NotFound(format!("Task not found: \"{reference}\"")))?;
         let task = ws.get_task(&slug)?;
-        let directory = if task.task.project.is_empty() {
-            String::new()
+        let (machine, directory) = if task.task.project.is_empty() {
+            (String::new(), String::new())
         } else {
-            ws.get_project(&task.task.project)?.directory
+            let project = ws.get_project(&task.task.project)?;
+            (project.machine, project.directory)
         };
-        Ok::<_, Error>((task.task, directory))
+        Ok::<_, Error>((task.task, machine, directory))
     })
     .await;
-    let (task, directory) = match found {
+    let (task, machine, directory) = match found {
         Ok(Ok(found)) => found,
         Ok(Err(Error::NotFound(msg))) => return fail(StatusCode::NOT_FOUND, &msg),
         Ok(Err(err)) => return fail(StatusCode::BAD_REQUEST, &err.to_string()),
@@ -324,13 +326,19 @@ pub(crate) async fn start_agent(
     };
 
     let own_id = state.config.get().device_id;
-    let code = state.code_machine();
+    let code = state.handoffs.code_machine(&machine);
     let target_id = req
         .device
         .clone()
         .filter(|d| !d.is_empty())
         .unwrap_or_else(|| code.id().to_string());
     let Some(target) = super::fleet::target(state, &target_id) else {
+        if matches!(code, CodeMachine::Gone(_)) && target_id == code.id() {
+            return fail(
+                StatusCode::CONFLICT,
+                &format!("{}; pick a machine", crate::handoff::GONE),
+            );
+        }
         return fail(StatusCode::NOT_FOUND, "no such machine");
     };
     // Another core's sessions are reached over HTTP; this core's directly
@@ -358,7 +366,6 @@ pub(crate) async fn start_agent(
                 workspace,
                 &task.slug,
                 &target,
-                &code,
                 req.include_uncommitted,
                 req.from_remote,
             )
@@ -395,8 +402,10 @@ pub(crate) async fn start_agent(
         }
     };
 
-    // The task remembers where it runs (none: in place, on the code machine)
-    let device_id = (!in_place).then(|| target.id.clone());
+    // The task remembers where it runs; none means in place on the fleet's
+    // code machine, as clients from before per-project machines expect
+    let device_id =
+        (!in_place || target.id != state.fleet.code_device(&own_id)).then(|| target.id.clone());
     if let Some(change) = started_change(&task, device_id.as_deref()) {
         let ws = state.workspace.current();
         let slug = task.slug.clone();

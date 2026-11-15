@@ -214,7 +214,7 @@ pub struct Autostart {
     pub permission_mode: Option<String>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub yolo: bool,
-    /// The fleet machine to run on; none is the code machine.
+    /// The fleet machine to run on; none is the one with the project's folder.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
     /// The agent completes the task when it's done, instead of asking you first.

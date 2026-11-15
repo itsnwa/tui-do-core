@@ -62,7 +62,7 @@ fn autostart_schema(description: &str) -> Json {
             "model": { "type": "string", "description": "Claude's --model value, or a Codex model slug (default: the agent's)" },
             "effort": { "type": "string", "description": "Effort level, e.g. high" },
             "permission_mode": { "type": "string", "enum": SCHEDULED_PERMISSION_MODES, "description": "Claude's --permission-mode (default: default). A run that hits a permission prompt waits for the user. Modes that ask less, and skipping permission prompts, can only be set by the user in the TUI-DO app." },
-            "device": { "type": "string", "description": "Fleet machine id to run on (default: the machine with the projects' folders)" },
+            "device": { "type": "string", "description": "Fleet machine id to run on (default: the machine with the project's folder)" },
             "complete_on_its_own": { "type": "boolean", "description": "The agent completes the task when it's done instead of asking the user first. For jobs whose result is a summary or new tasks rather than code." },
         },
     })
@@ -203,6 +203,12 @@ pub fn definitions() -> Vec<Tool> {
                     false,
                 ),
                 (
+                    "machine",
+                    "string",
+                    "Fleet machine id the directory is on (default: the machine with the projects' folders)",
+                    false,
+                ),
+                (
                     "remote",
                     "string",
                     "Git remote URL the code can be fetched from (e.g. https://github.com/owner/repo)",
@@ -232,6 +238,12 @@ pub fn definitions() -> Vec<Tool> {
                     "directory",
                     "string",
                     "Absolute path to the project directory",
+                    false,
+                ),
+                (
+                    "machine",
+                    "string",
+                    "Fleet machine id the directory is on (default: the machine with the projects' folders)",
                     false,
                 ),
                 (
@@ -457,6 +469,7 @@ pub fn call(
         "create_project" => {
             let req = CreateProject {
                 title: args.req("title")?,
+                machine: args.opt("machine"),
                 directory: args.opt("directory"),
                 remote: args.opt("remote"),
             };
@@ -467,6 +480,7 @@ pub fn call(
                 title: args.opt("title"),
                 muted: args.0.get("muted").and_then(Json::as_bool),
                 archived: args.0.get("archived").and_then(Json::as_bool),
+                machine: args.opt("machine"),
                 directory: args.opt("directory"),
                 remote: args.opt("remote"),
             };

@@ -1,6 +1,6 @@
 //! Handing a task to another machine and completing it, run for real: one
-//! core is the home and the device, and (through a fleet entry that points
-//! back at itself) the code machine.
+//! core is the home and the device, and (through fleet entries that point
+//! back at itself) the code machine and a spare machine.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -65,6 +65,13 @@ impl Core {
             "devices": [{
                 "id": "code-machine",
                 "name": "Code machine",
+                "address": address,
+                "token": TOKEN,
+                "platform": "",
+                "addedAt": "",
+            }, {
+                "id": "spare",
+                "name": "Spare",
                 "address": address,
                 "token": TOKEN,
                 "platform": "",
@@ -155,6 +162,17 @@ async fn eventually(mut check: impl AsyncFnMut() -> bool) -> bool {
     false
 }
 
+/// A git repo with one commit, in the core's home folder.
+fn repo(core: &Core) -> PathBuf {
+    let dir = core.root.join("project");
+    std::fs::create_dir_all(&dir).expect("creates the project");
+    git(&dir, &["init", "--quiet", "-b", "main"]);
+    std::fs::write(dir.join("README"), "hello\n").expect("writes a file");
+    git(&dir, &["add", "README"]);
+    git(&dir, &["commit", "--quiet", "-m", "first"]);
+    dir
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Completion {
     Route,
@@ -168,12 +186,7 @@ enum Completion {
 #[tokio::test(flavor = "multi_thread")]
 async fn completing_a_handed_over_task_should_clear_it_from_the_device() {
     let core = Core::start().await;
-    let project_dir = core.root.join("project");
-    std::fs::create_dir_all(&project_dir).expect("creates the project");
-    git(&project_dir, &["init", "--quiet", "-b", "main"]);
-    std::fs::write(project_dir.join("README"), "hello\n").expect("writes a file");
-    git(&project_dir, &["add", "README"]);
-    git(&project_dir, &["commit", "--quiet", "-m", "first"]);
+    let project_dir = repo(&core);
     std::fs::write(project_dir.join("uncommitted.txt"), "draft\n").expect("writes a file");
 
     let device = core
@@ -292,4 +305,128 @@ async fn completing_a_handed_over_task_should_clear_it_from_the_device() {
         "main"
     );
     assert!(project_dir.join("uncommitted.txt").exists());
+}
+
+/// A project's folder can be on a machine of its own, not the fleet's code
+/// machine: a task there works in the folder, a task elsewhere gets a copy
+/// from it and its work lands back there, and the machine stays in the fleet
+/// while it holds the folder.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_project_on_a_machine_of_its_own_should_start_from_there() {
+    let core = Core::start().await;
+    let project_dir = repo(&core);
+    let device = core
+        .request("GET", "/v0/device", None)
+        .await
+        .expect("the device answers");
+    let own = device["id"].as_str().expect("a device id").to_string();
+    // The fleet's code machine is "code-machine"; this folder is on this core
+    let project = core
+        .call(
+            "POST",
+            "/v0/projects",
+            json!({
+                "title": "Elsewhere",
+                "directory": project_dir.to_string_lossy(),
+                "machine": own,
+            }),
+        )
+        .await;
+    assert_eq!(project["machine"], own.as_str());
+    let project = project["slug"].as_str().expect("a slug").to_string();
+    let new_task = async |title: &str| {
+        let task = core
+            .call(
+                "POST",
+                "/v0/tasks",
+                json!({ "title": title, "project": project }),
+            )
+            .await;
+        let slug = task["slug"].as_str().expect("a task slug").to_string();
+        let id = task["id"].as_str().expect("a task id").to_string();
+        (slug, id)
+    };
+
+    // On the project's machine: in the folder itself
+    let (slug, _) = new_task("In place").await;
+    let handoff = core
+        .call(
+            "POST",
+            &format!("/v0/tasks/{slug}/handoff"),
+            json!({ "device": own }),
+        )
+        .await;
+    assert_eq!(handoff["path"], project_dir.to_string_lossy().as_ref());
+    assert_eq!(handoff["branch"], "");
+
+    // On the fleet's code machine: a copy, whose work comes back here
+    let (slug, id) = new_task("Copied").await;
+    let handoff = core
+        .call(
+            "POST",
+            &format!("/v0/tasks/{slug}/handoff"),
+            json!({ "device": "code-machine" }),
+        )
+        .await;
+    let branch = format!("tui-do/{id}");
+    assert_eq!(handoff["branch"], branch.as_str());
+    let folder = PathBuf::from(handoff["path"].as_str().expect("a folder"));
+    assert_ne!(folder, project_dir);
+    std::fs::write(folder.join("work.txt"), "done\n").expect("writes a file");
+    git(&folder, &["add", "work.txt"]);
+    git(&folder, &["commit", "--quiet", "-m", "work"]);
+    core.call(
+        "POST",
+        &format!("/v0/tasks/{id}/complete"),
+        json!({ "summary": "Done" }),
+    )
+    .await;
+    assert!(
+        eventually(async || !git(&project_dir, &["branch", "--list", &branch]).is_empty()).await,
+        "the work should land in the project's folder"
+    );
+
+    // The machine with the folder stays in the fleet
+    core.call(
+        "PATCH",
+        &format!("/v0/projects/{project}"),
+        json!({ "machine": "spare" }),
+    )
+    .await;
+    let refused = core
+        .request("DELETE", "/v0/fleet/devices/spare", None)
+        .await
+        .expect_err("the removal should be refused");
+    assert!(
+        refused.contains("409") && refused.contains("Elsewhere"),
+        "{refused}"
+    );
+
+    // A machine that left the fleet: nowhere to copy from
+    core.call(
+        "PATCH",
+        &format!("/v0/projects/{project}"),
+        json!({ "machine": "gone" }),
+    )
+    .await;
+    let (slug, _) = new_task("Stranded").await;
+    let failed = core
+        .request(
+            "POST",
+            &format!("/v0/tasks/{slug}/handoff"),
+            Some(json!({ "device": own })),
+        )
+        .await
+        .expect_err("the handoff should fail");
+    assert!(failed.contains("no longer in the fleet"), "{failed}");
+
+    // Clearing it goes back to the fleet's code machine
+    let cleared = core
+        .call(
+            "PATCH",
+            &format!("/v0/projects/{project}"),
+            json!({ "machine": "" }),
+        )
+        .await;
+    assert_eq!(cleared["machine"], "");
 }

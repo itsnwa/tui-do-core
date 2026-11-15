@@ -1,6 +1,7 @@
-//! Projects: `projects/<slug>.md`, each pointing at a directory on the code
-//! machine and/or a git remote. A task runs on another machine with a copy of
-//! it, from the code machine or the remote (see handoff).
+//! Projects: `projects/<slug>.md`, each pointing at a directory on a fleet
+//! machine (its own `machine`, or the fleet's code machine) and/or a git
+//! remote. A task runs on another machine with a copy of it, from the
+//! project's machine or the remote (see handoff).
 
 use serde::{Deserialize, Serialize};
 
@@ -9,11 +10,12 @@ use super::tasks::text_or;
 use super::{Error, Result, Workspace, dates, slug};
 use crate::format::{Map, Value};
 
-const PROJECT_KEYS: [&str; 6] = [
+const PROJECT_KEYS: [&str; 7] = [
     "title",
     "muted",
     "archived",
     "created",
+    "machine",
     "directory",
     "remote",
 ];
@@ -25,6 +27,8 @@ pub struct Project {
     pub muted: bool,
     pub archived: bool,
     pub created: String,
+    /// The fleet machine `directory` is on; empty for the fleet's code machine.
+    pub machine: String,
     pub directory: String,
     /// The git remote the code can be fetched from (e.g. its GitHub URL).
     pub remote: String,
@@ -36,6 +40,7 @@ pub struct Project {
 #[serde(default)]
 pub struct CreateProject {
     pub title: String,
+    pub machine: Option<String>,
     pub directory: Option<String>,
     pub remote: Option<String>,
 }
@@ -46,6 +51,7 @@ pub struct UpdateProject {
     pub title: Option<String>,
     pub muted: Option<bool>,
     pub archived: Option<bool>,
+    pub machine: Option<String>,
     pub directory: Option<String>,
     pub remote: Option<String>,
 }
@@ -57,9 +63,23 @@ fn summarize(slug: &str, data: &Map, content: Option<String>) -> Project {
         muted: matches!(data.get("muted"), Some(Value::Bool(true))),
         archived: matches!(data.get("archived"), Some(Value::Bool(true))),
         created: text_or(data.get("created"), ""),
+        machine: text_or(data.get("machine"), ""),
         directory: text_or(data.get("directory"), ""),
         remote: text_or(data.get("remote"), ""),
         content,
+    }
+}
+
+/// Set an optional key, or remove it when `value` is blank.
+fn set_or_clear(data: &mut Map, key: &str, value: Option<&str>) {
+    match value.map(str::trim) {
+        Some("") => {
+            data.shift_remove(key);
+        }
+        Some(value) => {
+            data.insert(key.into(), value.into());
+        }
+        None => {}
     }
 }
 
@@ -104,6 +124,10 @@ impl Workspace {
         data.insert("title".into(), req.title.into());
         data.insert("muted".into(), false.into());
         data.insert("created".into(), dates::now_iso().into());
+        let machine = req.machine.unwrap_or_default();
+        if !machine.trim().is_empty() {
+            data.insert("machine".into(), machine.trim().into());
+        }
         data.insert("directory".into(), req.directory.unwrap_or_default().into());
         let remote = req.remote.unwrap_or_default();
         if !remote.trim().is_empty() {
@@ -131,19 +155,12 @@ impl Workspace {
             .archived
             .unwrap_or(matches!(data.get("archived"), Some(Value::Bool(true))));
         data.insert("archived".into(), archived.into());
+        set_or_clear(&mut data, "machine", req.machine.as_deref());
         let directory = req
             .directory
             .unwrap_or_else(|| text_or(data.get("directory"), ""));
         data.insert("directory".into(), directory.into());
-        match req.remote.as_deref().map(str::trim) {
-            Some("") => {
-                data.shift_remove("remote");
-            }
-            Some(remote) => {
-                data.insert("remote".into(), remote.into());
-            }
-            None => {}
-        }
+        set_or_clear(&mut data, "remote", req.remote.as_deref());
         let data = ordered(data);
 
         let new_slug = match req.title.as_deref().map(slug::slugify) {

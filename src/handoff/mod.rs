@@ -1,12 +1,12 @@
 //! Running a task on another machine with the project's code.
 //!
-//! The projects' folders are on one machine, the code machine (the home,
-//! unless the home moved away from it). Starting a task on another fleet
-//! device: the code machine snapshots the project's git repo (unpushed
-//! commits, plus uncommitted changes when asked; the checkout untouched) and
-//! bundles only what the device lacks, and the device checks it out in a
-//! worktree of its own (`~/.tui-do/work/<project>/<task>`) on branch
-//! `tui-do/<task id>`. Completing the task brings the work back: the device
+//! Each project's folder is on one machine, its code machine: the project's
+//! own `machine`, or the fleet's (the home, unless the home moved away from
+//! it). Starting a task on another fleet device: the code machine snapshots
+//! the project's git repo (unpushed commits, plus uncommitted changes when
+//! asked; the checkout untouched) and bundles only what the device lacks, and
+//! the device checks it out in a worktree of its own
+//! (`~/.tui-do/work/<project>/<task>`) on branch `tui-do/<task id>`. Completing the task brings the work back: the device
 //! commits what's left and bundles the branch, and the code machine fetches
 //! it into the project as that branch. The home core runs all of it; when
 //! the code machine is another core, it asks that core for the snapshot and
@@ -103,20 +103,24 @@ pub struct SnapshotRequest {
     pub include_uncommitted: bool,
 }
 
-/// Where the code is, for a handoff: this core, or another fleet device.
+/// Where a project's code is, for a handoff: this core, another fleet
+/// device, or a machine that's no longer in the fleet.
 pub enum CodeMachine {
     Here(String),
     Device(Device),
+    Gone(String),
 }
 
 impl CodeMachine {
     pub fn id(&self) -> &str {
         match self {
-            CodeMachine::Here(id) => id,
+            CodeMachine::Here(id) | CodeMachine::Gone(id) => id,
             CodeMachine::Device(device) => &device.id,
         }
     }
 }
+
+pub const GONE: &str = "the machine with the project's folder is no longer in the fleet";
 
 /// The snapshot as passed to a device (query parameters).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -218,6 +222,26 @@ impl Handoffs {
             events,
             records: core_dir.join("handoffs"),
             work,
+        }
+    }
+
+    /// The machine a project's folder is on: its own `machine`, or (when
+    /// that's empty) the fleet's code machine.
+    pub fn code_machine(&self, machine: &str) -> CodeMachine {
+        let own = &self.own.id;
+        let id = if machine.is_empty() {
+            self.fleet.code_device(own)
+        } else {
+            machine.to_string()
+        };
+        if id == *own {
+            return CodeMachine::Here(id);
+        }
+        match self.fleet.device(&id) {
+            Some(device) => CodeMachine::Device(device),
+            // The fleet's code machine is never removed; a project's can be
+            None if machine.is_empty() => CodeMachine::Here(own.clone()),
+            None => CodeMachine::Gone(id),
         }
     }
 
@@ -432,7 +456,7 @@ impl Handoffs {
 
     // --- home side ---
 
-    /// Hand a task's project from the code machine to `device` and return
+    /// Hand a task's project from its code machine to `device` and return
     /// its working folder there (and the branch). A task that's already there
     /// keeps its copy (and the work in it). On the code machine itself the
     /// task works in the project's folder, with no branch. The project comes
@@ -443,7 +467,6 @@ impl Handoffs {
         workspace: Arc<Workspace>,
         task_slug: &str,
         device: &Device,
-        code: &CodeMachine,
         include_uncommitted: bool,
         from_remote: bool,
     ) -> anyhow::Result<(String, String)> {
@@ -467,6 +490,7 @@ impl Handoffs {
         if project.directory.is_empty() && project.remote.is_empty() {
             bail!("the project {} has no folder or git remote", project.title);
         }
+        let code = &self.code_machine(&project.machine);
         if from_remote && project.remote.is_empty() {
             bail!("the project {} has no git remote", project.title);
         }
@@ -541,6 +565,7 @@ impl Handoffs {
                 self.snapshot_on(source, &project.slug, task_slug, &req)
                     .await?
             }
+            CodeMachine::Gone(_) => bail!(GONE),
         };
         if project.remote.is_empty() && !snapshot.remote.is_empty() {
             // Learn the project's remote, for when the code machine is away
@@ -625,6 +650,7 @@ impl Handoffs {
                 .identify(&device.address, &device.token)
                 .await
                 .is_ok(),
+            CodeMachine::Gone(_) => false,
         }
     }
 
