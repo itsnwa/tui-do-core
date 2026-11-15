@@ -233,6 +233,30 @@ async fn remove_device(State(state): State<AppState>, Path(id): Path<String>) ->
             "the projects' folders are on that machine, so it stays in the fleet",
         );
     }
+    if let Some(workspace) = state.workspace.current() {
+        let machine = id.clone();
+        let titles = tokio::task::spawn_blocking(move || {
+            workspace.list_projects().map(|projects| {
+                projects
+                    .into_iter()
+                    .filter(|p| p.machine == machine)
+                    .map(|p| p.title)
+                    .collect::<Vec<_>>()
+            })
+        })
+        .await;
+        if let Ok(Ok(titles)) = titles
+            && !titles.is_empty()
+        {
+            return error(
+                StatusCode::CONFLICT,
+                &format!(
+                    "the folders of {} are on that machine; move them first",
+                    titles.join(", ")
+                ),
+            );
+        }
+    }
     match state.fleet.remove(&id) {
         Ok(true) => {
             state.relays.stop(&id);

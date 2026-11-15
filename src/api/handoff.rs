@@ -70,14 +70,12 @@ async fn start(
     let Some(device) = super::fleet::target(&state, &body.device) else {
         return error(StatusCode::NOT_FOUND, "no such machine");
     };
-    let code = state.code_machine();
     match state
         .handoffs
         .start(
             workspace,
             &slug,
             &device,
-            &code,
             body.include_uncommitted,
             body.from_remote,
         )
@@ -282,7 +280,7 @@ async fn git_status(Query(query): Query<GitStatusQuery>) -> Response {
 }
 
 /// Home: whether a project is a git repo, how many files have uncommitted
-/// changes and its remote, asked of the code machine. A project learns its
+/// changes and its remote, asked of the project's code machine. A project learns its
 /// remote from the folder's `origin`. With the code machine away (or no
 /// folder), `fromRemote` says other machines would fetch the remote instead.
 async fn project_git(State(state): State<AppState>, Path(slug): Path<String>) -> Response {
@@ -305,7 +303,7 @@ async fn project_git(State(state): State<AppState>, Path(slug): Path<String>) ->
     if project.directory.is_empty() {
         return Json(known).into_response();
     }
-    let status = match state.code_machine() {
+    let status = match state.handoffs.code_machine(&project.machine) {
         CodeMachine::Here(_) => {
             let dir = crate::session::expand_home(&project.directory);
             tokio::task::spawn_blocking(move || {
@@ -334,6 +332,7 @@ async fn project_git(State(state): State<AppState>, Path(slug): Path<String>) ->
                 Err(err) => Err(format!("{} isn't reachable: {err}", device.name)),
             }
         }
+        CodeMachine::Gone(_) => Err(crate::handoff::GONE.to_string()),
     };
     let mut status = match status {
         Ok(status) => status,
