@@ -115,8 +115,11 @@ pub struct Alert {
     pub body: String,
     /// Opened when the notification is tapped.
     pub link: Option<String>,
-    /// Notifications with the same thread are grouped.
+    /// Notifications with the same thread are grouped, and each new one
+    /// replaces the one before.
     pub thread: Option<String>,
+    /// Only worth a look: listed without a sound, nor lighting up the screen.
+    pub passive: bool,
 }
 
 fn path(dir: &Path) -> PathBuf {
@@ -243,10 +246,12 @@ pub(crate) fn quoted(value: &str) -> String {
 }
 
 fn payload(alert: &Alert) -> serde_json::Value {
-    let mut aps = json!({
-        "alert": { "title": alert.title, "body": alert.body },
-        "sound": "default",
-    });
+    let mut aps = json!({ "alert": { "title": alert.title, "body": alert.body } });
+    if alert.passive {
+        aps["interruption-level"] = "passive".into();
+    } else {
+        aps["sound"] = "default".into();
+    }
     if let Some(thread) = &alert.thread {
         aps["thread-id"] = thread.clone().into();
     }
@@ -264,9 +269,28 @@ pub enum Sent {
     Unregistered,
 }
 
+/// What a thread's notifications collapse by: APNs takes 64 bytes at most,
+/// which a machine and a task's slug can be longer than.
+fn collapse_id(thread: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(thread.as_bytes())[..16]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 /// Send one notification.
 pub async fn send(key: &Key, target: &Target, alert: &Alert) -> anyhow::Result<Sent> {
-    push(key, target, Kind::Alert, &payload(alert), Some(10)).await
+    let collapse = alert.thread.as_deref().map(collapse_id);
+    request(
+        key,
+        target,
+        Kind::Alert,
+        &payload(alert),
+        Some(10),
+        collapse,
+    )
+    .await
 }
 
 /// Send one push of any kind: `payload` as APNs takes it, at `priority` 10
@@ -277,6 +301,17 @@ pub async fn push(
     kind: Kind,
     payload: &serde_json::Value,
     priority: Option<u8>,
+) -> anyhow::Result<Sent> {
+    request(key, target, kind, payload, priority, None).await
+}
+
+async fn request(
+    key: &Key,
+    target: &Target,
+    kind: Kind,
+    payload: &serde_json::Value,
+    priority: Option<u8>,
+    collapse: Option<String>,
 ) -> anyhow::Result<Sent> {
     target.validate()?;
     let token = provider_token(key)?;
@@ -305,6 +340,7 @@ pub async fn push(
     ]
     .into_iter()
     .chain(priority.map(|p| format!("header = {}", quoted(&format!("apns-priority: {p}")))))
+    .chain(collapse.map(|id| format!("header = {}", quoted(&format!("apns-collapse-id: {id}")))))
     .chain([format!("data = {}", quoted(&payload.to_string()))])
     .collect::<Vec<_>>()
     .join("\n");
@@ -457,6 +493,7 @@ mod tests {
             body: "Which one?".into(),
             link: Some("tuido://session/a/b".into()),
             thread: Some("a/b".into()),
+            passive: false,
         };
         assert_eq!(
             payload(&alert),
@@ -469,6 +506,22 @@ mod tests {
                 "link": "tuido://session/a/b",
             })
         );
+        let finished = Alert {
+            passive: true,
+            ..alert
+        };
+        let aps = &payload(&finished)["aps"];
+        assert_eq!(aps["interruption-level"], "passive");
+        assert!(aps.get("sound").is_none());
+    }
+
+    #[test]
+    fn a_thread_should_collapse_by_an_id_apns_takes() {
+        let long = format!("nichlas-mbp/{}", "use-icloud-".repeat(10));
+        let id = collapse_id(&long);
+        assert_eq!(id.len(), 32);
+        assert_eq!(id, collapse_id(&long));
+        assert_ne!(id, collapse_id("nichlas-mbp/other"));
     }
 
     #[test]

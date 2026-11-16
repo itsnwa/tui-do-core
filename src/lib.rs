@@ -22,6 +22,7 @@ pub mod mcp;
 pub mod net;
 pub mod notify;
 pub mod pace;
+pub mod presence;
 pub mod relay;
 pub mod replica;
 pub mod session;

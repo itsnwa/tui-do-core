@@ -6,7 +6,9 @@
 //! later, is notified once, to each paired client that turned notifications
 //! on, unless that client has the session open or someone started typing an
 //! answer. A turn the user interrupted isn't news to them, and one that left
-//! agents of its own running comes back by itself.
+//! agents of its own running comes back by itself. While someone is at a Mac
+//! (see `presence`) nothing is sent: what's still due goes out once they
+//! leave.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -23,34 +25,47 @@ pub const DELAY: Duration = Duration::from_secs(15);
 /// A session on a machine: (device id, session id).
 pub type SessionKey = (String, String);
 
+/// What a session calls for someone with.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Call {
+    /// What to tell them.
+    pub body: String,
+    /// It can't go on without them (it asks, or stopped on an error), rather
+    /// than only having finished its turn.
+    pub urgent: bool,
+}
+
 /// What the notifier needs from an event.
 #[derive(Debug, PartialEq)]
 pub enum Change {
-    /// The session started calling for someone; `body` is what to tell them.
-    Calls { key: SessionKey, body: String },
+    /// The session started calling for someone.
+    Calls { key: SessionKey, call: Call },
     /// It stopped calling: it works again, someone is typing an answer, or
     /// the session ended.
     Settled(SessionKey),
 }
 
 /// What to tell someone about a status that calls for them.
-fn body(status: &Status) -> String {
-    let fallback = match status.state {
-        State::Blocked => "Waiting for your answer",
-        State::Failed => "Stopped on an error",
-        _ => "Finished its turn",
+fn call(status: &Status) -> Call {
+    let (fallback, urgent) = match status.state {
+        State::Blocked => ("Waiting for your answer", true),
+        State::Failed => ("Stopped on an error", true),
+        _ => ("Finished its turn", false),
     };
-    status
-        .detail
-        .clone()
-        .unwrap_or_else(|| fallback.to_string())
+    Call {
+        body: status
+            .detail
+            .clone()
+            .unwrap_or_else(|| fallback.to_string()),
+        urgent,
+    }
 }
 
 fn of_status(key: SessionKey, status: &Status) -> Change {
     if status.view().calls_for_attention() {
         Change::Calls {
             key,
-            body: body(status),
+            call: call(status),
         }
     } else {
         Change::Settled(key)
@@ -82,10 +97,13 @@ pub fn change(event: &Event, own_id: &str) -> Option<Change> {
                     match serde_json::from_value(event["state"].clone()).ok()? {
                         AgentState::Waiting => Some(Change::Calls {
                             key,
-                            body: event["detail"]
-                                .as_str()
-                                .unwrap_or("Waiting for input")
-                                .into(),
+                            call: Call {
+                                body: event["detail"]
+                                    .as_str()
+                                    .unwrap_or("Waiting for input")
+                                    .into(),
+                                urgent: true,
+                            },
                         }),
                         AgentState::Idle | AgentState::Working => Some(Change::Settled(key)),
                     }
@@ -101,14 +119,14 @@ pub fn change(event: &Event, own_id: &str) -> Option<Change> {
 /// Sessions about to be notified, each with when and what to say.
 #[derive(Default)]
 pub struct Waits {
-    pending: HashMap<SessionKey, (Instant, String)>,
+    pending: HashMap<SessionKey, (Instant, Call)>,
 }
 
 impl Waits {
     pub fn apply(&mut self, change: Change, now: Instant) {
         match change {
-            Change::Calls { key, body } => {
-                self.pending.insert(key, (now + DELAY, body));
+            Change::Calls { key, call } => {
+                self.pending.insert(key, (now + DELAY, call));
             }
             Change::Settled(key) => {
                 self.pending.remove(&key);
@@ -121,9 +139,17 @@ impl Waits {
         self.pending.values().map(|(at, _)| *at).min()
     }
 
+    /// Have nothing due before `at`: someone just left the Mac, and the
+    /// phone's Live Activities, started for them, get their tokens first.
+    pub fn hold_until(&mut self, at: Instant) {
+        for (due, _) in self.pending.values_mut() {
+            *due = (*due).max(at);
+        }
+    }
+
     /// The sessions due by `now`, which won't be notified again until they
     /// call for someone again.
-    pub fn take_due(&mut self, now: Instant) -> Vec<(SessionKey, String)> {
+    pub fn take_due(&mut self, now: Instant) -> Vec<(SessionKey, Call)> {
         let due: Vec<SessionKey> = self
             .pending
             .iter()
@@ -132,8 +158,8 @@ impl Waits {
             .collect();
         due.into_iter()
             .filter_map(|key| {
-                let (_, body) = self.pending.remove(&key)?;
-                Some((key, body))
+                let (_, call) = self.pending.remove(&key)?;
+                Some((key, call))
             })
             .collect()
     }
@@ -209,10 +235,17 @@ mod tests {
         ("cube".to_string(), id.to_string())
     }
 
+    fn which_one() -> Call {
+        Call {
+            body: "Which one?".into(),
+            urgent: true,
+        }
+    }
+
     fn calls(id: &str) -> Change {
         Change::Calls {
             key: key(id),
-            body: "Which one?".into(),
+            call: which_one(),
         }
     }
 
@@ -229,9 +262,20 @@ mod tests {
         assert!(waits.take_due(start + DELAY / 2).is_empty());
         assert_eq!(waits.next(), Some(start + DELAY));
         let due = waits.take_due(start + DELAY);
-        assert_eq!(due, vec![(key("a"), "Which one?".to_string())]);
+        assert_eq!(due, vec![(key("a"), which_one())]);
         assert!(waits.take_due(start + DELAY * 10).is_empty());
         assert_eq!(waits.next(), None);
+    }
+
+    #[test]
+    fn a_held_session_should_not_be_due_before_the_hold_ends() {
+        let start = Instant::now();
+        let mut waits = Waits::default();
+        waits.apply(calls("a"), start);
+        let left = start + DELAY * 4;
+        waits.hold_until(left + DELAY);
+        assert!(waits.take_due(left).is_empty());
+        assert_eq!(waits.take_due(left + DELAY).len(), 1);
     }
 
     #[test]
@@ -259,16 +303,16 @@ mod tests {
         assert_eq!(due[0].0, key("b"));
     }
 
-    /// The change a status makes on this core, as (calls, body).
-    fn of(status: Status) -> (bool, Option<String>) {
+    /// The change a status makes on this core, as (calls, its call).
+    fn of(status: Status) -> (bool, Option<Call>) {
         let event = Event::SessionStatus {
             id: "task".into(),
             status,
         };
         match change(&event, "mac").expect("a change") {
-            Change::Calls { key, body } => {
+            Change::Calls { key, call } => {
                 assert_eq!(key, ("mac".to_string(), "task".to_string()));
-                (true, Some(body))
+                (true, Some(call))
             }
             Change::Settled(_) => (false, None),
         }
@@ -276,30 +320,33 @@ mod tests {
 
     #[test]
     fn a_status_should_call_for_someone_when_it_needs_them() {
-        let says = |text: &str| (true, Some(text.to_string()));
+        let says = |text: &str, urgent: bool| {
+            let body = text.to_string();
+            (true, Some(Call { body, urgent }))
+        };
         assert_eq!(
             of(status(
                 State::Blocked,
                 "permission",
                 Some("Allow Bash: ls?")
             )),
-            says("Allow Bash: ls?")
+            says("Allow Bash: ls?", true)
         );
         assert_eq!(
             of(status(State::Blocked, "question", None)),
-            says("Waiting for your answer")
+            says("Waiting for your answer", true)
         );
         assert_eq!(
             of(status(State::Failed, "rate_limit", None)),
-            says("Stopped on an error")
+            says("Stopped on an error", true)
         );
         assert_eq!(
             of(status(State::Ready, "finished", Some("Done."))),
-            says("Done.")
+            says("Done.", false)
         );
         assert_eq!(
             of(status(State::Ready, "quiet", None)),
-            says("Finished its turn")
+            says("Finished its turn", false)
         );
     }
 
@@ -332,7 +379,10 @@ mod tests {
             relayed(event),
             Some(Change::Calls {
                 key: key("t"),
-                body: "Go?".into(),
+                call: Call {
+                    body: "Go?".into(),
+                    urgent: true,
+                },
             })
         );
         let removed = serde_json::json!({ "type": "sessionRemoved", "id": "t" });
@@ -349,7 +399,10 @@ mod tests {
             relayed(waiting),
             Some(Change::Calls {
                 key: key("t"),
-                body: "Go?".into(),
+                call: Call {
+                    body: "Go?".into(),
+                    urgent: true,
+                },
             })
         );
         let bare = serde_json::json!({ "type": "agentState", "id": "t", "state": "waiting" });
@@ -357,7 +410,10 @@ mod tests {
             relayed(bare),
             Some(Change::Calls {
                 key: key("t"),
-                body: "Waiting for input".into(),
+                call: Call {
+                    body: "Waiting for input".into(),
+                    urgent: true,
+                },
             })
         );
         let working = serde_json::json!({ "type": "agentState", "id": "t", "state": "working" });
