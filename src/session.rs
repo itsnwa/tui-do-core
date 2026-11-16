@@ -241,6 +241,11 @@ pub enum Event {
     TailscaleStatus {
         tailscale: crate::net::Tailscale,
     },
+    /// Whether someone is at this Mac (see `presence`): said while they are,
+    /// every minute, and once when they leave.
+    Presence {
+        here: bool,
+    },
 }
 
 impl Event {
@@ -254,7 +259,8 @@ impl Event {
             | Event::Handoff { .. }
             | Event::TaskActivity { .. }
             | Event::HomeChanged { .. }
-            | Event::TailscaleStatus { .. } => "",
+            | Event::TailscaleStatus { .. }
+            | Event::Presence { .. } => "",
             Event::SessionCreated { session } => &session.id,
             Event::Output { id, .. }
             | Event::SessionExited { id, .. }

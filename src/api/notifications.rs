@@ -2,6 +2,12 @@
 //! on or off, and the home core sends them through APNs when an agent waits.
 //! Also the pushes that follow agents (see `crate::live`): a client's widgets
 //! load again, and its Live Activities start, change and end.
+//!
+//! A phone hears of a session one way: an alert on the session's Live
+//! Activity when it has one, else a notification. A finished turn the Live
+//! Activity already shows isn't sent at all, and otherwise goes out quietly.
+//! While someone is at a Mac (see `crate::presence`), nothing alerts the
+//! phone: no notifications, and no Live Activities start.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,7 +26,8 @@ use super::{AppState, error};
 use crate::apns::{self, Alert, Kind, Sent, Target};
 use crate::clients::{Caller, LiveTokens};
 use crate::live::{self, Agent, Followed, Push};
-use crate::notify::{self, SessionKey, Waits};
+use crate::notify::{self, Call, SessionKey, Waits};
+use crate::presence::Here;
 use crate::session::Event;
 
 /// How long a burst of changes settles before the widgets are told.
@@ -321,6 +328,7 @@ async fn test(State(state): State<AppState>, caller: Option<Extension<Caller>>) 
         ),
         link: None,
         thread: None,
+        passive: false,
     };
     match deliver(&state, &key, &target, &alert).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
@@ -366,9 +374,11 @@ async fn forward(
 
 /// Follow agents with pushes: tell clients' widgets to load again (after a
 /// burst of changes settles, at most every `WIDGETS_EVERY`), and start,
-/// update and end their Live Activities.
+/// update and end their Live Activities. None start while someone is at a
+/// Mac; the agents at work get theirs once nobody is.
 pub fn spawn_pusher(state: AppState) {
     let mut events = state.registry.subscribe();
+    let own_id = state.config.get().device_id;
     let (pushes, mut queue) = tokio::sync::mpsc::unbounded_channel::<Push>();
     // One at a time, so a Live Activity's pushes arrive in order
     let sender = state.clone();
@@ -379,23 +389,43 @@ pub fn spawn_pusher(state: AppState) {
     });
     tokio::spawn(async move {
         let mut followed = Followed::default();
+        let mut here = Here::default();
+        let mut someone_here = false;
         let mut widgets_due: Option<Instant> = None;
         let mut widgets_sent: Option<Instant> = None;
         loop {
+            let now = Instant::now();
+            let present = here.anyone(now);
+            if someone_here && !present {
+                for agent in followed.starting() {
+                    let _ = pushes.send(Push::Start(agent));
+                }
+            }
+            someone_here = present;
+            let rest = followed.next_rest();
+            let stale = here.until(now);
             tokio::select! {
                 event = events.recv() => match event {
-                    Ok(Event::TaskActivity { task, activity }) => {
-                        for push in followed.change(&task, activity.as_ref()) {
-                            if push == Push::Widgets {
-                                let now = Instant::now();
-                                let earliest = widgets_sent.map_or(now, |at| at + WIDGETS_EVERY);
-                                widgets_due.get_or_insert((now + WIDGETS_SETTLE).max(earliest));
-                            } else {
-                                let _ = pushes.send(push);
+                    Ok(event) => {
+                        let now = Instant::now();
+                        here.see(&event, &own_id, now);
+                        let Event::TaskActivity { task, activity } = event else { continue };
+                        for push in followed.change(&task, activity.as_ref(), now) {
+                            match push {
+                                Push::Widgets => {
+                                    let earliest = widgets_sent.map_or(now, |at| at + WIDGETS_EVERY);
+                                    widgets_due.get_or_insert((now + WIDGETS_SETTLE).max(earliest));
+                                }
+                                // A new one waits; one showing already follows along
+                                Push::Start(agent) if someone_here => {
+                                    let _ = pushes.send(Push::Update(agent));
+                                }
+                                push => {
+                                    let _ = pushes.send(push);
+                                }
                             }
                         }
                     }
-                    Ok(_) => {}
                     // The board catches up and says what changed
                     Err(RecvError::Lagged(_)) => {}
                     Err(RecvError::Closed) => return,
@@ -405,6 +435,13 @@ pub fn spawn_pusher(state: AppState) {
                     widgets_sent = Some(Instant::now());
                     tokio::spawn(push_widgets(state.clone()));
                 }
+                () = tokio::time::sleep_until(rest.unwrap_or(now)), if rest.is_some() => {
+                    for push in followed.retire(Instant::now()) {
+                        let _ = pushes.send(push);
+                    }
+                }
+                // Whoever was at a Mac may have left
+                () = tokio::time::sleep_until(stale.unwrap_or(now)), if stale.is_some() => {}
             }
         }
     });
@@ -523,7 +560,7 @@ async fn start_running(state: AppState, client: String) {
         return;
     };
     for (task, activity) in state.activity.all() {
-        if let Some(agent) = live::agent(&task, Some(&activity)) {
+        if let Some(agent) = live::agent(&task, Some(&activity)).filter(Agent::starts) {
             let about = about(&state, &agent).await;
             start(&state, &key, &live, &agent, &about, unix_now()).await;
         }
@@ -590,57 +627,96 @@ fn machine_name(state: &AppState, device: &str) -> String {
 }
 
 /// Watch sessions' statuses and notify clients about the ones left calling
-/// for someone.
+/// for someone, once nobody is at a Mac.
 pub fn spawn_notifier(state: AppState) {
     let mut events = state.registry.subscribe();
     tokio::spawn(async move {
         let mut waits = Waits::default();
+        let mut here = Here::default();
+        let mut someone_here = false;
         loop {
-            let next = waits.next();
+            let now = Instant::now();
+            let present = here.anyone(now);
+            if someone_here && !present {
+                // The Live Activities started for them get their tokens first
+                waits.hold_until(now + notify::DELAY);
+            }
+            someone_here = present;
+            let next = waits.next().filter(|_| !present);
+            let stale = here.until(now);
             tokio::select! {
                 event = events.recv() => match event {
                     Ok(event) => {
                         let own_id = state.config.get().device_id;
+                        let now = Instant::now();
+                        here.see(&event, &own_id, now);
                         if let Some(change) = notify::change(&event, &own_id) {
-                            waits.apply(change, tokio::time::Instant::now());
+                            waits.apply(change, now);
                         }
                     }
                     // Missed changes only cost a notification
                     Err(RecvError::Lagged(_)) => {}
                     Err(RecvError::Closed) => return,
                 },
-                () = tokio::time::sleep_until(next.unwrap_or_else(tokio::time::Instant::now)), if next.is_some() => {
-                    for (key, body) in waits.take_due(tokio::time::Instant::now()) {
-                        tokio::spawn(send(state.clone(), key, body));
+                () = tokio::time::sleep_until(next.unwrap_or(now)), if next.is_some() => {
+                    for (key, call) in waits.take_due(Instant::now()) {
+                        tokio::spawn(send(state.clone(), key, call));
                     }
                 }
+                // Whoever was at a Mac may have left
+                () = tokio::time::sleep_until(stale.unwrap_or(now)), if stale.is_some() => {}
             }
         }
     });
 }
 
-/// Notify each client with notifications on that doesn't have the session open.
-async fn send(state: AppState, key: SessionKey, body: String) {
+/// How a client hears of a session that calls for someone.
+enum Way {
+    /// An alert on the session's Live Activity.
+    Activity(Target),
+    Notification(Target),
+}
+
+/// Tell each client with notifications on that doesn't have the session
+/// open: on its Live Activity for the session if it has one, else with a
+/// notification, quiet for a finished turn. A finished turn its Live
+/// Activity shows already isn't sent.
+async fn send(state: AppState, key: SessionKey, call: Call) {
     let config = state.config.get();
     // Only the home has the clients; a runner's sessions reach it as relayed events
     if !config.is_home() {
         return;
     }
-    let targets: Vec<Target> = state
+    let (device, session) = &key;
+    // What its Live Activity shows now, to alert on it with
+    let shown = live::agent(session, state.activity.all().remove(session).as_ref())
+        .filter(|agent| agent.device == *device)
+        .map(|agent| agent.shown);
+    let activity_key = live::key(device, session);
+    let ways: Vec<Way> = state
         .clients
         .push_targets()
         .into_iter()
         .filter(|(client, _)| !state.watching.is_open(client, &key))
-        .map(|(_, target)| target)
+        .filter_map(|(client, target)| {
+            let activity = shown.as_ref().and_then(|_| {
+                let live = state.clients.live(&client)?;
+                Some(live.target(live.activities.get(&activity_key)?))
+            });
+            match activity {
+                Some(activity) if call.urgent => Some(Way::Activity(activity)),
+                Some(_) => None,
+                None => Some(Way::Notification(target)),
+            }
+        })
         .collect();
-    if targets.is_empty() {
+    if ways.is_empty() {
         return;
     }
     let Some(apns_key) = apns::load(&state.core_dir) else {
         tracing::warn!("a phone has notifications on, but this home has no APNs key");
         return;
     };
-    let (device, session) = &key;
     let machine = machine_name(&state, device);
     let workspace = state.workspace.current();
     let slug = session.clone();
@@ -650,23 +726,41 @@ async fn send(state: AppState, key: SessionKey, body: String) {
     .await
     .ok()
     .flatten();
+    let title = task.as_deref().unwrap_or(session);
     let alert = Alert {
-        title: format!("{} · {machine}", task.as_deref().unwrap_or(session)),
-        body,
+        title: format!("{title} · {machine}"),
+        body: call.body.clone(),
         link: Some(notify::session_link(device, session)),
         thread: Some(format!("{device}/{session}")),
+        passive: !call.urgent,
     };
-    let sent = targets
-        .iter()
-        .map(|target| deliver(&state, &apns_key, target, &alert));
-    let mut delivered = 0;
+    let on_activity = shown
+        .as_ref()
+        .map(|shown| live::alert_payload(shown, title, &call.body, unix_now()));
+    let (state, apns_key, alert, on_activity) = (&state, &apns_key, &alert, &on_activity);
+    let sent = ways.iter().map(|way| async move {
+        match (way, on_activity) {
+            (Way::Activity(target), Some(payload)) => {
+                let kind = Kind::LiveActivity;
+                let sent = forward(state, apns_key, target, kind, payload, Some(10));
+                sent.await.map(|()| true)
+            }
+            (Way::Notification(target), _) | (Way::Activity(target), None) => {
+                deliver(state, apns_key, target, alert)
+                    .await
+                    .map(|()| false)
+            }
+        }
+    });
+    let (mut notified, mut on_activities) = (0, 0);
     for result in futures_util::future::join_all(sent).await {
         match result {
-            Ok(()) => delivered += 1,
+            Ok(true) => on_activities += 1,
+            Ok(false) => notified += 1,
             Err(err) => tracing::warn!(error = %format!("{err:#}"), "couldn't send a notification"),
         }
     }
-    tracing::info!(%machine, %session, delivered, "notified about an agent");
+    tracing::info!(%machine, %session, urgent = call.urgent, notified, on_activities, "notified about an agent");
 }
 
 impl AppState {

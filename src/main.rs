@@ -22,7 +22,7 @@ use tui_do_core::mcp::TuiDoMcp;
 use tui_do_core::relay::Relays;
 use tui_do_core::replica::Replicas;
 use tui_do_core::workspace::shared::SharedWorkspace;
-use tui_do_core::{api, holder, hooks, net, session, update, usage};
+use tui_do_core::{api, holder, hooks, net, presence, session, update, usage};
 
 use std::io::IsTerminal;
 use std::os::unix::fs::PermissionsExt;
@@ -287,6 +287,7 @@ async fn serve() -> anyhow::Result<()> {
     };
     // Devices are linked and given the workspace as their relays come online
     api::spawn_background(state.clone());
+    presence::spawn(state.registry.sender());
     api::spawn_notifier(state.clone());
     // Before the board: it hears every task's first activity
     api::spawn_pusher(state.clone());
