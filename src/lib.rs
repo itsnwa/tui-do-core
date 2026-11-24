@@ -6,6 +6,7 @@ pub mod agent_models;
 pub mod agents;
 pub mod api;
 pub mod apns;
+pub mod assistant;
 pub mod claude_status;
 pub mod clients;
 pub mod config;

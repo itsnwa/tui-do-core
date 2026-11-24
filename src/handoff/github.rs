@@ -36,6 +36,26 @@ fn gh(args: &[&str]) -> anyhow::Result<String> {
     bail!("the GitHub CLI (gh) isn't installed on this machine")
 }
 
+/// Create a GitHub repo for the project in `dir`, named after its folder,
+/// make it the folder's `origin` and push to it. `visibility` is `private`
+/// or `public`.
+pub fn create_repo(dir: &std::path::Path, visibility: &str) -> anyhow::Result<()> {
+    let flag = match visibility {
+        "private" => "--private",
+        "public" => "--public",
+        other => bail!("a GitHub repo is private or public, not {other:?}"),
+    };
+    let name = dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .with_context(|| format!("{} has no folder name", dir.display()))?;
+    let source = dir.display().to_string();
+    gh(&[
+        "repo", "create", name, flag, "--source", &source, "--remote", "origin", "--push",
+    ])?;
+    Ok(())
+}
+
 /// Open a pull request for `head` into `base` on `repo` (`owner/repo`), and
 /// return its URL.
 pub fn create_pr(

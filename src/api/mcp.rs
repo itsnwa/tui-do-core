@@ -1,10 +1,11 @@
 //! MCP routes: the streamable HTTP endpoint `/mcp`, the call endpoint that
-//! `tui-do-core mcp` forwards to, and the task ↔ Claude session links.
+//! `tui-do-core mcp` forwards to (the Assistant's tools included), and the
+//! task ↔ Claude session links.
 
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -12,8 +13,9 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 
 use super::{AppState, error};
+use crate::clients::Caller;
 use crate::links::SessionLink;
-use crate::mcp::{ForwardedCall, TuiDoMcp, run_call};
+use crate::mcp::{CallOutcome, ForwardedCall, TuiDoMcp, run_call, tools};
 
 pub fn routes(state: &AppState) -> axum::Router<AppState> {
     let (workspace, sessions, config, handoffs) = (
@@ -45,8 +47,19 @@ pub fn routes(state: &AppState) -> axum::Router<AppState> {
 
 async fn forwarded_call(
     State(state): State<AppState>,
+    caller: Option<Extension<Caller>>,
     Json(call): Json<ForwardedCall>,
 ) -> Response {
+    if call.assistant && tools::is_assistant_tool(&call.name) {
+        // Only from this machine (the core's own token, not a device's
+        // MCP-only one): the Assistant runs on the home
+        let outcome = if matches!(caller.as_deref(), Some(Caller::Owner)) {
+            super::assistant::call_tool(&state, &call.name, call.arguments).await
+        } else {
+            CallOutcome::Error("Only the TUI-DO Assistant can use this tool.".into())
+        };
+        return Json(outcome).into_response();
+    }
     let outcome = run_call(
         Arc::clone(&state.workspace),
         Arc::clone(&state.sessions),

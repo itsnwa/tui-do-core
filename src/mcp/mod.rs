@@ -5,6 +5,9 @@
 //! - `tui-do-core mcp`, a stdio server the agent launches. It forwards each
 //!   call to the daemon, along with the Claude session that launched it, so
 //!   `start_task` can link the task to that session.
+//!
+//! In the Assistant's session (see `crate::assistant`), `tui-do-core mcp`
+//! also lists the Assistant's tools, and the home core's daemon runs them.
 
 pub mod tools;
 
@@ -31,6 +34,9 @@ pub struct ForwardedCall {
     pub arguments: JsonObject,
     #[serde(default)]
     pub session: Option<SessionLink>,
+    /// From the Assistant's session, which may call the Assistant's tools.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub assistant: bool,
 }
 
 /// The daemon's answer to a forwarded call: a result, or an error message.
@@ -141,6 +147,7 @@ enum Backend {
         token: String,
         client: reqwest::Client,
         session: Option<SessionLink>,
+        assistant: bool,
     },
 }
 
@@ -166,15 +173,32 @@ impl TuiDoMcp {
         }
     }
 
-    pub fn forwarding(endpoint: String, token: String, session: Option<SessionLink>) -> Self {
+    /// `assistant`: this server is the Assistant's, with its tools.
+    pub fn forwarding(
+        endpoint: String,
+        token: String,
+        session: Option<SessionLink>,
+        assistant: bool,
+    ) -> Self {
         Self {
             backend: Backend::Daemon {
                 endpoint,
                 token,
                 client: reqwest::Client::new(),
                 session,
+                assistant,
             },
         }
+    }
+
+    fn is_assistants(&self) -> bool {
+        matches!(
+            self.backend,
+            Backend::Daemon {
+                assistant: true,
+                ..
+            }
+        )
     }
 
     async fn call(&self, name: String, arguments: JsonObject) -> CallOutcome {
@@ -189,6 +213,7 @@ impl TuiDoMcp {
                     name,
                     arguments,
                     session: None,
+                    assistant: false,
                 };
                 run_call(
                     Arc::clone(workspace),
@@ -204,11 +229,13 @@ impl TuiDoMcp {
                 token,
                 client,
                 session,
+                assistant,
             } => {
                 let call = ForwardedCall {
                     name,
                     arguments,
                     session: session.clone(),
+                    assistant: *assistant,
                 };
                 forward_call(client, endpoint, token, &call).await
             }
@@ -227,8 +254,12 @@ impl ServerHandler for TuiDoMcp {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
+        let mut tools = tools::definitions();
+        if self.is_assistants() {
+            tools.extend(tools::assistant_definitions());
+        }
         Ok(ListToolsResult {
-            tools: tools::definitions(),
+            tools,
             ..ListToolsResult::default()
         })
     }

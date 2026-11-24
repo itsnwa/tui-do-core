@@ -415,6 +415,27 @@ The key is kept in `dictation.json` in the core's folder (`0600`); a new home ge
 - If the task's session is already running there, it's returned as it is with `started: false`.
 - A session that starts puts the task `in-progress`, also one that was completed (cores 0.3.17 and later; before, only the agent's `start_task` did).
 
+# The Assistant
+
+A Claude Code session on the home core that isn't on any project: the user's agent for TUI-DO itself. It adds and lists tasks, starts agents on tasks, does work on any machine that needs no task, and sets up projects (cores 0.3.37 and later).
+
+It's the session `tui-do.assistant` (task slugs never have a dot), labelled `role: assistant`, a login shell in `~/.tui-do/assistant` with `claude --settings "$TUI_DO_CLAUDE_SETTINGS" -n Assistant` typed into it, plus `--continue` when that folder has an earlier conversation. The core writes the folder's `CLAUDE.md` on each start; the user's own notes go in `CLAUDE.local.md`. It's attached, typed into and notified about like any other session.
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/v0/assistant` | | `{ session, device }`: the running Assistant on this core (`null` if none), and this core's id |
+| `POST` | `/v0/assistant` | `{ fresh?, cols?, rows? }` | `{ session, device, started }`. Starts the Assistant, or answers with the running one (`started: false`). `fresh` ends a running one and starts a new conversation. Only on the home: elsewhere `409 { error, home }`. |
+
+Its MCP server (`tui-do-core mcp`, which sees `TUI_DO_SESSION=tui-do.assistant`) lists seven more tools, and sends their calls to `POST /v0/mcp/call` with `assistant: true`. The home core runs them only for its own token, so neither paired clients nor other machines' agents can:
+
+- `list_machines`: the home and the fleet's machines, with whether each is online.
+- `list_sessions { machine? }`: the live sessions on every machine (the Assistant's own left out), with their task, a worker's title, and the agent's state and question.
+- `read_session { session, machine?, lines? }`: the session's last lines as plain text (80 by default, at most 500), read from its [snapshot](#snapshots).
+- `start_agent { task_id, machine?, agent?, model?, effort?, permission_mode? }`: as [`POST /v0/tasks/{ref}/agent`](#coding-agents). `permission_mode` is `default` or `plan`; nothing skips permission prompts.
+- `start_session { prompt, name, machine?, folder?, agent?, model?, effort?, permission_mode? }`: a worker on work that isn't a task. A login shell in `folder` (default `~`) on the machine (default the home), with the agent typed into it with the prompt. Its id is `worker.<name>` (numbered if that's taken), with labels `role: worker` and `title`.
+- `list_folders { machine?, path? }`: [`/v0/fs/dirs`](#folders-on-a-machine) on that machine.
+- `set_up_project { title, folder, machine?, clone?, github? }`: [`POST /v0/fs/repo`](#folders-on-a-machine) on the machine (default: the projects' machine), then a project with that folder, machine and remote.
+
 # Fleet
 
 A home core can know other machines' cores (devices) and forward requests to them, so a client only needs the home core's address and token. Device tokens stay on the home core (in `fleet.json`, readable only by its user) and are never returned to clients. Devices reach each other over Tailscale: turn on `remoteAccess` on each device (`PATCH /v0/device`).
@@ -434,6 +455,10 @@ A home core can know other machines' cores (devices) and forward requests to the
 | `GET` | `/v0/fs/dirs?path=` | | `{ path, parent, entries: [{ name, path, git }], truncated }`: the folders in `path` on this machine (default and `~`: the home folder), hidden ones left out, sorted by name. `git` says the folder is a git repo. Paths in the home folder come back as `~/…`; `parent` is `null` at `/`. At most 2,000 entries (`truncated`). `404` when there's no such folder. |
 
 Ask another machine through `/v0/devices/{id}/fs/dirs?path=`, to pick a project's folder there (cores 0.3.35 and later).
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `POST` | `/v0/fs/repo` | `{ path, clone?, github? }` | `{ path, remote, created }`: makes `path` (absolute or `~/…`) a git repo on this machine. Without `clone`, the folder is created if needed and gets `git init` with an empty first commit. With `clone`, a git URL is cloned into it, which must not exist yet or must be empty. `github` (`private` or `public`) creates a GitHub repo named after the folder with `gh` and pushes to it (not with `clone`, nor for a folder with a remote). A folder that's a git repo already is left as it is (`created: false`). `remote` is its `origin`. Cores 0.3.37 and later. |
 
 ## Installing on another machine
 
