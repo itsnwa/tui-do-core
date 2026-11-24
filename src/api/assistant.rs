@@ -158,6 +158,25 @@ async fn end(state: &AppState) {
     }
 }
 
+/// What to call a session that isn't on a task: the Assistant, or a
+/// worker by its title. None for any other.
+pub(super) fn session_title(state: &AppState, device: &str, session: &str) -> Option<String> {
+    if session == SESSION_ID {
+        return Some("Assistant".into());
+    }
+    let labels = if device == state.config.get().device_id {
+        serde_json::to_value(state.registry.info(session)?.labels).ok()?
+    } else {
+        state
+            .activity
+            .fleet_sessions()
+            .into_iter()
+            .find(|s| s["device"] == device && s["id"] == session)?["labels"]
+            .take()
+    };
+    labels[assistant::TITLE_LABEL].as_str().map(str::to_string)
+}
+
 /// Run one of the Assistant's tools. Only on the home: the Assistant runs
 /// there, and the tools reach the other machines from it.
 pub(super) async fn call_tool(
