@@ -302,6 +302,37 @@ fn clean_up(
 }
 
 /// The URL of a project's `origin` remote, if it has one.
+/// Start a repo in `dir`, with an empty first commit so it has a branch to
+/// hand off and push.
+pub fn init(dir: &Path) -> anyhow::Result<()> {
+    git(dir, &["init"], &[])?;
+    git(
+        dir,
+        &["commit", "--allow-empty", "-m", "Start the project"],
+        &identity(dir),
+    )?;
+    Ok(())
+}
+
+/// Clone `url` into `dir`, which doesn't exist yet or is empty. Nothing asks
+/// for a password: a remote that needs one fails instead.
+pub fn clone(url: &str, dir: &Path) -> anyhow::Result<()> {
+    let parent = dir
+        .parent()
+        .with_context(|| format!("{} has no parent folder", dir.display()))?;
+    std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    let target = dir.display().to_string();
+    git(
+        parent,
+        &["clone", "--", url, &target],
+        &[
+            ("GIT_TERMINAL_PROMPT", "0"),
+            ("GIT_SSH_COMMAND", "ssh -o BatchMode=yes"),
+        ],
+    )?;
+    Ok(())
+}
+
 pub fn origin(dir: &Path) -> Option<String> {
     git(dir, &["remote", "get-url", "origin"], &[])
         .ok()

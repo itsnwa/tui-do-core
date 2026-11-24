@@ -605,7 +605,10 @@ async fn about(state: &AppState, agent: &Agent) -> live::About {
     .await
     .ok()
     .flatten();
-    let (id, title) = task.unwrap_or_else(|| (String::new(), agent.task.clone()));
+    let (id, title) = task.unwrap_or_else(|| {
+        let title = super::assistant::session_title(state, &agent.device, &agent.task);
+        (String::new(), title.unwrap_or_else(|| agent.task.clone()))
+    });
     live::About {
         id,
         title,
@@ -726,7 +729,10 @@ async fn send(state: AppState, key: SessionKey, call: Call) {
     .await
     .ok()
     .flatten();
-    let title = task.as_deref().unwrap_or(session);
+    let title = task
+        .or_else(|| super::assistant::session_title(&state, device, session))
+        .unwrap_or_else(|| session.clone());
+    let title = title.as_str();
     let alert = Alert {
         title: format!("{title} · {machine}"),
         body: call.body.clone(),

@@ -157,6 +157,32 @@ fn valid_word(value: &str) -> bool {
 }
 
 impl StartAgent {
+    /// What the Assistant starts a task's agent with (see `assistant`):
+    /// never skipping permission prompts.
+    pub(crate) fn for_assistant(
+        device: Option<String>,
+        agent: Option<String>,
+        model: Option<String>,
+        effort: Option<String>,
+        permission_mode: Option<String>,
+    ) -> Self {
+        Self {
+            device,
+            agent,
+            model,
+            effort,
+            permission_mode,
+            yolo: false,
+            include_uncommitted: false,
+            from_remote: false,
+            resume: false,
+            worktree: None,
+            worktree_path: None,
+            cols: 120,
+            rows: 40,
+        }
+    }
+
     /// What the scheduler starts a task's agent with.
     pub(crate) fn scheduled(autostart: &Autostart) -> Self {
         Self {
@@ -209,12 +235,32 @@ fn command(
     resume: Option<&SessionLink>,
     scheduled: Option<&ScheduledRun>,
 ) -> String {
+    let name = format!("\"{slug}\"");
+    launch(
+        agent,
+        req,
+        &name,
+        &prompt(task_id, scheduled),
+        remote,
+        resume,
+    )
+}
+
+/// The agent's command, with its session `name` and `prompt` as they're
+/// typed (quoted).
+fn launch(
+    agent: &Agent,
+    req: &StartAgent,
+    name: &str,
+    prompt: &str,
+    remote: bool,
+    resume: Option<&SessionLink>,
+) -> String {
     let model = req
         .model
         .as_deref()
         .filter(|m| !m.is_empty() && *m != "default");
     let effort = req.effort.as_deref().filter(|e| valid_word(e));
-    let prompt = prompt(task_id, scheduled);
     match agent {
         Agent::Claude => {
             let mut cmd = format!("claude --settings \"${}\"", crate::hooks::SETTINGS_ENV);
@@ -231,13 +277,13 @@ fn command(
                 cmd += " --dangerously-skip-permissions";
             }
             let existing = req.worktree_path.as_deref().filter(|p| !p.is_empty());
-            if let (None, Some(name)) =
+            if let (None, Some(worktree)) =
                 (existing, req.worktree.as_deref().filter(|n| !n.is_empty()))
             {
-                cmd += &format!(" --worktree {}", shell_quote(name));
+                cmd += &format!(" --worktree {}", shell_quote(worktree));
             }
             let enter = existing.map_or(String::new(), |p| format!("cd {} && ", shell_quote(p)));
-            format!("{enter}{cmd} -n \"{slug}\" {prompt}")
+            format!("{enter}{cmd} -n {name} {prompt}")
         }
         Agent::Codex => {
             let mut cmd = String::from(CODEX);
@@ -446,6 +492,157 @@ pub(crate) async fn start_agent(
     }))
 }
 
+/// Work the Assistant hands to an agent on a machine, with no task.
+pub(crate) struct Worker {
+    /// The machine, this core's own included.
+    pub target: Device,
+    /// The session's title.
+    pub name: String,
+    pub prompt: String,
+    /// Absolute or `~/…`.
+    pub folder: String,
+    pub req: StartAgent,
+}
+
+/// Start a worker's agent in its own session, named after it
+/// (`worker.<name>`, numbered if that's taken), and type its prompt.
+pub(crate) async fn start_worker(
+    state: &AppState,
+    worker: Worker,
+) -> Result<Value, (StatusCode, String)> {
+    let agent = match worker.req.agent.as_deref() {
+        None | Some("claude") => Agent::Claude,
+        Some("codex") => Agent::Codex,
+        Some(other) => {
+            return Err((StatusCode::BAD_REQUEST, format!("unknown agent {other:?}")));
+        }
+    };
+    let own_id = state.config.get().device_id;
+    let device = (worker.target.id != own_id).then(|| worker.target.clone());
+    let taken: Vec<String> = if device.is_none() {
+        state
+            .registry
+            .list()
+            .into_iter()
+            .filter(|s| s.alive)
+            .map(|s| s.id)
+            .collect()
+    } else {
+        state
+            .activity
+            .fleet_sessions()
+            .into_iter()
+            .filter(|s| s["device"] == worker.target.id.as_str() && s["alive"] == true)
+            .filter_map(|s| s["id"].as_str().map(str::to_string))
+            .collect()
+    };
+    let id = worker_id(&worker.name, &taken);
+    let labels: std::collections::BTreeMap<String, String> = [
+        (
+            crate::assistant::ROLE_LABEL.to_string(),
+            crate::assistant::WORKER_ROLE.to_string(),
+        ),
+        (
+            crate::assistant::TITLE_LABEL.to_string(),
+            worker.name.clone(),
+        ),
+    ]
+    .into();
+    let events = state.registry.subscribe();
+    let spawn = SpawnRequest {
+        id: id.clone(),
+        argv: Vec::new(),
+        cwd: Some(worker.folder.clone()),
+        env: Default::default(),
+        cols: worker.req.cols,
+        rows: worker.req.rows,
+        agent: Some(agent_name(&agent).into()),
+        labels,
+    };
+    let session = spawn_session(state, device.as_ref(), spawn)
+        .await
+        .map_err(|err| (StatusCode::BAD_GATEWAY, format!("{err:#}")))?;
+    let command = launch(
+        &agent,
+        &worker.req,
+        &shell_quote(&worker.name),
+        &shell_quote(&worker.prompt),
+        device.is_some(),
+        None,
+    );
+    tokio::spawn(type_when_ready(
+        state.clone(),
+        device,
+        id.clone(),
+        command,
+        events,
+    ));
+    tracing::info!(session = %id, device = %worker.target.id, agent = agent_name(&agent), "worker session started");
+    Ok(json!({
+        "session": session,
+        "device": worker.target.id,
+        "machine": worker.target.name,
+        "folder": worker.folder,
+    }))
+}
+
+/// `worker.<name>`, as a session id, numbered past the ones `taken`.
+fn worker_id(name: &str, taken: &[String]) -> String {
+    let mut base = crate::workspace::slug::slugify(name);
+    base.truncate(60);
+    let base = base.trim_end_matches('-');
+    let base = format!("worker.{}", if base.is_empty() { "session" } else { base });
+    (1..)
+        .map(|n| {
+            if n == 1 {
+                base.clone()
+            } else {
+                format!("{base}-{n}")
+            }
+        })
+        .find(|id| !taken.contains(id))
+        .unwrap_or(base)
+}
+
+/// Start a session here (`device` none) or on another machine.
+pub(super) async fn spawn_session(
+    state: &AppState,
+    device: Option<&Device>,
+    spawn: SpawnRequest,
+) -> anyhow::Result<Value> {
+    let Some(device) = device else {
+        let registry = std::sync::Arc::clone(&state.registry);
+        let info = tokio::task::spawn_blocking(move || registry.spawn(spawn)).await??;
+        return Ok(serde_json::to_value(info)?);
+    };
+    let res = state
+        .fleet
+        .client()
+        .post(format!("{}/v0/sessions", device.address))
+        .bearer_auth(&device.token)
+        .json(&json!({
+            "id": spawn.id,
+            "argv": spawn.argv,
+            "cwd": spawn.cwd,
+            "cols": spawn.cols,
+            "rows": spawn.rows,
+            "agent": spawn.agent,
+            "labels": spawn.labels,
+        }))
+        .send()
+        .await
+        .map_err(|err| anyhow::anyhow!("{} isn't reachable: {err}", device.name))?;
+    if !res.status().is_success() {
+        let body: Value = res.json().await.unwrap_or(Value::Null);
+        anyhow::bail!(
+            "{} couldn't start the session: {}",
+            device.name,
+            body["error"].as_str().unwrap_or("unknown error")
+        );
+    }
+    Ok(res.json().await?)
+}
+
 /// What starting an agent changes on its task: it's in progress from now
 /// (also one that was completed), on that machine. None if it already says so.
 fn started_change(task: &Task, device: Option<&str>) -> Option<UpdateTask> {
@@ -525,7 +722,7 @@ async fn spawn_on_device(
 
 /// Type the agent's command once the session's shell has printed something
 /// (its prompt), or after a few seconds.
-async fn type_when_ready(
+pub(super) async fn type_when_ready(
     state: AppState,
     device: Option<Device>,
     slug: String,
@@ -750,6 +947,35 @@ mod tests {
         // Nothing the shell would expand between the double quotes
         assert!(!typed.contains(['$', '`', '\\', '!']));
         assert_eq!(typed.matches('"').count(), 2);
+    }
+
+    #[test]
+    fn a_worker_should_be_told_its_prompt_as_it_was_written() {
+        let req = StartAgent::for_assistant(None, None, None, Some("high".into()), None);
+        assert_eq!(
+            launch(
+                &Agent::Claude,
+                &req,
+                &shell_quote("Disk space"),
+                &shell_quote("Free up space; don't touch ~/code's \"keep\" folder"),
+                false,
+                None,
+            ),
+            "claude --settings \"$TUI_DO_CLAUDE_SETTINGS\" --effort high -n 'Disk space' \
+             'Free up space; don'\\''t touch ~/code'\\''s \"keep\" folder'"
+        );
+    }
+
+    #[test]
+    fn worker_ids_should_be_free_session_ids() {
+        assert_eq!(
+            worker_id("Free up disk space!", &[]),
+            "worker.free-up-disk-space"
+        );
+        let taken = ["worker.backup".to_string(), "worker.backup-2".to_string()];
+        assert_eq!(worker_id("Backup", &taken), "worker.backup-3");
+        assert_eq!(worker_id("æøå", &[]), "worker.session");
+        assert!(worker_id(&"long ".repeat(40), &[]).len() <= "worker.".len() + 60);
     }
 
     #[test]

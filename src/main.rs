@@ -186,6 +186,7 @@ async fn serve_mcp_stdio() -> anyhow::Result<()> {
         endpoint.trim().to_string(),
         token.trim().to_string(),
         SessionLink::of_parent_claude(),
+        tui_do_core::assistant::is_own_session(),
     );
     server
         .serve(rmcp::transport::stdio())

@@ -407,6 +407,178 @@ pub fn definitions() -> Vec<Tool> {
     ]
 }
 
+const MACHINE: &str = "Machine id or name, from list_machines";
+
+const AGENT_PERMISSION_MODE: &str = "Claude's --permission-mode: default or plan (default: default). Modes that ask less can only be set by the user in the TUI-DO app.";
+
+/// The tools only the Assistant gets (see `crate::assistant`): machines,
+/// sessions and setting up projects. They run in the home core's daemon.
+pub fn assistant_definitions() -> Vec<Tool> {
+    let tool = |name: &'static str, description: &'static str, params: &[Param]| {
+        Tool::new(name, description, schema(params))
+    };
+    let agent_params = |first: &[Param]| -> Vec<Param> {
+        let mut params = first.to_vec();
+        params.extend([
+            ("agent", "string", "claude (default) or codex", false),
+            (
+                "model",
+                "string",
+                "Claude's --model value, or a Codex model slug (default: the agent's)",
+                false,
+            ),
+            ("effort", "string", "Effort level, e.g. high", false),
+            ("permission_mode", "string", AGENT_PERMISSION_MODE, false),
+        ]);
+        params
+    };
+    vec![
+        tool(
+            "list_machines",
+            "List the machines in the TUI-DO fleet: the home (where you run) and the others, with whether each is online.",
+            &[],
+        ),
+        tool(
+            "list_sessions",
+            "List the live sessions on every machine: their task (none for a session that isn't on one), the agent in them and what it's doing, and what a waiting agent asks.",
+            &[("machine", "string", MACHINE, false)],
+        ),
+        tool(
+            "read_session",
+            "Read a session's screen as text: its last lines, with what the agent in it is doing.",
+            &[
+                ("session", "string", "Session id, from list_sessions", true),
+                (
+                    "machine",
+                    "string",
+                    "Machine id or name (default: the home)",
+                    false,
+                ),
+                (
+                    "lines",
+                    "integer",
+                    "How many lines from the end (default 80, at most 500)",
+                    false,
+                ),
+            ],
+        ),
+        tool(
+            "start_agent",
+            "Start a coding agent on a task, as the TUI-DO app does: in the project's folder on its machine, or with a copy of the code on another machine. It's typed the prompt \"Start working on task <id>\". If the task's session is already running, that one is returned (started: false).",
+            &agent_params(&[
+                ("task_id", "string", TASK_ID, true),
+                (
+                    "machine",
+                    "string",
+                    "Machine id or name to run on (default: the machine with the project's folder)",
+                    false,
+                ),
+            ]),
+        ),
+        tool(
+            "start_session",
+            "Start a coding agent on work that isn't a task, in a folder on a machine, with a prompt. It runs in its own session, which the user can watch and take over in the TUI-DO app.",
+            &agent_params(&[
+                ("prompt", "string", "What the agent should do", true),
+                (
+                    "name",
+                    "string",
+                    "A short title for the session, e.g. \"Free up disk space\"",
+                    true,
+                ),
+                (
+                    "machine",
+                    "string",
+                    "Machine id or name (default: the home)",
+                    false,
+                ),
+                (
+                    "folder",
+                    "string",
+                    "Folder on that machine, absolute or ~/… (default: ~)",
+                    false,
+                ),
+            ]),
+        ),
+        tool(
+            "list_folders",
+            "List the folders in a folder on a machine, and which of them are git repos.",
+            &[
+                (
+                    "machine",
+                    "string",
+                    "Machine id or name (default: the home)",
+                    false,
+                ),
+                (
+                    "path",
+                    "string",
+                    "Folder, absolute or ~/… (default: ~)",
+                    false,
+                ),
+            ],
+        ),
+        tool(
+            "set_up_project",
+            "Set up a new project in one go: make its folder on a machine as a git repo (a new one, or a clone of `clone`), optionally create its GitHub repo, and add the TUI-DO project with that folder and remote. A folder that's already a git repo is used as it is.",
+            &[
+                ("title", "string", "Project title", true),
+                (
+                    "folder",
+                    "string",
+                    "The project's folder, absolute or ~/…; it's created if it doesn't exist",
+                    true,
+                ),
+                (
+                    "machine",
+                    "string",
+                    "Machine id or name (default: the machine the projects' folders are on)",
+                    false,
+                ),
+                (
+                    "clone",
+                    "string",
+                    "Git URL to clone into the folder, instead of starting a new repo",
+                    false,
+                ),
+                (
+                    "github",
+                    "string",
+                    "Create a GitHub repo for a new project and push to it: private or public (needs gh signed in on that machine)",
+                    false,
+                ),
+            ],
+        ),
+    ]
+}
+
+/// Whether a tool is one of the Assistant's.
+pub fn is_assistant_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "list_machines"
+            | "list_sessions"
+            | "read_session"
+            | "start_agent"
+            | "start_session"
+            | "list_folders"
+            | "set_up_project"
+    )
+}
+
+/// The permission mode an Assistant's call asks for, if it may: none that
+/// asks less than the Assistant itself.
+pub fn agent_permission_mode(value: Option<&str>) -> Result<Option<String>, String> {
+    match value.filter(|m| !m.is_empty()) {
+        None => Ok(None),
+        Some(mode) if SCHEDULED_PERMISSION_MODES.contains(&mode) => Ok(Some(mode.to_string())),
+        Some(mode) => Err(format!(
+            "Invalid arguments: permission_mode must be one of {}; {mode:?} can only be set by the user in the TUI-DO app",
+            SCHEDULED_PERMISSION_MODES.join(", ")
+        )),
+    }
+}
+
 struct Args(JsonObject);
 
 impl Args {
@@ -613,6 +785,23 @@ mod tests {
     #[test]
     fn there_should_be_the_original_22_tools() {
         assert_eq!(definitions().len(), 22);
+    }
+
+    #[test]
+    fn the_assistants_tools_should_be_its_own() {
+        let tools = assistant_definitions();
+        assert!(tools.iter().all(|t| is_assistant_tool(&t.name)));
+        assert_eq!(tools.len(), 7);
+        assert!(!definitions().iter().any(|t| is_assistant_tool(&t.name)));
+    }
+
+    #[test]
+    fn the_assistant_should_not_start_agents_that_ask_less_than_it() {
+        assert_eq!(agent_permission_mode(None), Ok(None));
+        assert_eq!(agent_permission_mode(Some("")), Ok(None));
+        assert_eq!(agent_permission_mode(Some("plan")), Ok(Some("plan".into())));
+        assert!(agent_permission_mode(Some("acceptEdits")).is_err());
+        assert!(agent_permission_mode(Some("bypassPermissions")).is_err());
     }
 
     #[test]

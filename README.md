@@ -48,6 +48,10 @@ Other machines join through the home core, which needs `ssh` access to them (key
 - **Copies of the workspace:** every machine keeps a read-only copy of the tasks, kept up to date by the home core a few seconds after each change. Agents on any machine still write through the home.
 - **Moving the home** to another machine (say, one that's always on) takes a second, since its copy is already there. That machine takes the machines list, paired phones and running handoffs along with it. The code stays where it is: projects' folders are on the machine the home first moved away from (unless a project names its own), handoffs start from there, and branches come back there. The Mac app follows the move.
 
+## The Assistant
+
+The home core also runs the **Assistant**, a Claude Code session that isn't on any project, for TUI-DO itself: the apps open it like any other session. It adds and lists tasks, looks in on sessions, starts agents on tasks, hands work that needs no task to an agent on any machine, and sets up new projects (folder, git repo, GitHub repo and TUI-DO project in one go). Those machine and session tools are only in the Assistant's MCP server, not the task agents'.
+
 ## API
 
 See [docs/api.md](docs/api.md): sessions, tasks and the rest of the workspace, events, paired clients, starting agents, machines, handoff and updating. The API is versioned by path (`/v0`); v0 may still change.

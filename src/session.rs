@@ -1393,6 +1393,33 @@ fn vt_repaint(term: &Terminal) -> String {
     }
 }
 
+/// The last `lines` lines of a snapshot (`vt_snapshot` of a terminal this
+/// size) as plain text, as wide as the screen and without the blank ones at
+/// the end. For an agent reading what's in a session.
+pub fn screen_text(snapshot: &str, cols: u16, rows: u16, lines: usize) -> String {
+    let text = (|| {
+        let mut term = Terminal::new(TerminalOptions {
+            cols,
+            rows,
+            max_scrollback: MAX_SCROLLBACK_LINES,
+        })?;
+        term.vt_write(snapshot.as_bytes());
+        let opts = FormatterOptions::new()
+            .with_format(Format::Plain)
+            .with_unwrap(true)
+            .with_trim(true);
+        let bytes = Formatter::new(&term, opts)
+            .and_then(|mut f| f.format_alloc(None).map(|b| b.to_vec()))?;
+        Ok::<_, libghostty_vt::Error>(String::from_utf8_lossy(&bytes).into_owned())
+    })();
+    let text = text.unwrap_or_else(|err| {
+        tracing::warn!(?err, "reading a screen as text failed");
+        String::new()
+    });
+    let kept: Vec<&str> = text.trim_end().lines().collect();
+    kept[kept.len().saturating_sub(lines)..].join("\n")
+}
+
 fn vt_format(term: &Terminal, selection: Option<&Selection<'_>>) -> String {
     let mut opts = FormatterOptions::new()
         .with_format(Format::Vt)
@@ -1479,6 +1506,17 @@ mod tests {
         let mut viewer = terminal(lines.as_bytes());
         viewer.vt_write(vt_repaint(&terminal(b"now")).as_bytes());
         assert!(vt_snapshot(&viewer).contains("line0"));
+    }
+
+    #[test]
+    fn screen_text_should_be_the_last_lines_without_styles() {
+        let snapshot = feed(b"\x1b[1mone\x1b[0m\r\ntwo\r\nthree\r\n\r\n");
+        assert_eq!(screen_text(&snapshot, 40, 5, 10), "one\ntwo\nthree");
+        assert_eq!(screen_text(&snapshot, 40, 5, 2), "two\nthree");
+        // A snapshot doesn't say which lines wrapped, so they read as on screen
+        let wrapped = feed("x".repeat(50).as_bytes());
+        let lines = format!("{}\n{}", "x".repeat(40), "x".repeat(10));
+        assert_eq!(screen_text(&wrapped, 40, 5, 10), lines);
     }
 
     #[test]
